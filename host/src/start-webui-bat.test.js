@@ -510,6 +510,19 @@ test("start-webui.bat reports failures as an ASCII code line plus Japanese detai
   } finally { sandbox.cleanup(); }
 });
 
+test("start-webui.bat accepts WinGet Links opencode and repairs npm postinstall stubs", { skip: !isWindows }, () => {
+  const source = readFileSync(startWebuiSource, "utf8");
+  assert.match(source, /WinGet\\Links\\opencode\.exe/);
+  assert.match(source, /Repairing OpenCode npm install/);
+  assert.match(source, /opencode-ai\\postinstall\.mjs/);
+  // Bare `opencode --version` can still fail when npm's stub shadows WinGet;
+  // the Links shim must be checked before failing with error-4-path.
+  assert.match(
+    source,
+    /call winget install --id SST\.opencode[\s\S]*WinGet\\Links\\opencode\.exe[\s\S]*error-4-path/,
+  );
+});
+
 test("start-webui.bat runs the production WebUI guard without --stop and skips the build when it fires", { skip: !isWindows }, () => {
   const source = readFileSync(startWebuiSource, "utf8");
   assert.match(source, /call node scripts\\production-webui-build-guard\.mjs/);

@@ -70,6 +70,7 @@ import {
   createThrottleStore,
   verifyWindowsCredentials,
 } from './windows-auth.js';
+import { pickOpencodePath } from './opencode-path.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -847,52 +848,27 @@ function shouldOpenBrowser() {
 }
 
 function findOpencode() {
+  /** @type {string[]} */
+  let lines = [];
   try {
     const output = execSync('where.exe opencode', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const lines = output
+    lines = output
       .trim()
       .split(/\r?\n/)
       .map((entry) => entry.trim())
       .filter(Boolean);
-
-    // Prefer real binary over npm shim (.cmd / extensionless)
-    const exe = lines.find((p) => /\.exe$/i.test(p));
-    if (exe) return exe;
-
-    const cmd = lines.find((p) => /\.cmd$/i.test(p));
-    if (cmd) {
-      const siblingExe = join(
-        dirname(cmd),
-        'node_modules',
-        'opencode-ai',
-        'bin',
-        'opencode.exe',
-      );
-      if (existsSync(siblingExe)) return siblingExe;
-      return cmd;
-    }
-
-    if (lines[0]) {
-      const siblingExe = join(
-        dirname(lines[0]),
-        'node_modules',
-        'opencode-ai',
-        'bin',
-        'opencode.exe',
-      );
-      if (existsSync(siblingExe)) return siblingExe;
-      return lines[0];
-    }
-    throw new Error('empty where.exe result');
-  } catch (err) {
-    if (err instanceof Error && err.message.includes('opencode not found')) {
-      throw err;
-    }
-    throw new Error('opencode not found on PATH. Install OpenCode CLI first.');
+  } catch {
+    // where.exe exits non-zero when nothing matches; still try WinGet Links.
   }
+
+  const picked = pickOpencodePath(lines, {
+    localAppData: process.env.LOCALAPPDATA,
+  });
+  if (picked) return picked;
+  throw new Error('opencode not found on PATH. Install OpenCode CLI first.');
 }
 
 /**

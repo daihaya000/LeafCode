@@ -147,6 +147,19 @@ exit /b 3
 :check_opencode
 call opencode --version >nul 2>&1
 if not errorlevel 1 exit /b 0
+rem A broken npm bin stub (postinstall not run) can shadow a working WinGet
+rem install on PATH. Accept the Links shim directly, same as :check_caddy.
+if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\opencode.exe" (
+  "%LOCALAPPDATA%\Microsoft\WinGet\Links\opencode.exe" --version >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
+rem Heal npm global install when only the postinstall placeholder remains.
+if exist "%APPDATA%\npm\node_modules\opencode-ai\postinstall.mjs" (
+  echo [OpenCode WebUI] Repairing OpenCode npm install...
+  call node "%APPDATA%\npm\node_modules\opencode-ai\postinstall.mjs"
+  call opencode --version >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
 call where winget >nul 2>&1
 if errorlevel 1 goto :install_opencode_with_npm
 echo [OpenCode WebUI] Installing OpenCode with winget...
@@ -154,6 +167,10 @@ call winget install --id SST.opencode --exact --source winget --silent --accept-
 if errorlevel 1 goto :install_opencode_with_npm
 call opencode --version >nul 2>&1
 if not errorlevel 1 exit /b 0
+if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\opencode.exe" (
+  "%LOCALAPPDATA%\Microsoft\WinGet\Links\opencode.exe" --version >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
 call :fail 4 "OpenCode is not available in this command prompt." error-4-path
 exit /b 4
 
@@ -163,6 +180,12 @@ call npm install -g opencode-ai
 if errorlevel 1 goto :opencode_install_failed
 call opencode --version >nul 2>&1
 if not errorlevel 1 exit /b 0
+if exist "%APPDATA%\npm\node_modules\opencode-ai\postinstall.mjs" (
+  echo [OpenCode WebUI] Repairing OpenCode npm install...
+  call node "%APPDATA%\npm\node_modules\opencode-ai\postinstall.mjs"
+  call opencode --version >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
 call :fail 4 "OpenCode is not available in this command prompt." error-4-path
 exit /b 4
 
