@@ -100,6 +100,7 @@ export function MemorySettings() {
   const [unreadExtractionCount, setUnreadExtractionCount] = useState(0);
   const [extractionHistoryLoading, setExtractionHistoryLoading] = useState(false);
   const [extractionHistoryBusy, setExtractionHistoryBusy] = useState(false);
+  const [consolidateBusy, setConsolidateBusy] = useState(false);
 
   const candidates = memories.filter((m) => !m.approved);
   const approved = memories.filter((m) => m.approved);
@@ -359,6 +360,51 @@ export function MemorySettings() {
     }
   };
 
+  /**
+   * Two-step cleanup for duplicates written by the older extraction path: the
+   * dry run reports the count, and the user confirms before anything is deleted.
+   */
+  const consolidateDuplicates = async () => {
+    if (!selectedWorkspace) {
+      alert("ワークスペースを選択してください");
+      return;
+    }
+    setConsolidateBusy(true);
+    setNotice(null);
+    setLoadError(null);
+    try {
+      const preview = await sendJson<{ removed: number; remaining: number; scanned: number }>(
+        "POST",
+        "/api/memory/consolidate",
+        { workspaceId: selectedWorkspace, dryRun: true },
+      );
+      if (preview.removed === 0) {
+        hint(`同義の重複は見つかりませんでした（${preview.scanned}件を確認）`);
+        return;
+      }
+      const ok = window.confirm(
+        `同義の重複 ${preview.removed}件を削除します（${preview.scanned}件 → ${preview.remaining}件）。\n` +
+          "各グループで最も古い行（承認済みを優先）を残し、使用回数は残る行に引き継ぎます。\n" +
+          "この操作は取り消せません。実行しますか？",
+      );
+      if (!ok) {
+        hint(`重複 ${preview.removed}件（未削除）`);
+        return;
+      }
+      const applied = await sendJson<{ removed: number; remaining: number }>(
+        "POST",
+        "/api/memory/consolidate",
+        { workspaceId: selectedWorkspace, dryRun: false },
+      );
+      hint(`重複 ${applied.removed}件を削除しました（残り ${applied.remaining}件）`);
+      void loadMemories(selectedWorkspace);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "重複の整理に失敗しました");
+    } finally {
+      setConsolidateBusy(false);
+    }
+  };
+
   const markExtractionHistoryRead = async () => {
     if (!selectedWorkspace || unreadExtractionCount === 0) return;
     setExtractionHistoryBusy(true);
@@ -488,6 +534,20 @@ export function MemorySettings() {
             {writeApproval ? "候補" : "メモリ"}として作成します。既存メモリと同義の内容は保存されません。抽出にはモデル利用料がかかる場合があります。
           </span>
         </label>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+          <span className="text-[11px] text-faint">
+            以前のバージョンで作られた同義の重複をまとめます。まず件数を確認し、確認後に削除します。
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={consolidateBusy || !selectedWorkspace}
+            onClick={() => void consolidateDuplicates()}
+          >
+            重複を整理
+          </Button>
+        </div>
 
         {notice && <p className="text-[11px] text-success">{notice}</p>}
         {loadError && <p className="text-[11px] text-danger">{loadError}</p>}

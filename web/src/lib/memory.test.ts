@@ -14,6 +14,7 @@ const {
   buildMemoryInjectionBlock,
   countApprovedMemories,
   claimMemoryInjectionForSession,
+  consolidateDuplicateMemories,
   createMemory,
   deleteMemory,
   findDuplicateMemory,
@@ -355,6 +356,145 @@ describe("memory CRUD + injection", () => {
     });
     expect(batch.created).toBe(1);
     expect(batch.skipped).toBe(1);
+  });
+
+  it("consolidates pre-existing duplicates only when asked to write", () => {
+    // Rows written by the pre-fix extraction path: three wordings of one rule
+    // plus an unrelated rule that must survive untouched.
+    const older = createMemory({
+      workspaceId: "ws-consolidate",
+      kind: "fact",
+      content: "手動停止は stream.abort() から session abort API を呼ぶ。",
+      provenance: "auto-extract",
+      approved: true,
+    });
+    const middle = createMemory({
+      workspaceId: "ws-consolidate",
+      kind: "fact",
+      content: "手動停止は stream.abort() から session abort API を呼びます。",
+      provenance: "auto-extract",
+      approved: true,
+    });
+    const newer = createMemory({
+      workspaceId: "ws-consolidate",
+      kind: "lesson",
+      content: "手動中断は stream.abort() から session abort API を呼ぶ。",
+      provenance: "auto-extract",
+      approved: true,
+    });
+    const unrelated = createMemory({
+      workspaceId: "ws-consolidate",
+      kind: "preference",
+      content: "bat ファイルは CRLF・BOM なしで保存する。",
+      provenance: "manual",
+      approved: true,
+    });
+    // Rows created inside one tick share created_at; spread them so the
+    // survivor is decided by age rather than by UUID order.
+    const setCreatedAt = getDb().prepare("UPDATE memories SET created_at = ? WHERE id = ?");
+    setCreatedAt.run(1_000, older.id);
+    setCreatedAt.run(2_000, middle.id);
+    setCreatedAt.run(3_000, newer.id);
+    setCreatedAt.run(4_000, unrelated.id);
+    getDb()
+      .prepare("UPDATE memories SET use_count = ?, last_used_at = ? WHERE id = ?")
+      .run(2, 5_000, middle.id);
+    getDb()
+      .prepare("UPDATE memories SET use_count = ?, last_used_at = ? WHERE id = ?")
+      .run(3, 9_000, newer.id);
+
+    const dry = consolidateDuplicateMemories({ workspaceId: "ws-consolidate" });
+    expect(dry.dryRun).toBe(true);
+    expect(dry.scanned).toBe(4);
+    expect(dry.removed).toBe(2);
+    expect(dry.remaining).toBe(2);
+    expect(dry.clusters).toHaveLength(1);
+    expect(dry.clusters[0].keepId).toBe(older.id);
+    expect(dry.clusters[0].dropIds.sort()).toEqual([middle.id, newer.id].sort());
+    // A dry run must not touch the table.
+    expect(listMemories({ workspaceId: "ws-consolidate" })).toHaveLength(4);
+
+    const applied = consolidateDuplicateMemories({
+      workspaceId: "ws-consolidate",
+      dryRun: false,
+      now: 10_000,
+    });
+    expect(applied.removed).toBe(2);
+    const rows = listMemories({ workspaceId: "ws-consolidate" });
+    expect(rows.map((m) => m.id).sort()).toEqual([older.id, unrelated.id].sort());
+    const survivor = rows.find((m) => m.id === older.id)!;
+    // The cluster's usage signal moves to the survivor instead of vanishing.
+    expect(survivor.useCount).toBe(5);
+    expect(survivor.lastUsedAt).toBe(9_000);
+    expect(survivor.content).toBe("手動停止は stream.abort() から session abort API を呼ぶ。");
+
+    // Deletions are auditable, and a second run is a no-op.
+    const audit = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM memory_audit_log WHERE workspace_id = ? AND detail LIKE 'consolidate into=%'",
+      )
+      .get("ws-consolidate") as { n: number };
+    expect(audit.n).toBe(2);
+    expect(consolidateDuplicateMemories({ workspaceId: "ws-consolidate", dryRun: false })).toMatchObject(
+      { removed: 0, remaining: 2, clusters: [] },
+    );
+  });
+
+  it("keeps the approved row when an unapproved original is restated", () => {
+    const candidate = createMemory({
+      workspaceId: "ws-consolidate-approval",
+      kind: "fact",
+      content: "npm run test:encoding で bat のエンコードを検証する。",
+      provenance: "auto-extract",
+      approved: false,
+    });
+    const approved = createMemory({
+      workspaceId: "ws-consolidate-approval",
+      kind: "fact",
+      content: "npm run test:encoding で bat のエンコードを検証します。",
+      provenance: "auto-extract",
+      approved: true,
+    });
+    const setCreatedAt = getDb().prepare("UPDATE memories SET created_at = ? WHERE id = ?");
+    setCreatedAt.run(1_000, candidate.id);
+    setCreatedAt.run(2_000, approved.id);
+
+    const result = consolidateDuplicateMemories({
+      workspaceId: "ws-consolidate-approval",
+      dryRun: false,
+    });
+    expect(result.removed).toBe(1);
+    expect(result.clusters[0].keepId).toBe(approved.id);
+    const rows = listMemories({ workspaceId: "ws-consolidate-approval" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(approved.id);
+    expect(rows[0].approved).toBe(true);
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS n FROM memories WHERE id = ?").get(candidate.id),
+    ).toEqual({ n: 0 });
+  });
+
+  it("never merges opposing rules during consolidation", () => {
+    createMemory({
+      workspaceId: "ws-consolidate-polarity",
+      kind: "preference",
+      content: "MEMORY.md はコミットしない。",
+      provenance: "manual",
+      approved: true,
+    });
+    createMemory({
+      workspaceId: "ws-consolidate-polarity",
+      kind: "preference",
+      content: "MEMORY.md はコミットする。",
+      provenance: "manual",
+      approved: true,
+    });
+    const result = consolidateDuplicateMemories({
+      workspaceId: "ws-consolidate-polarity",
+      dryRun: false,
+    });
+    expect(result.removed).toBe(0);
+    expect(listMemories({ workspaceId: "ws-consolidate-polarity" })).toHaveLength(2);
   });
 
   it("findDuplicateMemory reports the canonical-key hit", () => {

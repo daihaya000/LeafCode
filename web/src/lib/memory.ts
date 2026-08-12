@@ -431,6 +431,130 @@ export function findDuplicateMemory(
   return undefined;
 }
 
+/** One cluster of same-meaning rows found by consolidation. */
+export type MemoryConsolidationCluster = {
+  /** The row that survives (or would survive in a dry run). */
+  keepId: string;
+  keepContent: string;
+  /** Rows that restate `keepContent` and are removed. */
+  dropIds: string[];
+  dropContents: string[];
+};
+
+export type MemoryConsolidationResult = {
+  scanned: number;
+  /** Rows that would remain / do remain after consolidation. */
+  remaining: number;
+  removed: number;
+  clusters: MemoryConsolidationCluster[];
+  dryRun: boolean;
+};
+
+/** Clusters reported back to the caller; the counts always cover every row. */
+export const MEMORY_CONSOLIDATION_SAMPLE_LIMIT = 50;
+
+/**
+ * Collapse pre-existing near-duplicates in one scope.
+ *
+ * The extraction path stopped creating paraphrases, but databases written by the
+ * earlier version still hold them (measured: 39% of rows). This is the manual,
+ * explicit cleanup for that backlog — it is never run automatically, because
+ * deleting a user's memory must be a deliberate act.
+ *
+ * Survivor choice: the oldest row of the cluster, preferring an approved one, so
+ * the kept row is the one whose history and approval the user already saw. The
+ * survivor absorbs the cluster's usage signal (`use_count` sum, newest
+ * `last_used_at`) instead of discarding it with the deleted rows.
+ *
+ * `dryRun` reports exactly what a real run would do and writes nothing.
+ */
+export function consolidateDuplicateMemories(input: {
+  workspaceId: string;
+  dryRun?: boolean;
+  now?: number;
+}): MemoryConsolidationResult {
+  const dryRun = input.dryRun !== false;
+  const now = input.now ?? Date.now();
+  const scope = resolveMemoryScope(input.workspaceId);
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM memories
+       WHERE (scope_key = ? OR workspace_id = ?)
+       ORDER BY created_at ASC, id ASC`,
+    )
+    .all(scope.key, input.workspaceId) as MemoryRow[];
+
+  // Cluster in creation order so the earliest row is the natural survivor.
+  const clusters: Array<{ keep: MemoryRow; drops: MemoryRow[] }> = [];
+  for (const row of rows) {
+    const hit = clusters.find(
+      (cluster) => memorySimilarityVerdict(cluster.keep.content, row.content).duplicate,
+    );
+    if (hit) {
+      // An approved restatement outranks an unapproved original: keeping the
+      // candidate would silently drop the row the user already approved.
+      if (row.approved === 1 && hit.keep.approved !== 1) {
+        hit.drops.push(hit.keep);
+        hit.keep = row;
+      } else {
+        hit.drops.push(row);
+      }
+    } else {
+      clusters.push({ keep: row, drops: [] });
+    }
+  }
+
+  const duplicated = clusters.filter((cluster) => cluster.drops.length > 0);
+  const removed = duplicated.reduce((sum, cluster) => sum + cluster.drops.length, 0);
+
+  if (!dryRun && removed > 0) {
+    const db = getDb();
+    const merge = db.prepare(
+      `UPDATE memories
+       SET use_count = ?, last_used_at = ?, updated_at = ?, revision = revision + 1
+       WHERE id = ?`,
+    );
+    const remove = db.prepare("DELETE FROM memories WHERE id = ?");
+    db.transaction(() => {
+      for (const cluster of duplicated) {
+        const useCount = [cluster.keep, ...cluster.drops].reduce(
+          (sum, row) => sum + row.use_count,
+          0,
+        );
+        const lastUsedAt = [cluster.keep, ...cluster.drops].reduce<number | null>(
+          (latest, row) =>
+            row.last_used_at !== null && (latest === null || row.last_used_at > latest)
+              ? row.last_used_at
+              : latest,
+          null,
+        );
+        merge.run(useCount, lastUsedAt, now, cluster.keep.id);
+        for (const drop of cluster.drops) {
+          remove.run(drop.id);
+          logMemoryAudit("delete", {
+            workspaceId: input.workspaceId,
+            memoryId: drop.id,
+            detail: `consolidate into=${cluster.keep.id}`,
+          });
+        }
+      }
+    })();
+  }
+
+  return {
+    scanned: rows.length,
+    remaining: rows.length - removed,
+    removed,
+    dryRun,
+    clusters: duplicated.slice(0, MEMORY_CONSOLIDATION_SAMPLE_LIMIT).map((cluster) => ({
+      keepId: cluster.keep.id,
+      keepContent: cluster.keep.content,
+      dropIds: cluster.drops.map((row) => row.id),
+      dropContents: cluster.drops.map((row) => row.content),
+    })),
+  };
+}
+
 /**
  * Record that a duplicate was observed again: the surviving row is touched so
  * consolidation/decay treats it as fresh, but `use_count` is not bumped because

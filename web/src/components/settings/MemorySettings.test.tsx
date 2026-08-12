@@ -22,6 +22,7 @@ function apiHandler({
   writeApproval = false,
   extractionRuns = [],
   unreadExtractionCount = 0,
+  consolidate = { scanned: 0, removed: 0, remaining: 0 },
 }: {
   memories: unknown[];
   workspaces: unknown[];
@@ -29,6 +30,7 @@ function apiHandler({
   writeApproval?: boolean;
   extractionRuns?: unknown[];
   unreadExtractionCount?: number;
+  consolidate?: { scanned: number; removed: number; remaining: number };
 }) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -52,6 +54,10 @@ function apiHandler({
     }
     if (url.includes("/api/memory/extract")) {
       return jsonResponse({ result: { created: 2, skipped: 2 } });
+    }
+    if (url.includes("/api/memory/consolidate")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { dryRun?: boolean };
+      return jsonResponse({ ...consolidate, dryRun: body.dryRun !== false });
     }
     if (url.includes("/api/memory/") && (method === "DELETE" || method === "POST")) {
       return jsonResponse({ ok: true });
@@ -192,6 +198,96 @@ describe("MemorySettings", () => {
       sessionId: "session-9",
     });
     await screen.findByText(/自動保存完了/);
+  });
+
+  it("previews duplicates before deleting them and honours a cancel", async () => {
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+      sessions: [],
+      memories: [],
+      consolidate: { scanned: 10, removed: 4, remaining: 6 },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const confirmMock = vi.fn().mockReturnValue(false);
+    vi.stubGlobal("confirm", confirmMock);
+
+    render(<MemorySettings />);
+    const button = await waitFor(() => {
+      const b = screen.getByRole("button", { name: "重複を整理" }) as HTMLButtonElement;
+      expect(b.disabled).toBe(false);
+      return b;
+    });
+    fireEvent.click(button);
+
+    // Declining the confirmation must leave the data untouched: dry run only.
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1));
+    expect(confirmMock.mock.calls[0][0]).toContain("4件");
+    await screen.findByText(/重複 4件（未削除）/);
+    const posts = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input).includes("/api/memory/consolidate") && init?.method === "POST",
+    );
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(String(posts[0][1]?.body))).toEqual({
+      workspaceId: "ws-1",
+      dryRun: true,
+    });
+  });
+
+  it("deletes duplicates after the confirmation is accepted", async () => {
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+      sessions: [],
+      memories: [],
+      consolidate: { scanned: 10, removed: 4, remaining: 6 },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+
+    render(<MemorySettings />);
+    fireEvent.click(
+      await waitFor(() => {
+        const b = screen.getByRole("button", { name: "重複を整理" }) as HTMLButtonElement;
+        expect(b.disabled).toBe(false);
+        return b;
+      }),
+    );
+
+    await screen.findByText(/重複 4件を削除しました（残り 6件）/);
+    const bodies = fetchMock.mock.calls
+      .filter(
+        ([input, init]) =>
+          String(input).includes("/api/memory/consolidate") && init?.method === "POST",
+      )
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toEqual([
+      { workspaceId: "ws-1", dryRun: true },
+      { workspaceId: "ws-1", dryRun: false },
+    ]);
+  });
+
+  it("does not ask for confirmation when there is nothing to merge", async () => {
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+      sessions: [],
+      memories: [],
+      consolidate: { scanned: 7, removed: 0, remaining: 7 },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+
+    render(<MemorySettings />);
+    fireEvent.click(
+      await waitFor(() => {
+        const b = screen.getByRole("button", { name: "重複を整理" }) as HTMLButtonElement;
+        expect(b.disabled).toBe(false);
+        return b;
+      }),
+    );
+
+    await screen.findByText(/同義の重複は見つかりませんでした/);
+    expect(confirmMock).not.toHaveBeenCalled();
   });
 
   it("toggles the shared write approval setting", async () => {
