@@ -1,4 +1,22 @@
-﻿# 作業ログ: /loop 1m バグハント — 権限カード二重応答
+﻿# 作業ログ: /loop 1m バグハント tick — 高影響の新規なし
+
+## 日付
+2026-08-12
+
+## 調査
+- 優先領域を再確認（画像送信タイムアウト、HomeView 63 PASS、Host BUILD_ID/pause、composer ロック非SSE、権限二重は `6aac57a` 済）
+- Host は BUILD_ID 欠落時に `WebUI: building…` 表示＋`spawnWeb` 内でビルド完了待ち。pause タイトル復元も契約テスト済
+- 画像送信の VL/クライアント/route maxDuration は整合済み（image-send-timeout テスト PASS）
+
+## 結論
+- ユーザー影響の大きい未修正バグの新規特定なし（この tick）
+
+## 残存リスク（未再現・未着手）
+- 権限 PATCH 極短窓
+- Host BUILD_ID 欠落時の初回ビルド待ち UX の体感改善（機能欠陥は未確認）
+
+---
+# 作業ログ: /loop 1m バグハント — 権限カード二重応答
 
 ## 日付
 2026-08-12
