@@ -11,6 +11,7 @@ import {
   FilePen,
   FileText,
   Globe,
+  Image as ImageIcon,
   ListTodo,
   Loader2,
   Minus,
@@ -25,6 +26,7 @@ import type { CostDisplayPrefs } from "@/lib/currency";
 import { isTaskToolName } from "@/lib/match-child-session";
 import { isImageFilePart } from "@/lib/message-parts";
 import { stripMemoryInjectionBlock } from "@/lib/memory-text";
+import { splitNativeImageAnalysis } from "@/lib/qwen-native-vision-text";
 import { providerIdFromSubagentType } from "@/lib/subagent-provider";
 import type { Part, ToolState } from "@/lib/types";
 import { formatElapsed, stripGoalLoopJsonBlock } from "@/lib/useSessionStream";
@@ -456,6 +458,42 @@ const ReasoningView = memo(function ReasoningView({ text }: { text: string }) {
   );
 });
 
+/**
+ * Collapsible panel for the image pre-analysis injected into a user message
+ * when the answering model has no vision support. It is machine context rather
+ * than something the user typed, so it stays folded and renders as markdown
+ * instead of being dumped verbatim into the chat bubble.
+ */
+const NativeImageAnalysisView = memo(function NativeImageAnalysisView({
+  text,
+}: {
+  text: string;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!text.trim()) return null;
+  return (
+    <div className="mt-2 border-t border-border/60 pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex cursor-pointer items-center gap-1.5 text-xs text-faint hover:text-muted"
+        aria-expanded={open}
+      >
+        <ImageIcon className="h-3.5 w-3.5" />
+        画像解析結果
+        <ChevronRight
+          className={cx("h-3 w-3 transition-transform", open && "rotate-90")}
+        />
+      </button>
+      {open && (
+        <div className="md mt-2 max-h-96 overflow-y-auto rounded-lg bg-surface-2 px-3 py-2 text-left text-sm text-muted">
+          <Markdown text={text} />
+        </div>
+      )}
+    </div>
+  );
+});
+
 /** Thumbnail for a sent/received image attachment, with a click-to-expand lightbox. */
 function FileImagePreview({
   url,
@@ -612,15 +650,21 @@ export const PartView = memo(function PartView({
       const shown = role === "user" ? stripMemoryInjectionBlock(text) : text;
       if (!shown.trim()) return null;
       if (role === "user") {
+        // The vision pre-analysis is appended to the user text before send; it
+        // is internal context, so it renders as a folded panel, not chat text.
+        const { request, analysis } = splitNativeImageAnalysis(shown);
         return (
           <div className="ml-auto min-w-0 max-w-[88%] rounded-2xl rounded-br-md bg-surface-3 px-4 py-2.5">
-            <div className="md min-w-0 text-[0.925rem] whitespace-pre-wrap break-words">
-              <MessageTokenHighlight
-                text={shown}
-                skills={skillOverviews}
-                agents={agentOverviews}
-              />
-            </div>
+            {request.trim() && (
+              <div className="md min-w-0 text-[0.925rem] whitespace-pre-wrap break-words">
+                <MessageTokenHighlight
+                  text={request}
+                  skills={skillOverviews}
+                  agents={agentOverviews}
+                />
+              </div>
+            )}
+            <NativeImageAnalysisView text={analysis} />
           </div>
         );
       }
