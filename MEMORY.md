@@ -1,3 +1,28 @@
+# 作業ログ: /loop 1m バグハント tick — 画像解析 setup の 10s タイムアウト残差
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: 事前解析のセッション作成 / tool/ids は IMAGE_SEND_SETUP_SLACK_MS（30s）まで待つ
+- 実際: ocServer 既定 10s のまま → エンジン負荷時に VL 開始前にタイムアウト
+
+## 根本原因
+- analyzeWithOpenCode / loadToolDisableMap / lockAnalysisSessionPermissions が timeoutMs 未指定
+
+## 修正
+- 上記3経路に `IMAGE_SEND_SETUP_SLACK_MS` を明示
+
+## 回帰防止
+- uses setup slack timeout for session create and tool id lookup
+
+## 検証
+- vitest qwen-native-vision 12 PASS / eslint OK
+
+## 残存リスク
+- Host BUILD_ID 初回待ち UX、voice（作業ツリーに別変更あり・未コミット）
+
+---
 # 作業ログ: /loop 1m バグハント tick — Workflow pause_requested 固着
 
 ## 日付

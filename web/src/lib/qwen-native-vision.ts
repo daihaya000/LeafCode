@@ -1,3 +1,4 @@
+import { IMAGE_SEND_SETUP_SLACK_MS } from "./image-send-timeout";
 import { OcError, ocServer } from "./oc-server";
 import { SESSION_LIST_PATH, sessionMessagePath, sessionPath } from "./opencode-paths";
 import { readQwenNativeSettings, QWEN_NATIVE_DEFAULTS } from "./profiles/settings";
@@ -92,7 +93,11 @@ async function loadToolDisableMap(
   ) {
     return toolDisableCache.tools;
   }
-  const toolIds = await ocServer<unknown>(directory, "/experimental/tool/ids");
+  // Match IMAGE_SEND_SETUP_SLACK_MS — ocServer's 10s default aborts under load
+  // before VL even starts, while the client outer budget still has setup slack.
+  const toolIds = await ocServer<unknown>(directory, "/experimental/tool/ids", {
+    timeoutMs: IMAGE_SEND_SETUP_SLACK_MS,
+  });
   // Empty array must not be cached as tools:{} — that leaves OpenCode's
   // default {"*":"allow"} in place on the analysis session (agent "build").
   if (!Array.isArray(toolIds) || toolIds.length === 0) {
@@ -153,6 +158,7 @@ async function lockAnalysisSessionPermissions(
 ): Promise<void> {
   await ocServer(directory, sessionPath(sessionId), {
     method: "PATCH",
+    timeoutMs: IMAGE_SEND_SETUP_SLACK_MS,
     body: {
       permission: [{ permission: "*", pattern: "*", action: "deny" }],
     },
@@ -181,6 +187,7 @@ async function analyzeWithOpenCode(
     const [session, tools] = await Promise.all([
       ocServer<{ id: string }>(directory, SESSION_LIST_PATH, {
         method: "POST",
+        timeoutMs: IMAGE_SEND_SETUP_SLACK_MS,
         body: { title: "image-analysis" },
       }),
       loadToolDisableMap(directory),

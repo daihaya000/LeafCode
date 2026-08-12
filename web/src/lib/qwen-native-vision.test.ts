@@ -34,6 +34,7 @@ import {
   nativeImageContext,
   rewriteNativeRequest,
 } from "./qwen-native-vision";
+import { IMAGE_SEND_SETUP_SLACK_MS } from "./image-send-timeout";
 
 const previousEnabled = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
 const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
@@ -117,6 +118,35 @@ it("analyzes images with the selected OpenCode model in a throwaway session", as
           (init as { method?: string } | undefined)?.method === "DELETE",
       ),
     ).toBe(true);
+  });
+});
+
+it("uses setup slack timeout for session create and tool id lookup", async () => {
+  h.settings = {
+    enabled: true,
+    opencodeModel: "ollama::qwen2.5vl:7b",
+    timeoutMs: 60_000,
+  };
+
+  await analyzeNativeImages("What is shown?", [
+    { dataUrl: "data:image/png;base64,AA==", mime: "image/png" },
+  ]);
+
+  const sessionCreate = h.ocServer.mock.calls.find(
+    ([, path, init]) =>
+      path === "/session" &&
+      init &&
+      typeof init === "object" &&
+      (init as { method?: string }).method === "POST",
+  );
+  const toolIds = h.ocServer.mock.calls.find(
+    ([, path]) => path === "/experimental/tool/ids",
+  );
+  expect(sessionCreate?.[2]).toMatchObject({
+    timeoutMs: IMAGE_SEND_SETUP_SLACK_MS,
+  });
+  expect(toolIds?.[2]).toMatchObject({
+    timeoutMs: IMAGE_SEND_SETUP_SLACK_MS,
   });
 });
 
