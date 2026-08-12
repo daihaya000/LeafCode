@@ -14,7 +14,7 @@ import type {
   ReactNode,
   UIEvent,
 } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Paperclip, X } from "lucide-react";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
 import { AgentSuggestMenu } from "@/components/AgentSuggestMenu";
@@ -147,13 +147,18 @@ export function Composer({
     [textarea.value, commands, agents, caret],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = textarea.ref.current;
     const mirror = highlightRef.current;
     if (!el || !mirror) return;
     mirror.scrollTop = el.scrollTop;
     mirror.scrollLeft = el.scrollLeft;
-  }, [textarea.value, textarea.ref]);
+    // `hasHighlight` flips independently of the value when slash/agent
+    // suggestions arrive asynchronously after the text was already typed and
+    // scrolled. Without it the mirror mounts at scrollTop 0 and stays
+    // misaligned until the next scroll event (BU-4). Layout timing avoids a
+    // one-frame flash of the misaligned highlight.
+  }, [textarea.value, textarea.ref, hasHighlight]);
 
   const syncHighlightScroll = (event: UIEvent<HTMLTextAreaElement>) => {
     const mirror = highlightRef.current;
