@@ -581,17 +581,17 @@ v1 / v2 のラジオで切り替えられるようにした。
 
 ### 既知の制約（要検討）
 
-1. **クライアントとサーバで世代がずれる**: `opencode-paths.ts` のアクティブ
-   セレクタはサーバ側（`goal-loop.ts` / `hang-watchdog.ts` 等の `ocServer`
-   呼び出し）でも使われるが、サーバには `window` がないため
-   `readOpenCodeApiGeneration()` は常にデフォルト（v1）を返す。ブラウザが v2 を
-   選んでもサーバ側の自動ループ等は v1 パスを使い続ける。
-   - BFF プロキシは `/session/*` と `/api/session/*` を透過転送するため、パス
-     差異は実行時 404 にはならないが、**同一セッションで v1/v2 が混ざる**。
-   - 解消策: サーバ側も settings 表を参照する（`getSetting("opencode-api-generation")`
-     を同期読込する専用モジュールを作り、`opencode-paths.ts` のセレクタを
-     サーバ向けに分岐）。または、クライアントがセッション作成時に世代を BFF へ
-     伝搬し、BFF がセッションごとに世代を固定する。
+1. ~~**クライアントとサーバで世代がずれる**~~ **解決済み (2026-08-12)**:
+   サーバ側コード（`goal-loop.ts` / `hang-watchdog.ts` 等の `ocServer` 呼び出し）
+   の世代判定は、`instrumentation.ts` がサーバ起動時に登録するリゾルバ
+   （`opencode-generation-server.ts` → `getSetting("opencode-api-generation")`）
+   を経由して設定 DB を参照する。ブラウザが設定タブで v2 を選ぶと
+   `/api/settings/opencode-api-generation` に保存され、サーバ側の自動ループ等も
+   同じ v2 パスを使うため、**同一セッションでの v1/v2 混在は解消された**。
+   - 実装: `opencode-generation.ts` の `registerServerOpenCodeApiGenerationResolver`
+     にサーバリゾルバを注入。`readOpenCodeApiGeneration()` はサーバでリゾルバを
+     呼び、設定 DB の値に追従する。
+   - 注意: 設定 DB は同期参照のため、設定変更は即時にサーバ側へ反映される。
 2. **`/session/status` と todo/diff/command は v1 のまま**: これらは v2 等価物が
    ないため、世代フラグに関係なく v1 パスを使う。v2 フラグ時も `/session/status`
    で状態取得する。

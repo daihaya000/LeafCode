@@ -22,13 +22,11 @@
  *   `isV2ApiGeneration()` reads it live so a setting change takes effect
  *   without a reload).
  * - **server `settings` table** (`/api/settings/opencode-api-generation`) is
- *   the durable backup shared across browsers.
- *
- * Server-side code (BFF proxy, goal-loop, ...) has no `window`, so it reads
- * the compile-time default via {@link readOpenCodeApiGeneration}. The
- * generation is a client-routing concern: the BFF transparently proxies both
- * `/session/*` and `/api/session/*`, so a server-side default of "v1" stays
- * correct even when the browser chose v2.
+ *   the durable backup shared across browsers. Server-side code (BFF proxy,
+ *   goal-loop, hang-watchdog, ...) resolves the generation through a resolver
+ *   registered at boot (`registerServerOpenCodeApiGenerationResolver` in
+ *   `instrumentation.ts`) that reads the same settings table, so the server
+ *   follows the client's choice and v1/v2 never mix for one session.
  */
 
 export type OpenCodeApiGeneration = "v1" | "v2";
@@ -42,6 +40,23 @@ export const OPENCODE_API_GENERATION_SETTING_KEY = "opencode-api-generation";
 
 const VALID_GENERATIONS: readonly OpenCodeApiGeneration[] = ["v1", "v2"];
 
+/**
+ * Server-side resolver registered at boot (see `instrumentation.ts`). The
+ * server has no `window`/localStorage, so `readOpenCodeApiGeneration` falls
+ * back to this resolver — which reads the durable `settings` table via
+ * `opencode-generation-server.ts`. Keeping the resolver injectable (instead
+ * of importing `db.ts` here) prevents SQLite code from entering the browser
+ * bundle through this module.
+ */
+let serverGenerationResolver: (() => OpenCodeApiGeneration) | null = null;
+
+/** Register the server-side generation resolver (server boot only). */
+export function registerServerOpenCodeApiGenerationResolver(
+  resolver: () => OpenCodeApiGeneration,
+): void {
+  serverGenerationResolver = resolver;
+}
+
 export function isOpenCodeApiGeneration(
   value: unknown,
 ): value is OpenCodeApiGeneration {
@@ -51,9 +66,15 @@ export function isOpenCodeApiGeneration(
   );
 }
 
-/** Read the generation: browser localStorage on the client, default on server. */
+/**
+ * Read the generation: browser localStorage on the client, the registered
+ * server resolver (settings table) on the server, default otherwise.
+ */
 export function readOpenCodeApiGeneration(): OpenCodeApiGeneration {
-  if (typeof window === "undefined") return DEFAULT_OPENCODE_API_GENERATION;
+  if (typeof window === "undefined") {
+    if (serverGenerationResolver) return serverGenerationResolver();
+    return DEFAULT_OPENCODE_API_GENERATION;
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return isOpenCodeApiGeneration(raw)

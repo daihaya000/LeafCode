@@ -4,6 +4,7 @@ import {
   isOpenCodeApiGeneration,
   isV2ApiGeneration,
   readOpenCodeApiGeneration,
+  registerServerOpenCodeApiGenerationResolver,
   subscribeOpenCodeApiGeneration,
   writeOpenCodeApiGeneration,
 } from "./opencode-generation";
@@ -65,5 +66,51 @@ describe("opencode-generation read/write", () => {
     expect(isOpenCodeApiGeneration(null)).toBe(false);
     expect(isOpenCodeApiGeneration(undefined)).toBe(false);
     expect(isOpenCodeApiGeneration(1)).toBe(false);
+  });
+});
+
+describe("server generation resolver", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    registerServerOpenCodeApiGenerationResolver(() => DEFAULT_OPENCODE_API_GENERATION);
+  });
+
+  it("follows the registered server resolver when window is absent", () => {
+    const originalWindow = globalThis.window;
+    // Simulate the server: no `window` global. jsdom defines it as a getter,
+    // so temporarily shadow it.
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      get: () => undefined,
+    });
+    try {
+      const resolver = vi.fn(() => "v2" as const);
+      registerServerOpenCodeApiGenerationResolver(resolver);
+      expect(readOpenCodeApiGeneration()).toBe("v2");
+      expect(isV2ApiGeneration()).toBe(true);
+      expect(resolver).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        get: () => originalWindow,
+      });
+    }
+  });
+
+  it("falls back to the default without a registered resolver", () => {
+    const originalWindow = globalThis.window;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      get: () => undefined,
+    });
+    try {
+      registerServerOpenCodeApiGenerationResolver(() => "v1" as const);
+      expect(readOpenCodeApiGeneration()).toBe("v1");
+    } finally {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        get: () => originalWindow,
+      });
+    }
   });
 });
