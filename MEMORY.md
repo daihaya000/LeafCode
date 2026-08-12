@@ -4,6 +4,53 @@
 2026-08-12
 
 ## 調査
+- 優先領域再確認（voice は別途 WIP / 3555040 系、Host BUILD_ID は体感待ちのみ、画像/HomeView/workflow pause は直近修正済）
+- AgentsSettings 未コミット UI は他エージェント WIP のため非対象
+
+## 結論
+- ユーザー影響の大きい未修正バグの新規特定なし（この tick）
+
+## 次領域
+- Host BUILD_ID 初回ビルド待ち UX
+- 中影響: WorkflowGraphCanvas 診断 fetch 残存の有無
+
+---
+# 作業ログ: cost API の engine 2秒タイムアウト 408
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: ライブコスト取得失敗時は前回表示を維持し、host ログに Next ルート例外を出さない
+- 実際: `OpenCode engine が2秒でタイムアウトしました (/session/ses_…)` が status 408 でルート未処理例外として記録される
+
+## 根本原因
+- `getTaskCost` (`task-service.ts`) が `GET /session/{id}` を `timeoutMs: 1500` で呼び、失敗を catch せず伝播
+- `Math.round(1500/1000)=2` のためメッセージは「2秒」
+- `/api/tasks/[id]/cost` も未 catch。クライアント (TaskView/Sidebar) は catch 済みだが server ログが汚染される
+
+## 修正
+- `getTaskCost`: ocServer 失敗時は `undefined`（best-effort）
+- cost route: OcError を `{ cost: null }` 200 で返す（防御）
+
+## 回帰防止
+- task-service: returns undefined when the lightweight session endpoint times out
+- cost route: swallows OcError instead of crashing the route
+
+## 検証
+- vitest task-service + cost/route 28 PASS / eslint OK
+
+## 残存リスク
+- 1500ms 自体は意図的（ポーリング用）。エンジン高負荷時はコスト更新が一時スキップされる（表示は前回値）
+- HomeView / AgentsSettings の未コミット差分は未接触
+
+---
+# 作業ログ: /loop 1m バグハント tick — 高影響の新規なし
+
+## 日付
+2026-08-12
+
+## 調査
 - 優先: Host BUILD_ID/pause UX、voice、画像タイムアウト残差
 - 直近済: voice no-speech `3555040`、setup slack `06e130c`、cost tab `9dd87b2`、tools deny `05f901c`
 - Host start-webui / build-preserve / service-status: 27 PASS（機能欠陥なし）
