@@ -1,25 +1,45 @@
 import { describe, expect, it } from "vitest";
 import {
   EVENT_PATH,
+  EVENT_PATH_V2,
   OC_PATH_TEMPLATES,
   PERMISSION_LIST_PATH,
+  PERMISSION_REQUEST_PATH_V2,
+  PERMISSION_SAVED_PATH_V2,
   QUESTION_LIST_PATH,
+  QUESTION_REQUEST_PATH_V2,
+  SESSION_ACTIVE_PATH_V2,
   SESSION_LIST_PATH,
+  SESSION_LIST_PATH_V2,
   SESSION_STATUS_PATH,
   permissionReplyPathV1,
   permissionReplyPathV2,
+  permissionSavedDeletePathV2,
   questionRejectPathV1,
   questionRejectPathV2,
   questionReplyPathV1,
   questionReplyPathV2,
   sessionAbortPath,
+  sessionAgentPathV2,
   sessionCommandPath,
+  sessionCompactPathV2,
+  sessionContextPathV2,
   sessionDiffPath,
+  sessionEventPathV2,
+  sessionHistoryPathV2,
+  sessionInterruptPathV2,
   sessionMessagePath,
+  sessionMessagePathV2,
+  sessionModelPathV2,
   sessionPath,
+  sessionPathV2,
   sessionPermissionListPathV2,
   sessionPromptAsyncPath,
+  sessionPromptPathV2,
   sessionQuestionListPathV2,
+  sessionRevertClearPathV2,
+  sessionRevertCommitPathV2,
+  sessionRevertStagePathV2,
 } from "./opencode-paths";
 
 /**
@@ -68,6 +88,46 @@ describe("opencode-paths builders", () => {
       "/api/session/ses_1/question/q_1/reject",
     );
   });
+
+  it("builds the v2 session CRUD / prompt / message / interrupt / compact surface", () => {
+    expect(SESSION_LIST_PATH_V2).toBe("/api/session");
+    expect(SESSION_ACTIVE_PATH_V2).toBe("/api/session/active");
+    expect(sessionPathV2("ses_1")).toBe("/api/session/ses_1");
+    expect(sessionPromptPathV2("ses_1")).toBe("/api/session/ses_1/prompt");
+    expect(sessionMessagePathV2("ses_1")).toBe("/api/session/ses_1/message");
+    expect(sessionInterruptPathV2("ses_1")).toBe("/api/session/ses_1/interrupt");
+    expect(sessionCompactPathV2("ses_1")).toBe("/api/session/ses_1/compact");
+  });
+
+  it("builds the v2 SSE / history / context / agent / model surface", () => {
+    expect(EVENT_PATH_V2).toBe("/api/event");
+    expect(sessionEventPathV2("ses_1")).toBe("/api/session/ses_1/event");
+    expect(sessionHistoryPathV2("ses_1")).toBe("/api/session/ses_1/history");
+    expect(sessionContextPathV2("ses_1")).toBe("/api/session/ses_1/context");
+    expect(sessionAgentPathV2("ses_1")).toBe("/api/session/ses_1/agent");
+    expect(sessionModelPathV2("ses_1")).toBe("/api/session/ses_1/model");
+  });
+
+  it("builds the v2 global permission / question / saved surface", () => {
+    expect(PERMISSION_REQUEST_PATH_V2).toBe("/api/permission/request");
+    expect(QUESTION_REQUEST_PATH_V2).toBe("/api/question/request");
+    expect(PERMISSION_SAVED_PATH_V2).toBe("/api/permission/saved");
+    expect(permissionSavedDeletePathV2("perm_1")).toBe(
+      "/api/permission/saved/perm_1",
+    );
+  });
+
+  it("builds the v2 revert surface (3-endpoint split)", () => {
+    expect(sessionRevertStagePathV2("ses_1")).toBe(
+      "/api/session/ses_1/revert/stage",
+    );
+    expect(sessionRevertCommitPathV2("ses_1")).toBe(
+      "/api/session/ses_1/revert/commit",
+    );
+    expect(sessionRevertClearPathV2("ses_1")).toBe(
+      "/api/session/ses_1/revert/clear",
+    );
+  });
 });
 
 describe("opencode-paths id safety", () => {
@@ -86,6 +146,41 @@ describe("opencode-paths id safety", () => {
     );
     expect(() => permissionReplyPathV2("ses_1", "a b")).toThrow();
   });
+
+  it("rejects unsafe ids in all v2 session builders", () => {
+    for (const bad of ["../auth", "a/b", "", ".", "%2e%2e", "ses_1/../../../etc"]) {
+      expect(() => sessionPathV2(bad)).toThrow();
+      expect(() => sessionPromptPathV2(bad)).toThrow();
+      expect(() => sessionMessagePathV2(bad)).toThrow();
+      expect(() => sessionInterruptPathV2(bad)).toThrow();
+      expect(() => sessionCompactPathV2(bad)).toThrow();
+      expect(() => sessionEventPathV2(bad)).toThrow();
+      expect(() => sessionHistoryPathV2(bad)).toThrow();
+      expect(() => sessionContextPathV2(bad)).toThrow();
+      expect(() => sessionAgentPathV2(bad)).toThrow();
+      expect(() => sessionModelPathV2(bad)).toThrow();
+      expect(() => sessionRevertStagePathV2(bad)).toThrow();
+      expect(() => sessionRevertCommitPathV2(bad)).toThrow();
+      expect(() => sessionRevertClearPathV2(bad)).toThrow();
+    }
+  });
+
+  it("rejects unsafe ids in v2 saved-permission delete builder", () => {
+    for (const bad of ["../x", "a/b", "", ".", "%2e%2e"]) {
+      expect(() => permissionSavedDeletePathV2(bad)).toThrow();
+    }
+  });
+
+  it("accepts valid ids in all v2 builders", () => {
+    const validId = "ses_abc-123.xyz";
+    expect(sessionPathV2(validId)).toBe(`/api/session/${validId}`);
+    expect(sessionPromptPathV2(validId)).toBe(
+      `/api/session/${validId}/prompt`,
+    );
+    expect(sessionInterruptPathV2(validId)).toBe(
+      `/api/session/${validId}/interrupt`,
+    );
+  });
 });
 
 describe("opencode-paths template registry", () => {
@@ -102,6 +197,61 @@ describe("opencode-paths template registry", () => {
       } else {
         expect(template.startsWith("/api/")).toBe(false);
       }
+    }
+  });
+
+  it("includes all v2 migration-target templates", () => {
+    const v2Names = Object.entries(OC_PATH_TEMPLATES)
+      .filter(([name]) => name.startsWith("v2"))
+      .map(([name]) => name);
+
+    const expected = [
+      "v2SessionPermissionList",
+      "v2SessionPermissionReply",
+      "v2SessionQuestionList",
+      "v2SessionQuestionReply",
+      "v2SessionQuestionReject",
+      "v2SessionList",
+      "v2SessionActive",
+      "v2Session",
+      "v2SessionPrompt",
+      "v2SessionMessage",
+      "v2SessionInterrupt",
+      "v2SessionCompact",
+      "v2SessionEvent",
+      "v2SessionHistory",
+      "v2SessionContext",
+      "v2SessionAgent",
+      "v2SessionModel",
+      "v2Event",
+      "v2PermissionRequest",
+      "v2PermissionSaved",
+      "v2PermissionSavedDelete",
+      "v2QuestionRequest",
+      "v2SessionRevertStage",
+      "v2SessionRevertCommit",
+      "v2SessionRevertClear",
+    ];
+
+    for (const name of expected) {
+      expect(v2Names).toContain(name);
+    }
+  });
+
+  it("includes v1-maintain templates for operations without v2 equivalents", () => {
+    const v1Maintain = [
+      "sessionSummarize",
+      "sessionChildren",
+      "sessionFork",
+      "sessionShare",
+      "sessionInit",
+      "sessionShell",
+      "sessionRevert",
+      "sessionUnrevert",
+      "sessionPartEdit",
+    ];
+    for (const name of v1Maintain) {
+      expect(OC_PATH_TEMPLATES).toHaveProperty(name);
     }
   });
 });

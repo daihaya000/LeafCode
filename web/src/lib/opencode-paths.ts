@@ -32,6 +32,13 @@
  * Ids are routed through {@link openCodeSessionPath} (or {@link encodePathId})
  * so they are validated and percent-encoded exactly once, matching the
  * traversal defence in `opencode-id.ts`.
+ *
+ * v2 migration status (Phase B — see `docs/specs/opencode-api-v2-migration.md`):
+ * - `...PathV2` builders exist for session CRUD, prompt, message, interrupt,
+ *   compact, revert, permission, question, SSE, agent/model switch, history.
+ * - v1 builders remain for operations without v2 equivalents (todo, diff,
+ *   command, children, summarize, fork, share, init, shell, unrevert,
+ *   part-edit, session-status, session-delete, permission-ruleset-write).
  */
 
 import type { OcPaths } from "./opencode-api";
@@ -57,6 +64,16 @@ export const OC_PATH_TEMPLATES = {
   sessionPromptAsync: "/session/{sessionID}/prompt_async",
   sessionCommand: "/session/{sessionID}/command",
   sessionPermissionReply: "/session/{sessionID}/permissions/{permissionID}",
+  sessionSummarize: "/session/{sessionID}/summarize",
+  sessionChildren: "/session/{sessionID}/children",
+  sessionFork: "/session/{sessionID}/fork",
+  sessionShare: "/session/{sessionID}/share",
+  sessionInit: "/session/{sessionID}/init",
+  sessionShell: "/session/{sessionID}/shell",
+  sessionRevert: "/session/{sessionID}/revert",
+  sessionUnrevert: "/session/{sessionID}/unrevert",
+  sessionPartEdit:
+    "/session/{sessionID}/message/{messageID}/part/{partID}",
 
   // --- v1: global permission / question queues ----------------------------
   permissionList: "/permission",
@@ -67,7 +84,7 @@ export const OC_PATH_TEMPLATES = {
   // --- v1: misc -----------------------------------------------------------
   event: "/event",
 
-  // --- v2 (beta): session-scoped permission / question --------------------
+  // --- v2: session-scoped permission / question (existing) ---------------
   v2SessionPermissionList: "/api/session/{sessionID}/permission",
   v2SessionPermissionReply:
     "/api/session/{sessionID}/permission/{requestID}/reply",
@@ -75,6 +92,34 @@ export const OC_PATH_TEMPLATES = {
   v2SessionQuestionReply: "/api/session/{sessionID}/question/{requestID}/reply",
   v2SessionQuestionReject:
     "/api/session/{sessionID}/question/{requestID}/reject",
+
+  // --- v2: session CRUD / prompt / message / interrupt / compact ----------
+  v2SessionList: "/api/session",
+  v2SessionActive: "/api/session/active",
+  v2Session: "/api/session/{sessionID}",
+  v2SessionPrompt: "/api/session/{sessionID}/prompt",
+  v2SessionMessage: "/api/session/{sessionID}/message",
+  v2SessionInterrupt: "/api/session/{sessionID}/interrupt",
+  v2SessionCompact: "/api/session/{sessionID}/compact",
+
+  // --- v2: SSE / history / context / agent / model -----------------------
+  v2SessionEvent: "/api/session/{sessionID}/event",
+  v2SessionHistory: "/api/session/{sessionID}/history",
+  v2SessionContext: "/api/session/{sessionID}/context",
+  v2SessionAgent: "/api/session/{sessionID}/agent",
+  v2SessionModel: "/api/session/{sessionID}/model",
+
+  // --- v2: global permission / question queues ---------------------------
+  v2Event: "/api/event",
+  v2PermissionRequest: "/api/permission/request",
+  v2PermissionSaved: "/api/permission/saved",
+  v2PermissionSavedDelete: "/api/permission/saved/{id}",
+  v2QuestionRequest: "/api/question/request",
+
+  // --- v2: revert (split into 3 endpoints) -------------------------------
+  v2SessionRevertStage: "/api/session/{sessionID}/revert/stage",
+  v2SessionRevertCommit: "/api/session/{sessionID}/revert/commit",
+  v2SessionRevertClear: "/api/session/{sessionID}/revert/clear",
 } as const satisfies Record<string, keyof OcPaths>;
 
 export type OcPathName = keyof typeof OC_PATH_TEMPLATES;
@@ -137,7 +182,7 @@ export function sessionCommandPath(sessionId: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Permission / question — v1 (global queue) and v2 (session-scoped)
+// v1 permission / question — global queue
 // ---------------------------------------------------------------------------
 
 /** v1: every pending permission request across sessions. */
@@ -163,6 +208,10 @@ export function questionReplyPathV1(requestId: string): string {
 export function questionRejectPathV1(requestId: string): string {
   return `/question/${encodePathId(requestId)}/reject`;
 }
+
+// ---------------------------------------------------------------------------
+// v2 session-scoped permission / question (existing)
+// ---------------------------------------------------------------------------
 
 /** v2: pending permission requests owned by one session. */
 export function sessionPermissionListPathV2(sessionId: string): string {
@@ -196,4 +245,110 @@ export function questionRejectPathV2(
   requestId: string,
 ): string {
   return `/api/session/${encodePathId(sessionId)}/question/${encodePathId(requestId)}/reject`;
+}
+
+// ---------------------------------------------------------------------------
+// v2 session CRUD / prompt / message / interrupt / compact (Phase B)
+// ---------------------------------------------------------------------------
+
+/** v2: `GET` / `POST` to create or list sessions. */
+export const SESSION_LIST_PATH_V2: string = OC_PATH_TEMPLATES.v2SessionList;
+
+/** v2: list active sessions (replaces `/session/status` with shape transform). */
+export const SESSION_ACTIVE_PATH_V2: string = OC_PATH_TEMPLATES.v2SessionActive;
+
+/** v2: `GET` a single session. */
+export function sessionPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}`;
+}
+
+/** v2: send a prompt (replaces `prompt_async`). */
+export function sessionPromptPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/prompt`;
+}
+
+/** v2: get transcript (replaces `/session/{id}/message`). */
+export function sessionMessagePathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/message`;
+}
+
+/** v2: interrupt (replaces `/session/{id}/abort`). */
+export function sessionInterruptPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/interrupt`;
+}
+
+/** v2: compact context (replaces `/session/{id}/summarize`). */
+export function sessionCompactPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/compact`;
+}
+
+// ---------------------------------------------------------------------------
+// v2 SSE / history / context / agent / model (Phase B)
+// ---------------------------------------------------------------------------
+
+/** v2: global SSE stream (replaces `/event`). */
+export const EVENT_PATH_V2: string = OC_PATH_TEMPLATES.v2Event;
+
+/** v2: session-scoped SSE stream. */
+export function sessionEventPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/event`;
+}
+
+/** v2: session history. */
+export function sessionHistoryPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/history`;
+}
+
+/** v2: session context (transcript with parts). */
+export function sessionContextPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/context`;
+}
+
+/** v2: switch agent. */
+export function sessionAgentPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/agent`;
+}
+
+/** v2: switch model. */
+export function sessionModelPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/model`;
+}
+
+// ---------------------------------------------------------------------------
+// v2 global permission / question queues (Phase B)
+// ---------------------------------------------------------------------------
+
+/** v2: every pending permission request across sessions. */
+export const PERMISSION_REQUEST_PATH_V2: string =
+  OC_PATH_TEMPLATES.v2PermissionRequest;
+
+/** v2: every pending question request across sessions. */
+export const QUESTION_REQUEST_PATH_V2: string =
+  OC_PATH_TEMPLATES.v2QuestionRequest;
+
+/** v2: list saved permissions. */
+export const PERMISSION_SAVED_PATH_V2: string = OC_PATH_TEMPLATES.v2PermissionSaved;
+
+/** v2: delete a saved permission. */
+export function permissionSavedDeletePathV2(id: string): string {
+  return `/api/permission/saved/${encodePathId(id)}`;
+}
+
+// ---------------------------------------------------------------------------
+// v2 revert — split into 3 endpoints (Phase B)
+// ---------------------------------------------------------------------------
+
+/** v2: stage a revert. */
+export function sessionRevertStagePathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/revert/stage`;
+}
+
+/** v2: commit a staged revert. */
+export function sessionRevertCommitPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/revert/commit`;
+}
+
+/** v2: clear a staged revert. */
+export function sessionRevertClearPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/revert/clear`;
 }
