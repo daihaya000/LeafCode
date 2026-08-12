@@ -134,6 +134,12 @@ export type GoalLoopDto = {
    * 必ず回す。作成時のみ設定。既定 false。
    */
   forceFullRun: boolean;
+  /**
+   * ユーザーが手動で片付けたループ。行は残るがパネルは表示せず、稼働中扱いも
+   * しない。終了したループのカードが消せず、新規ループの導線まで塞いでいた
+   * 問題への対処。
+   */
+  dismissed: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -164,6 +170,7 @@ type GoalLoopRow = {
   rejected_claims: number;
   pause_requested: number;
   force_full_run: number;
+  dismissed: number;
   created_at: string;
   updated_at: string;
 };
@@ -418,6 +425,7 @@ function toDto(row: GoalLoopRow): GoalLoopDto {
     rejectedClaims: row.rejected_claims ?? 0,
     pauseRequested: row.pause_requested === 1,
     forceFullRun: (row.force_full_run ?? 0) === 1,
+    dismissed: (row.dismissed ?? 0) === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -649,7 +657,7 @@ export async function createGoalLoop(input: {
 
 export async function updateGoalLoopStatus(
   workspaceId: string,
-  action: "pause" | "resume" | "stop",
+  action: "pause" | "resume" | "stop" | "finish",
 ): Promise<GoalLoopDto | null> {
   const loop = getGoalLoop(workspaceId);
   if (!loop) return null;
@@ -774,12 +782,27 @@ export async function updateGoalLoopStatus(
       .run(resumeStatus, resumeRejectedClaims, tailMessageId, now, loop.id, loop.revision);
     void runGoalLoopSchedulerTick();
   } else {
+    // `finish` はユーザーがループを手動で片付ける操作。まだ生きていれば `stop`
+    // と同じく停止させ、加えてパネルを閉じる。既に終了しているループには
+    // `dismissed` だけを立てる。`MAX` は既に片付けたループを stop で
+    // 表示に戻さないためのガード。
+    const dismiss = action === "finish" ? 1 : 0;
     const stopped = getDb()
       .prepare(
-        `UPDATE goal_loops SET status = 'stopped', revision = revision + 1, updated_at = ?
+        `UPDATE goal_loops
+         SET status = 'stopped', dismissed = MAX(dismissed, ?),
+             revision = revision + 1, updated_at = ?
          WHERE id = ? AND revision = ? AND status NOT IN ('completed', 'blocked', 'stopped')`,
       )
-      .run(now, loop.id, loop.revision);
+      .run(dismiss, now, loop.id, loop.revision);
+    if (action === "finish" && stopped.changes === 0) {
+      getDb()
+        .prepare(
+          `UPDATE goal_loops SET dismissed = 1, revision = revision + 1, updated_at = ?
+           WHERE id = ? AND revision = ? AND dismissed = 0`,
+        )
+        .run(now, loop.id, loop.revision);
+    }
     const ws = getWorkspace(workspaceId);
     if (ws && stopped.changes > 0) {
       await ocServer(ws.absolute_path, activeInterruptPath(loop.sessionId), {

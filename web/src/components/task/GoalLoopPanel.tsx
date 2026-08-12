@@ -91,7 +91,7 @@ export function GoalLoopPanel({
 }: {
   loop: GoalLoopDto | null;
   busy: boolean;
-  onAction: (action: "pause" | "resume" | "stop") => void;
+  onAction: (action: "pause" | "resume" | "stop" | "finish") => void;
   onUpdateMaxTurns?: (maxTurns: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -133,7 +133,9 @@ export function GoalLoopPanel({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [stopConfirmOpen]);
 
-  if (!loop) return null;
+  // 片付け済みのループはパネルを出さない。これがないと終了したカードが残り続け、
+  // コンポーザーのループ導線まで塞いだままになる。
+  if (!loop || loop.dismissed) return null;
 
   const running = loop.status === "queued" || loop.status === "running";
   const canPause = running || loop.status === "verifying_completed";
@@ -142,10 +144,12 @@ export function GoalLoopPanel({
   // 終了状態では開始フォームが下に出るため通常フローに戻す。
   const live =
     running || loop.status === "verifying_completed" || loop.status === "paused";
-  const canStop =
-    loop.status !== "completed" &&
-    loop.status !== "blocked" &&
-    loop.status !== "stopped";
+  // 稼働中のループだけが「停止」の対象。進行中のターンを捨てる破壊的操作なので
+  // 確認を挟む。止まっているループは「完了」で片付ける。
+  const canStop = running || loop.status === "verifying_completed";
+  // 「完了」= このループを終わりにしてパネルを閉じる。paused は再開できてしまう
+  // ため放置すると新規ループを開始できず、終了状態はカードが消えなかった。
+  const canFinish = !canStop;
   const canResume = loop.status === "paused";
   const canEditMaxTurns = loop.status === "paused" && Boolean(onUpdateMaxTurns);
 
@@ -274,6 +278,19 @@ export function GoalLoopPanel({
             >
               <Square className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">停止</span>
+            </Button>
+          )}
+          {canFinish && (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={busy}
+              aria-label="ループを完了して閉じる"
+              title="このループを終わりにしてパネルを閉じます"
+              onClick={() => onAction("finish")}
+            >
+              <Check className="h-3.5 w-3.5" />
+              <span>完了</span>
             </Button>
           )}
         </div>

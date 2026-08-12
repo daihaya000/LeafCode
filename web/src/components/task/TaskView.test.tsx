@@ -2101,6 +2101,106 @@ describe("TaskView", () => {
       expect((screen.getByLabelText("最大ターン数") as HTMLInputElement).value).toBe("7");
     });
 
+    /** Full GoalLoopDto shaped fixture for panel-visibility assertions. */
+    function loopFixture(overrides: Record<string, unknown> = {}) {
+      return {
+        id: "loop-fixture",
+        workspaceId: "ws1",
+        sessionId: "sess1",
+        status: "paused",
+        goal: "完走モードの目標",
+        acceptance: [],
+        maxTurns: 50,
+        turnCount: 50,
+        lastMessageId: null,
+        lastPromptAt: null,
+        agent: null,
+        providerID: null,
+        modelID: null,
+        variant: null,
+        progress: [],
+        summary: "",
+        evidence: "",
+        blockedReason: "",
+        error: "最大ターン数に到達したため一時停止しました。",
+        revision: 5,
+        turnKind: "goal",
+        pauseReason: "turn_limit",
+        rejectedClaims: 0,
+        pauseRequested: false,
+        forceFullRun: true,
+        dismissed: false,
+        createdAt: "2026-08-08T00:00:00Z",
+        updatedAt: "2026-08-08T00:10:00Z",
+        ...overrides,
+      };
+    }
+
+    it("clears the panel and restores the composer toggle when a paused loop is finished", async () => {
+      const paused = loopFixture();
+      setupIdle(useSessionStream(), paused);
+      sendJson.mockImplementation((_method: string, path: string, body: unknown) => {
+        if (
+          path === "/api/tasks/ws1/goal-loop" &&
+          (body as { action?: string } | null)?.action === "finish"
+        ) {
+          return Promise.resolve({
+            loop: { ...paused, status: "stopped", dismissed: true },
+          });
+        }
+        return Promise.resolve(undefined);
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      // A turn-limit pause keeps the panel sticky and hides the loop toggle,
+      // so the user could not start another loop without this action.
+      expect(screen.getByRole("region", { name: "ループ" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: TOGGLE })).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "ループを完了して閉じる" }));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(sendJson).toHaveBeenCalledWith("PATCH", "/api/tasks/ws1/goal-loop", {
+        action: "finish",
+      });
+      expect(screen.queryByRole("region", { name: "ループ" })).toBeNull();
+      expect(screen.getByRole("button", { name: TOGGLE })).toBeTruthy();
+    });
+
+    it("starts a new loop after a completed loop was finished", async () => {
+      setupIdle(useSessionStream(), loopFixture({ status: "completed", dismissed: true }));
+      sendJson.mockImplementation((_method: string, path: string) => {
+        if (path === "/api/tasks/ws1/goal-loop") {
+          return Promise.resolve({ loop: loopFixture({ id: "loop-next", status: "running" }) });
+        }
+        return Promise.resolve(undefined);
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      fireEvent.click(screen.getByRole("button", { name: TOGGLE }));
+      fireEvent.change(
+        screen.getByRole("combobox", { name: "フォローアップを送信" }),
+        { target: { value: "次の目標" } },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "ループを開始" }));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Without the dismissed check this fell through to a normal chat send.
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/tasks/ws1/goal-loop",
+        expect.objectContaining({ goal: "次の目標" }),
+      );
+    });
+
     it("starts the loop with the composer text as the goal instead of sending a prompt", async () => {
       const streamMock = useSessionStream();
       setupIdle(streamMock);

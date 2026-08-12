@@ -191,6 +191,7 @@ export function getDb(): Database.Database {
       rejected_claims INTEGER NOT NULL DEFAULT 0,
       pause_requested INTEGER NOT NULL DEFAULT 0,
       force_full_run INTEGER NOT NULL DEFAULT 0,
+      dismissed INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -574,6 +575,12 @@ export function getDb(): Database.Database {
   // 完走モード: 完了宣言・検証を使わず max_turns まで必ず goal ターンを回す（既定 OFF）
   if (!hasGoalLoopColumn("force_full_run")) {
     db.exec("ALTER TABLE goal_loops ADD COLUMN force_full_run INTEGER NOT NULL DEFAULT 0");
+  }
+  // ユーザーが手動で片付けたループ。行は残す（再開時のフォーム復元に使う）が、
+  // パネルは表示しない。これがないと終了したループのカードが永久に残り、
+  // paused のまま放置されたループが新規ループ開始の導線まで塞いでいた。
+  if (!hasGoalLoopColumn("dismissed")) {
+    db.exec("ALTER TABLE goal_loops ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0");
   }
   const sessionBindingColumns = db
     .prepare("PRAGMA table_info(session_bindings)")

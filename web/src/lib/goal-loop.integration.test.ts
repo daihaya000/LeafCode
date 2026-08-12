@@ -192,6 +192,7 @@ function makeDb(): Database.Database {
       rejected_claims INTEGER NOT NULL DEFAULT 0,
       pause_requested INTEGER NOT NULL DEFAULT 0,
       force_full_run INTEGER NOT NULL DEFAULT 0,
+      dismissed INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -1019,6 +1020,74 @@ describe("goal loop failure recovery", () => {
     expect(paused?.status).toBe("paused");
     expect(paused?.pauseRequested).toBe(false);
     expect(paused?.turnKind).toBe("verification");
+  });
+
+  it("finish stops a paused loop and dismisses it so a new loop can start", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 5,
+    });
+    await updateGoalLoopStatus("ws-1", "pause");
+    expect(getGoalLoop("ws-1")?.status).toBe("paused");
+
+    const finished = await updateGoalLoopStatus("ws-1", "finish");
+    expect(finished?.status).toBe("stopped");
+    expect(finished?.dismissed).toBe(true);
+  });
+
+  it("finish dismisses an already terminal loop without rewriting its status", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: ["tests pass"],
+      maxTurns: 5,
+    });
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "ok" }),
+      msg("verify-prompt", "user"),
+      msg("verify-reply", "assistant", {
+        status: "verified_completed",
+        summary: "ok",
+        evidence: "tests pass",
+      }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("completed");
+
+    const finished = await updateGoalLoopStatus("ws-1", "finish");
+    expect(finished?.status).toBe("completed");
+    expect(finished?.dismissed).toBe(true);
+  });
+
+  it("stop does not un-dismiss a loop that was already finished", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 5,
+    });
+    await updateGoalLoopStatus("ws-1", "pause");
+    await updateGoalLoopStatus("ws-1", "finish");
+
+    const stopped = await updateGoalLoopStatus("ws-1", "stop");
+    expect(stopped?.dismissed).toBe(true);
   });
 
   it("truncates a fractional maxTurns at create time (consistent with update)", async () => {

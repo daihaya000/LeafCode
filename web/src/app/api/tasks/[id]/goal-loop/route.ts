@@ -89,7 +89,12 @@ export async function PATCH(req: NextRequest, context: Ctx) {
       throw err;
     }
   }
-  if (action !== "pause" && action !== "resume" && action !== "stop") {
+  if (
+    action !== "pause" &&
+    action !== "resume" &&
+    action !== "stop" &&
+    action !== "finish"
+  ) {
     return NextResponse.json({ error: "invalid action" }, { status: 400 });
   }
   if (action === "resume" && workspaceHasActiveWorkflow(id)) {

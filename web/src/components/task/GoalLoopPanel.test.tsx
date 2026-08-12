@@ -30,6 +30,7 @@ function baseLoop(overrides: Partial<GoalLoopDto> = {}): GoalLoopDto {
     rejectedClaims: 0,
     pauseRequested: false,
     forceFullRun: false,
+    dismissed: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -257,6 +258,48 @@ describe("GoalLoopPanel", () => {
         <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={vi.fn()} />,
       );
       expect(screen.queryByRole("button", { name: "ループを停止" })).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("renders nothing once the loop is dismissed", () => {
+    const { container } = render(
+      <GoalLoopPanel
+        loop={baseLoop({ status: "stopped", dismissed: true })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("offers a finish button for paused and terminal loops", () => {
+    for (const status of ["paused", "completed", "blocked", "stopped"] as const) {
+      const onAction = vi.fn();
+      render(
+        <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={onAction} />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "ループを完了して閉じる" }));
+      expect(onAction).toHaveBeenCalledWith("finish");
+      cleanup();
+    }
+  });
+
+  it("replaces stop with finish while paused, without a confirmation", () => {
+    render(
+      <GoalLoopPanel loop={baseLoop({ status: "paused" })} busy={false} onAction={vi.fn()} />,
+    );
+    expect(screen.queryByRole("button", { name: "ループを停止" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ループを完了して閉じる" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("does not offer finish while the loop is still running", () => {
+    for (const status of ["queued", "running", "verifying_completed"] as const) {
+      render(
+        <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={vi.fn()} />,
+      );
+      expect(screen.queryByRole("button", { name: "ループを完了して閉じる" })).toBeNull();
       cleanup();
     }
   });

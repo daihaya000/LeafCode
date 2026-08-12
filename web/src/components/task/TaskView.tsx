@@ -2094,7 +2094,7 @@ export function TaskView({
   }, [goalLoop, goalLoopEnabled]);
 
   const changeGoalLoopState = useCallback(
-    async (action: "pause" | "resume" | "stop") => {
+    async (action: "pause" | "resume" | "stop" | "finish") => {
       if (goalLoopBusyRef.current) return;
       goalLoopBusyRef.current = true;
       setGoalLoopBusy(true);
@@ -2162,11 +2162,14 @@ export function TaskView({
    * the loop UI, so the composer toggle is hidden to avoid two competing
    * entry points.
    */
+  // 片付け済み（完了操作済み）のループは、DB 上 `paused` から `stopped` になり
+  // パネルも消えるので、コンポーザーのループ導線を塞がない。
   const goalLoopLive =
-    goalLoop?.status === "queued" ||
-    goalLoop?.status === "running" ||
-    goalLoop?.status === "verifying_completed" ||
-    goalLoop?.status === "paused";
+    !goalLoop?.dismissed &&
+    (goalLoop?.status === "queued" ||
+      goalLoop?.status === "running" ||
+      goalLoop?.status === "verifying_completed" ||
+      goalLoop?.status === "paused");
 
   // Loop mode is a one-shot composer mode. Keep a completed/blocked/stopped
   // loop from interpreting the next ordinary chat message as a new goal.
@@ -2550,12 +2553,14 @@ export function TaskView({
     // to the loop API and restore the draft when the API rejects it.
     // A terminal loop must never reinterpret a normal follow-up as a new goal,
     // even if the completion refresh and the composer event are in the same
-    // render turn.
+    // render turn. 片付け済み（ユーザーが「完了」を押した）ループは、その race の
+    // 対象ではない。ここで除外しないと、完了・ブロックしたループが残っている限り
+    // 新しいループを開始できず、入力が通常メッセージとして送られてしまう。
     if (
       goalLoopEnabled &&
       !goalLoopLive &&
-      goalLoop?.status !== "completed" &&
-      goalLoop?.status !== "blocked"
+      (goalLoop?.dismissed ||
+        (goalLoop?.status !== "completed" && goalLoop?.status !== "blocked"))
     ) {
       if (attachments.length > 0) {
         setGoalLoopError(
@@ -2830,6 +2835,7 @@ export function TaskView({
     composerScopeKey,
     goalLoop?.sessionId,
     goalLoop?.status,
+    goalLoop?.dismissed,
     goalLoopEnabled,
     goalLoopLive,
     resolveAutoSelection,
@@ -3921,12 +3927,7 @@ export function TaskView({
       </Button>
     ) : null;
   const currentGoalProgress = goalLoop?.progress.at(-1);
-  const showInlineGoalProgress =
-    Boolean(currentGoalProgress) &&
-    (goalLoop?.status === "queued" ||
-      goalLoop?.status === "running" ||
-      goalLoop?.status === "verifying_completed" ||
-      goalLoop?.status === "paused");
+  const showInlineGoalProgress = Boolean(currentGoalProgress) && goalLoopLive;
 
   const siblingTaskCallIds = useMemo(
     () => collectTaskCallIds(stream.visibleMessages),
