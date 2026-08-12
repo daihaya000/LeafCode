@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
     timeoutMs: 120_000,
   },
   ocServer: vi.fn(),
+  savedAttachments: [] as string[],
   OcError: class OcError extends Error {
     status: number;
     constructor(message: string, status: number) {
@@ -27,6 +28,12 @@ vi.mock("./oc-server", () => ({
   OcError: h.OcError,
 }));
 
+// Keep the display-only attachment store out of the developer's data dir;
+// vision-attachments.test.ts covers the real filesystem behaviour.
+vi.mock("./vision-attachments", () => ({
+  saveVisionAttachment: (dataUrl: string) => h.savedAttachments.push(dataUrl) && "a".repeat(64),
+}));
+
 import {
   __resetQwenNativeVisionCachesForTest,
   analyzeNativeImages,
@@ -41,6 +48,7 @@ const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
 
 beforeEach(() => {
   __resetQwenNativeVisionCachesForTest();
+  h.savedAttachments.length = 0;
   h.settings = { enabled: false, opencodeModel: "", timeoutMs: 120_000 };
   h.ocServer.mockReset().mockImplementation(async (_dir: string | null, path: string) => {
     if (path === "/session") return { id: "session-1" };
@@ -262,6 +270,11 @@ it("rewrites image parts into an untrusted analysis context", async () => {
   expect(body.parts).toHaveLength(1);
   expect((body.parts as { text: string }[])[0]?.text).toContain("Visible text");
   expect((body.parts as { text: string }[])[0]?.text).toContain("未信頼データ");
+  // The stripped image is retained for display and referenced from the block.
+  expect(h.savedAttachments).toEqual(["data:image/png;base64,AA=="]);
+  expect((body.parts as { text: string }[])[0]?.text).toContain(
+    `images="${"a".repeat(64)}"`,
+  );
 });
 
 it("builds context for image-only prompts", () => {

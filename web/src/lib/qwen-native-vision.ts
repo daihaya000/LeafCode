@@ -3,6 +3,7 @@ import { OcError, ocServer } from "./oc-server";
 import { SESSION_LIST_PATH, sessionMessagePath, sessionPath } from "./opencode-paths";
 import { readQwenNativeSettings, QWEN_NATIVE_DEFAULTS } from "./profiles/settings";
 import { nativeImageContext } from "./qwen-native-vision-text";
+import { saveVisionAttachment } from "./vision-attachments";
 
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/([a-z0-9.+-]+));base64,([a-z0-9+/]+={0,2})$/i;
 
@@ -272,6 +273,17 @@ async function analyzeWithOpenCode(
   }
 }
 
+/**
+ * Copies the about-to-be-dropped images into the display-only store so the
+ * timeline can still show them. Failures return no id and only cost a
+ * thumbnail, never the send.
+ */
+export function retainForDisplay(images: readonly NativeVisionImage[]): string[] {
+  return images
+    .map((image) => saveVisionAttachment(image.dataUrl, image.mime))
+    .filter((id): id is string => Boolean(id));
+}
+
 export async function rewriteNativeRequest(
   body: Record<string, unknown>,
   directory: string | null = null,
@@ -291,8 +303,9 @@ export async function rewriteNativeRequest(
         part.type === "text" && typeof part.text === "string",
     );
     const prompt = typeof textPart?.text === "string" ? textPart.text : "";
-    const analysis = await analyzeNativeImages(prompt, imageParts.map(imageFromPart), directory);
-    const text = nativeImageContext(prompt, analysis);
+    const images = imageParts.map(imageFromPart);
+    const analysis = await analyzeNativeImages(prompt, images, directory);
+    const text = nativeImageContext(prompt, analysis, retainForDisplay(images));
     if (textPart) textPart.text = text;
     else nextParts.unshift({ type: "text", text });
     return { ...body, parts: nextParts };
@@ -309,12 +322,13 @@ export async function rewriteNativeRequest(
   }) as Record<string, unknown>[];
   if (imageFiles.length === 0) return body;
   const text = typeof promptRecord.text === "string" ? promptRecord.text : "";
-  const analysis = await analyzeNativeImages(text, imageFiles.map(imageFromPart), directory);
+  const images = imageFiles.map(imageFromPart);
+  const analysis = await analyzeNativeImages(text, images, directory);
   return {
     ...body,
     prompt: {
       ...promptRecord,
-      text: nativeImageContext(text, analysis),
+      text: nativeImageContext(text, analysis, retainForDisplay(images)),
       files: promptRecord.files.filter((file) => !imageFiles.includes(file as Record<string, unknown>)),
     },
   };

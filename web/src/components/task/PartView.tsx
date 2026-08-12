@@ -466,13 +466,26 @@ const ReasoningView = memo(function ReasoningView({ text }: { text: string }) {
  */
 const NativeImageAnalysisView = memo(function NativeImageAnalysisView({
   text,
+  imageIds,
 }: {
   text: string;
+  imageIds: readonly string[];
 }) {
   const [open, setOpen] = useState(false);
   if (!text.trim()) return null;
   return (
     <div className="mt-2 border-t border-border/60 pt-2">
+      {imageIds.length > 0 && (
+        <div className="mb-2 flex flex-wrap justify-end gap-2">
+          {imageIds.map((id) => (
+            <FileImagePreview
+              key={id}
+              url={`/api/vision-attachment/${id}`}
+              name="添付画像"
+            />
+          ))}
+        </div>
+      )}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -652,7 +665,7 @@ export const PartView = memo(function PartView({
       if (role === "user") {
         // The vision pre-analysis is appended to the user text before send; it
         // is internal context, so it renders as a folded panel, not chat text.
-        const { request, analysis } = splitNativeImageAnalysis(shown);
+        const { request, analysis, imageIds } = splitNativeImageAnalysis(shown);
         return (
           <div className="ml-auto min-w-0 max-w-[88%] rounded-2xl rounded-br-md bg-surface-3 px-4 py-2.5">
             {request.trim() && (
@@ -664,7 +677,7 @@ export const PartView = memo(function PartView({
                 />
               </div>
             )}
-            <NativeImageAnalysisView text={analysis} />
+            <NativeImageAnalysisView text={analysis} imageIds={imageIds} />
           </div>
         );
       }

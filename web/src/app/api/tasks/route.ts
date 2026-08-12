@@ -36,6 +36,7 @@ import {
   analyzeNativeImages,
   isQwenNativeVisionAvailable,
   nativeImageContext,
+  retainForDisplay,
 } from "@/lib/qwen-native-vision";
 import {
   ServiceError,
@@ -522,7 +523,8 @@ export async function POST(req: NextRequest) {
     let promptForSend = prompt;
     if (qwenNativeFallback) {
       const analysis = await analyzeNativeImages(prompt, qwenImages, workspace.absolute_path);
-      promptForSend = nativeImageContext(prompt, analysis);
+      // The file parts are dropped from the send below, so keep display copies.
+      promptForSend = nativeImageContext(prompt, analysis, retainForDisplay(qwenImages));
     }
 
     // This is deliberately before the first command/prompt: with the task
