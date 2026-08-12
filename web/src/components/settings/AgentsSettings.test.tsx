@@ -72,11 +72,28 @@ describe("AgentsSettings", () => {
 
     await screen.findByRole("heading", { name: "Rank A" });
     expect(screen.getByRole("heading", { name: "Rank B" })).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "その他のエージェント" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "ビルトイン" })).toBeTruthy();
     expect(screen.getByText("3 件のエージェント")).toBeTruthy();
     expect(screen.getAllByText("lead-programmer").length).toBeGreaterThan(0);
+  });
+
+  it("lists built-in agents first, above the ranked groups", async () => {
+    render(<AgentsSettings />);
+    await screen.findByRole("heading", { name: "Rank A" });
+
+    const headings = screen
+      .getAllByRole("heading")
+      .map((node) => node.textContent);
+    expect(headings).toEqual([
+      "提供元ごとの一括操作",
+      "ビルトイン",
+      "Rank A",
+      "Rank B",
+    ]);
+    // Built-ins are no longer swept into the trailing bucket.
+    expect(
+      screen.queryByRole("heading", { name: "その他のエージェント" }),
+    ).toBeNull();
   });
 
   it("lists each agent's source path and shows its scope once selected", async () => {

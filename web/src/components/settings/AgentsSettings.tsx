@@ -150,9 +150,12 @@ function AgentListRow({
           >
             {row.displayName}
           </span>
-          <span className="block truncate font-mono text-[10px] text-faint">
-            {row.sourcePath ?? "ビルトイン"}
-          </span>
+          {/* Built-ins have no file; their group heading already says so. */}
+          {row.sourcePath && (
+            <span className="block truncate font-mono text-[10px] text-faint">
+              {row.sourcePath}
+            </span>
+          )}
         </span>
       </button>
       {row.toggleable && (

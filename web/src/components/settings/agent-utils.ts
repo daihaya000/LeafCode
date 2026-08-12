@@ -44,8 +44,8 @@ export type ParsedAgent = AgentDto & {
 };
 
 export type AgentGroup = {
-  /** "A"–"E" for ranked groups, or "other". */
-  key: AgentRank | "other";
+  /** "builtin", "A"–"E" for ranked groups, or "other". */
+  key: AgentRank | "builtin" | "other";
   title: string;
   agents: ParsedAgent[];
 };
@@ -145,23 +145,36 @@ function byName(a: ParsedAgent, b: ParsedAgent): number {
 }
 
 /**
- * Group agents into Rank A→E sections followed by "その他のエージェント".
- * Empty groups are omitted. Ranked groups sort by role then name; the "other"
- * group sorts by name.
+ * Group agents into "ビルトイン", Rank A→E sections, then
+ * "その他のエージェント". Empty groups are omitted. Ranked groups sort by role
+ * then name; the builtin and "other" groups sort by name.
+ *
+ * Built-ins lead because they are the agents every install has and the ones
+ * users reach for first (`build`, `plan`, `general`, …); leaving them to fall
+ * into the trailing "その他" bucket buried them under every user-defined rank.
+ * Membership is tested strictly against `scope === "builtin"` so an agent whose
+ * source was not resolved keeps its rank grouping.
  */
 export function groupAgents(agents: ParsedAgent[]): AgentGroup[] {
   const groups: AgentGroup[] = [];
 
+  const builtins = agents
+    .filter((a) => a.scope === "builtin")
+    .sort(byName);
+  if (builtins.length > 0) {
+    groups.push({ key: "builtin", title: "ビルトイン", agents: builtins });
+  }
+
+  const rest = agents.filter((a) => a.scope !== "builtin");
+
   for (const rank of RANKS) {
-    const members = agents
-      .filter((a) => a.rank === rank)
-      .sort(byRoleThenName);
+    const members = rest.filter((a) => a.rank === rank).sort(byRoleThenName);
     if (members.length > 0) {
       groups.push({ key: rank, title: `Rank ${rank}`, agents: members });
     }
   }
 
-  const others = agents.filter((a) => a.rank === null).sort(byName);
+  const others = rest.filter((a) => a.rank === null).sort(byName);
   if (others.length > 0) {
     groups.push({ key: "other", title: "その他のエージェント", agents: others });
   }
