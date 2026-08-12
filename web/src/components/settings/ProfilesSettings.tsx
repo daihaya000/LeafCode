@@ -94,6 +94,9 @@ export function ProfilesSettings() {
   const [switchConfirm, setSwitchConfirm] = useState<ProfileDto | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
+  // Success notifications are separate from `actionError` so positive
+  // confirmations never render in the danger alert (BU-7).
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<JobResponse | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -259,6 +262,7 @@ export function ProfilesSettings() {
     actionBusyRef.current = "migrate";
     setActionBusy("migrate");
     setActionError(null);
+    setActionSuccess(null);
     try {
       const res = await sendJson<{ jobId: string }>("POST", "/api/profiles/migrate", {
         mode: moveSource ? "move" : "copy",
@@ -282,6 +286,7 @@ export function ProfilesSettings() {
     actionBusyRef.current = "create";
     setActionBusy("create");
     setActionError(null);
+    setActionSuccess(null);
     try {
       const res = await sendJson<{ jobId?: string; id?: string }>(
         "POST",
@@ -318,6 +323,7 @@ export function ProfilesSettings() {
       const next = { ...setupSettings, [key]: value };
       setSetupSettings(next);
       setActionError(null);
+      setActionSuccess(null);
       try {
         const saved = await sendJson<ProfileSetupSettings>(
           "PUT",
@@ -349,6 +355,7 @@ export function ProfilesSettings() {
       actionBusyRef.current = operation;
       setActionBusy(operation);
       setActionError(null);
+      setActionSuccess(null);
       try {
         await sendJson("PATCH", `/api/profiles/${id}`, { name: renameValue });
         if (!mountedRef.current) return;
@@ -376,6 +383,7 @@ export function ProfilesSettings() {
       actionBusyRef.current = operation;
       setActionBusy(operation);
       setActionError(null);
+      setActionSuccess(null);
       try {
         await sendJson("DELETE", `/api/profiles/${profile.id}`, {});
         if (!mountedRef.current) return;
@@ -399,12 +407,17 @@ export function ProfilesSettings() {
     actionBusyRef.current = operation;
     setActionBusy(operation);
     setActionError(null);
+    setActionSuccess(null);
     try {
       const result = await sendJson<{ installed: string[] }>("POST", `/api/profiles/${profile.id}/dependencies`, {});
       if (!mountedRef.current) return;
-      if (result.installed.length > 0) {
-        setActionError(profile.active ? "WebUI依存を追加しました。OpenCode hostを再起動してください。" : "WebUI依存を追加しました。");
-      }
+      setActionSuccess(
+        result.installed.length > 0
+          ? profile.active
+            ? "WebUI依存を追加しました。OpenCode hostを再起動してください。"
+            : "WebUI依存を追加しました。"
+          : "WebUI依存は既に適用済みです。",
+      );
     } catch (err) {
       if (!mountedRef.current) return;
       setActionError(err instanceof Error ? err.message : "WebUI依存の適用に失敗しました");
@@ -422,6 +435,7 @@ export function ProfilesSettings() {
     actionBusyRef.current = operation;
     setActionBusy(operation);
     setActionError(null);
+    setActionSuccess(null);
     try {
       await sendJson("POST", `/api/profiles/${profile.id}/open`, { action });
     } catch (err) {
@@ -538,6 +552,13 @@ export function ProfilesSettings() {
       {restartError && (
         <div role="alert" className="mb-4 rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
           {restartError}
+        </div>
+      )}
+
+      {/* Action success */}
+      {actionSuccess && (
+        <div role="status" className="mb-4 rounded-xl border border-success/30 bg-success-bg px-4 py-3 text-sm text-success">
+          {actionSuccess}
         </div>
       )}
 
