@@ -93,7 +93,11 @@ async function loadToolDisableMap(
     return toolDisableCache.tools;
   }
   const toolIds = await ocServer<unknown>(directory, "/experimental/tool/ids");
-  if (!Array.isArray(toolIds)) throw new Error("failed to read tool IDs");
+  // Empty array must not be cached as tools:{} — that leaves OpenCode's
+  // default {"*":"allow"} in place on the analysis session (agent "build").
+  if (!Array.isArray(toolIds) || toolIds.length === 0) {
+    throw new Error("failed to read tool IDs");
+  }
   const tools = Object.fromEntries(
     toolIds.map((id) => [String(id), false as const]),
   ) as Record<string, false>;

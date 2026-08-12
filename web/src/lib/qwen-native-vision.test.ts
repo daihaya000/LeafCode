@@ -138,6 +138,52 @@ it("caches tool id lookups across consecutive analyses", async () => {
   expect(toolCalls).toHaveLength(1);
 });
 
+it("rejects an empty tool id list instead of sending tools:{}", async () => {
+  h.settings = {
+    enabled: true,
+    opencodeModel: "ollama::qwen2.5vl:7b",
+    timeoutMs: 60_000,
+  };
+  h.ocServer.mockImplementation(async (_dir: string | null, path: string) => {
+    if (path === "/session") return { id: "session-1" };
+    if (path === "/experimental/tool/ids") return [];
+    if (path.endsWith("/message")) {
+      return { parts: [{ type: "text", text: "should not run" }] };
+    }
+    return {};
+  });
+
+  await expect(
+    analyzeNativeImages("x", [
+      { dataUrl: "data:image/png;base64,AA==", mime: "image/png" },
+    ]),
+  ).rejects.toThrow("failed to read tool IDs");
+
+  expect(
+    h.ocServer.mock.calls.some(([, path]) => String(path).endsWith("/message")),
+  ).toBe(false);
+  // Do not cache the empty map — a later successful ids fetch must still work.
+  h.ocServer.mockImplementation(async (_dir: string | null, path: string) => {
+    if (path === "/session") return { id: "session-2" };
+    if (path === "/experimental/tool/ids") return ["bash"];
+    if (path.endsWith("/message")) {
+      return { parts: [{ type: "text", text: "ok" }] };
+    }
+    return {};
+  });
+  await expect(
+    analyzeNativeImages("y", [
+      { dataUrl: "data:image/png;base64,AA==", mime: "image/png" },
+    ]),
+  ).resolves.toBe("ok");
+  const messageCall = h.ocServer.mock.calls.find(([, path]) =>
+    String(path).endsWith("/message"),
+  );
+  expect(
+    (messageCall?.[2] as { body: { tools: Record<string, false> } }).body.tools,
+  ).toEqual({ bash: false });
+});
+
 it("prefers OPENCODE_WEBUI_QWEN_MODEL over the saved model", async () => {
   h.settings = { enabled: true, opencodeModel: "openai::gpt-4o", timeoutMs: 120_000 };
   process.env.OPENCODE_WEBUI_QWEN_MODEL = "anthropic::claude-vision";

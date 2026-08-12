@@ -1,4 +1,30 @@
-﻿# 作業ログ: /loop 1m バグハント — コスト表示タブ間 storage 未同期
+# 作業ログ: /loop 1m バグハント tick — 画像事前解析 tools 空配列 fail-open
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: 事前解析一時セッションは常に tools 全無効（workspace 非接触）
+- 実際: /experimental/tool/ids が [] のとき tools:{} を送り無効化不成立 → OpenCode 既定 allow のまま agent build が動ける
+
+## 根本原因
+- qwen-native-vision.ts loadToolDisableMap が Array.isArray のみ検査し空配列を拒否しない
+- commit-message / refresh-title は空配列を fail-closed（ids.length === 0 で throw）
+
+## 修正
+- toolIds.length === 0 も throw（空マップをキャッシュしない）
+
+## 回帰防止
+- rejects an empty tool id list instead of sending tools:{}
+
+## 検証
+- vitest qwen-native-vision 11 PASS / eslint OK
+
+## 残存リスク
+- Host BUILD_ID 初回待ち UX、権限 PATCH 極短窓
+
+---
+# 作業ログ: /loop 1m バグハント — コスト表示タブ間 storage 未同期
 
 ## 日付
 2026-08-12
