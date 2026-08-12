@@ -633,6 +633,9 @@ export function TaskView({
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
   const [queuedAutoSend, setQueuedAutoSend] = useState(false);
   const nextQueueIdRef = useRef(1);
+  /** After abort, do not auto-drain this scope until the user sends explicitly. */
+  const queueHoldScopesRef = useRef(new Set<string>());
+  const sendingFromQueueRef = useRef(false);
   const [taskActionBusy, setTaskActionBusy] = useState<
     "remove" | "session" | "restore" | "workflow" | null
   >(null);
@@ -2094,10 +2097,20 @@ export function TaskView({
   const refreshTodos = stream.refreshTodos;
   const resync = stream.resync;
   const streamAbort = stream.abort;
+  const abortAndHoldQueue = useCallback(
+    async (reason?: string) => {
+      if (composerScopeKey) {
+        queueHoldScopesRef.current.add(composerScopeKey);
+        setQueuedAutoSend(false);
+      }
+      await streamAbort(reason);
+    },
+    [composerScopeKey, streamAbort],
+  );
   const markTaskHang = useCallback(() => {
     if (!working || stream.aborting) return;
-    void streamAbort("ハングと判定して停止しました");
-  }, [stream.aborting, streamAbort, working]);
+    void abortAndHoldQueue("ハングと判定して停止しました");
+  }, [abortAndHoldQueue, stream.aborting, working]);
   useEffect(() => {
     if (prevStreamScopeKeyRef.current !== streamScopeKey) {
       prevStreamScopeKeyRef.current = streamScopeKey;
@@ -2345,6 +2358,9 @@ export function TaskView({
     const sendSessionId = taskRef.current?.sessionId;
     const sendTaskId = taskRef.current?.id;
     if (!sendSessionId || !sendTaskId || !sendScopeKey) return;
+    if (!sendingFromQueueRef.current) {
+      queueHoldScopesRef.current.delete(sendScopeKey);
+    }
     // Queue mode never touches a busy session. Store the complete draft and
     // let the idle transition below submit it as a normal follow-up.
     if (working && deliveryMode === "queue") {
@@ -2484,9 +2500,10 @@ export function TaskView({
       // if it cannot — that hook is authoritative and covers other clients, so
       // this one only exists for immediate feedback. See docs/specs/goal-loop.md 是正 D.
       if (
-        goalLoop?.status === "queued" ||
-        goalLoop?.status === "running" ||
-        goalLoop?.status === "verifying_completed"
+        (goalLoop?.status === "queued" ||
+          goalLoop?.status === "running" ||
+          goalLoop?.status === "verifying_completed") &&
+        (!goalLoop.sessionId || goalLoop.sessionId === sendSessionId)
       ) {
         let paused: { loop: GoalLoopDto };
         try {
@@ -2643,6 +2660,7 @@ export function TaskView({
     touchActivity,
     refreshSessionTitle,
     composerScopeKey,
+    goalLoop?.sessionId,
     goalLoop?.status,
     goalLoopEnabled,
     goalLoopLive,
@@ -2660,9 +2678,19 @@ export function TaskView({
   const scopedQueuedFollowUps = composerScopeKey
     ? queuedFollowUps.filter((item) => item.scopeKey === composerScopeKey)
     : [];
+  const goalLoopBlocksThisSession =
+    goalLoopLive &&
+    (!goalLoop?.sessionId || goalLoop.sessionId === task?.sessionId);
 
   useEffect(() => {
-    if (working || sending || goalLoopLive || queuedAutoSend || !composerScopeKey) {
+    if (
+      working ||
+      sending ||
+      goalLoopBlocksThisSession ||
+      queuedAutoSend ||
+      !composerScopeKey ||
+      queueHoldScopesRef.current.has(composerScopeKey)
+    ) {
       return;
     }
     const next = queuedFollowUps.find((item) => item.scopeKey === composerScopeKey);
@@ -2673,7 +2701,7 @@ export function TaskView({
     setQueuedAutoSend(true);
   }, [
     composerScopeKey,
-    goalLoopLive,
+    goalLoopBlocksThisSession,
     queuedAutoSend,
     queuedFollowUps,
     sending,
@@ -2681,19 +2709,26 @@ export function TaskView({
   ]);
 
   useEffect(() => {
-    if (!queuedAutoSend || working || sending || goalLoopLive) return;
+    if (!queuedAutoSend || working || sending || goalLoopBlocksThisSession) return;
     if (!input.trim() && attachments.length === 0) return;
     // Abort auto-send if the user switched away before submit fired.
     if (composerScopeRef.current !== composerScopeKey) {
       setQueuedAutoSend(false);
       return;
     }
+    if (composerScopeKey && queueHoldScopesRef.current.has(composerScopeKey)) {
+      setQueuedAutoSend(false);
+      return;
+    }
     setQueuedAutoSend(false);
-    void send();
+    sendingFromQueueRef.current = true;
+    void send().finally(() => {
+      sendingFromQueueRef.current = false;
+    });
   }, [
     attachments.length,
     composerScopeKey,
-    goalLoopLive,
+    goalLoopBlocksThisSession,
     input,
     queuedAutoSend,
     send,
@@ -3982,7 +4017,7 @@ export function TaskView({
               busy={stream.aborting}
               disabled={stream.aborting}
               aria-label={stream.aborting ? "停止中" : "タスクを停止"}
-              onClick={() => void stream.abort()}
+              onClick={() => void abortAndHoldQueue()}
             >
               <Square className="h-3 w-3 fill-current" />
               <span className="hidden sm:inline">{stream.aborting ? "停止中…" : "停止"}</span>
@@ -5040,7 +5075,7 @@ export function TaskView({
                       aria-label={stream.aborting ? "停止中" : "生成を停止"}
                       busy={stream.aborting}
                       disabled={stream.aborting}
-                      onClick={() => void stream.abort()}
+                      onClick={() => void abortAndHoldQueue()}
                     >
                       <Square className="h-3.5 w-3.5 fill-current" />
                     </Button>
