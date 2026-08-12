@@ -259,16 +259,22 @@ it("disables tools on the analysis session by default", async () => {
   expect(body.agent).toBe("build");
 });
 
-it("retries without tools when the model rejects the tools parameter", async () => {
+it("retries without tools only after locking session permissions to deny", async () => {
   h.settings = {
     enabled: true,
     opencodeModel: "ollama::qwen2.5vl:7b",
     timeoutMs: 60_000,
   };
   __resetQwenNativeVisionCachesForTest();
-  h.ocServer.mockImplementation(async (_dir: string | null, path: string, init?: { body?: { tools?: unknown } }) => {
+  h.ocServer.mockImplementation(async (_dir: string | null, path: string, init?: { method?: string; body?: { tools?: unknown; permission?: unknown } }) => {
     if (path === "/session") return { id: "session-1" };
     if (path === "/experimental/tool/ids") return ["bash", "read"];
+    if (path === "/session/session-1" && init?.method === "PATCH") {
+      expect(init.body).toEqual({
+        permission: [{ permission: "*", pattern: "*", action: "deny" }],
+      });
+      return {};
+    }
     if (path.endsWith("/message")) {
       if (init?.body && "tools" in init.body) {
         throw new h.OcError("tools not supported", 400);
@@ -287,7 +293,19 @@ it("retries without tools when the model rejects the tools parameter", async () 
   const messageCalls = h.ocServer.mock.calls.filter(([, path]) =>
     String(path).endsWith("/message"),
   );
+  const lockCall = h.ocServer.mock.calls.find(
+    ([, path, init]) =>
+      path === "/session/session-1" &&
+      init &&
+      typeof init === "object" &&
+      (init as { method?: string }).method === "PATCH",
+  );
   expect(messageCalls).toHaveLength(2);
+  expect(lockCall).toBeDefined();
+  const lockIdx = h.ocServer.mock.calls.indexOf(lockCall!);
+  const secondMessageIdx = h.ocServer.mock.calls.indexOf(messageCalls[1]!);
+  expect(lockIdx).toBeGreaterThanOrEqual(0);
+  expect(lockIdx).toBeLessThan(secondMessageIdx);
   expect(
     (messageCalls[0]?.[2] as { body: Record<string, unknown> }).body,
   ).toHaveProperty("tools");

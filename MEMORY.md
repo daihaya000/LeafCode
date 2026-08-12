@@ -198,6 +198,29 @@
 - Dialog の `onSwitch={() => void onSwitch()}` は親 refresh 完了を待たない（今回対象外）
 
 ---
+# 作業ログ: /loop 1m バグハント — 画像解析 400 リトライ前の permission deny
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: tools パラメータ拒否でリトライしても解析セッションはワークスペースを触れない
+- 実際: tools なし・agent build の再送は OpenCode 既定 allow のまま
+
+## 根本原因
+- `910c693` の 400 リトライが tools 省略のみで、セッション permission を締めなかった
+
+## 修正
+- tools なし再送の前に `permission: [{ "*","*","deny" }]` を PATCH
+- 400 判定はメッセージに tool を含む場合を優先
+
+## 回帰防止
+- retries without tools only after locking session permissions to deny
+
+## 検証
+- vitest qwen-native-vision 11 PASS / eslint OK
+
+---
 # 作業ログ: /loop 1m バグハント — 画像事前解析の tools 無効化 fail-open
 
 ## 日付

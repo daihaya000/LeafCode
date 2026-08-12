@@ -137,7 +137,26 @@ export async function analyzeNativeImages(
 }
 
 function isToolsRejectedError(error: unknown): boolean {
-  return error instanceof OcError && error.status === 400;
+  if (!(error instanceof OcError) || error.status !== 400) return false;
+  // Prefer an explicit tools-related message when the engine provides one;
+  // otherwise still treat bare 400 as tools rejection only after we lock the
+  // session permissions (see analyzeWithOpenCode retry path).
+  const message = error.message.toLowerCase();
+  if (!message) return true;
+  return /tool/.test(message);
+}
+
+/** Deny all tool permissions on the throwaway analysis session. */
+async function lockAnalysisSessionPermissions(
+  directory: string | null,
+  sessionId: string,
+): Promise<void> {
+  await ocServer(directory, sessionPath(sessionId), {
+    method: "PATCH",
+    body: {
+      permission: [{ permission: "*", pattern: "*", action: "deny" }],
+    },
+  });
 }
 
 async function analyzeWithOpenCode(
@@ -186,10 +205,9 @@ async function analyzeWithOpenCode(
     };
     // Always disable tools first. The analysis session is created in the
     // user's workspace with agent "build"; omitting `tools` used to leave
-    // OpenCode's default {"*":"allow"} in place when /provider failed or
-    // toolcall was undeclared — a vision model that still accepts tools
-    // could then edit/bash without approval. Some Ollama VL models reject
-    // the tools parameter with 400; retry once without it in that case.
+    // OpenCode's default {"*":"allow"} in place. Some Ollama VL models reject
+    // the tools parameter with 400 — retry once without it only after locking
+    // session permissions to deny, so the tools-less path cannot edit/bash.
     const bodyWithTools = { ...baseBody, tools };
     let response: { parts?: { type?: string; text?: string }[] };
     try {
@@ -204,6 +222,7 @@ async function analyzeWithOpenCode(
       );
     } catch (error) {
       if (!isToolsRejectedError(error)) throw error;
+      await lockAnalysisSessionPermissions(directory, sessionId);
       response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
         directory,
         sessionMessagePath(sessionId),
