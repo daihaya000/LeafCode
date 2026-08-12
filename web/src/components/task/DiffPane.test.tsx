@@ -250,6 +250,85 @@ describe("DiffPane directory race", () => {
     expect(screen.getByText("file.ts")).toBeTruthy();
   });
 
+  it("shows all git changes by default even when the current session touched different files", async () => {
+    // Regression: task badge shows 変更あり (git has changes) but the Diff
+    // tab showed nothing because sessionFilter defaulted to "current" and the
+    // changes came from another source (並列セッション前提). The file list
+    // must default to all changes so the Diff tab agrees with the badge.
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          ...payload("file"),
+          files: [
+            payload("file").files[0],
+            { ...payload("file").files[0], path: "src/external.ts" },
+          ],
+        });
+      }
+      if (String(url).includes("/api/git/branches")) {
+        return Promise.resolve({ branches: [], current: "main", defaultTarget: "main" });
+      }
+      if (String(url).includes("/api/git/pr")) {
+        return Promise.resolve({ available: false });
+      }
+      return Promise.resolve({});
+    });
+
+    render(
+      <DiffPane
+        directory="/repo-a"
+        workspaceId="ws-a"
+        refreshKey={0}
+        touchedPaths={new Set(["src/current.ts"])}
+      />,
+    );
+    await screen.findByText("file.ts");
+    expect(screen.getByText("external.ts")).toBeTruthy();
+    expect(screen.queryByText("変更はありません")).toBeNull();
+  });
+
+  it("explains when the current-session filter hides changes and reveals them via すべて表示", async () => {
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          ...payload("file"),
+          files: [
+            payload("file").files[0],
+            { ...payload("file").files[0], path: "src/external.ts" },
+          ],
+        });
+      }
+      if (String(url).includes("/api/git/branches")) {
+        return Promise.resolve({ branches: [], current: "main", defaultTarget: "main" });
+      }
+      if (String(url).includes("/api/git/pr")) {
+        return Promise.resolve({ available: false });
+      }
+      return Promise.resolve({});
+    });
+
+    render(
+      <DiffPane
+        directory="/repo-a"
+        workspaceId="ws-a"
+        refreshKey={0}
+        touchedPaths={new Set(["src/current.ts"])}
+      />,
+    );
+    await screen.findByText("file.ts");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "表示するセッションの変更" }), {
+      target: { value: "current" },
+    });
+
+    expect(
+      await screen.findByText("このセッションが変更したファイルはありません（別セッション・外部の変更があります）"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "すべて表示" }));
+    expect(screen.getByText("external.ts")).toBeTruthy();
+    expect(screen.getByText("file.ts")).toBeTruthy();
+  });
+
   it("does not commit via Enter when no paths are selected", async () => {
     mockMetaApis();
     render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
