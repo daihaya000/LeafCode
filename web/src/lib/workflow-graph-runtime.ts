@@ -86,7 +86,12 @@ export function evaluateWorkflowGraphRuntime(
 
   const writableReady = snapshot.nodes.filter((node) => readyNodeIds.includes(node.id) && node.resolvedPermissions.write);
   if (writableReady.length > 1) {
-    readyNodeIds.splice(0, readyNodeIds.length, ...readyNodeIds.filter((id) => !writableReady.some((node) => node.id === id)));
+    // Two writable nodes became ready at once. Drop them all from the ready
+    // set AND mark them blocked with a reason so the scheduler pauses the run
+    // with `write_conflict` instead of silently skipping them forever.
+    const conflicted = new Set(writableReady.map((node) => node.id));
+    readyNodeIds.splice(0, readyNodeIds.length, ...readyNodeIds.filter((id) => !conflicted.has(id)));
+    for (const node of writableReady) blockedNodeIds.push(node.id);
     pauseReason = "write_conflict";
   }
   const terminal = snapshot.nodes

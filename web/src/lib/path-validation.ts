@@ -61,6 +61,9 @@ function getProtectedPaths(): ProtectedPath[] {
   if (!profileParent) return protectedPaths;
   protectedPaths.push({ path: profileParent, includesDescendants: false });
   if (ownProfile) {
+    // The current user's own profile root is protected, while descendants can
+    // still be added explicitly so normal workspace directories under the
+    // profile work (e.g. C:\Users\me\projects\repo).
     protectedPaths.push({ path: ownProfile, includesDescendants: false });
   }
   try {
@@ -71,7 +74,10 @@ function getProtectedPaths(): ProtectedPath[] {
       if (ownProfile && profilePath.toLowerCase() === ownProfile.toLowerCase()) {
         continue;
       }
-      protectedPaths.push({ path: profilePath, includesDescendants: false });
+      // Other users' profiles are fully protected including descendants: an
+      // operator who can read them (e.g. an admin account) must not be able
+      // to allowlist C:\Users\<other>\AppData etc. via the WebUI.
+      protectedPaths.push({ path: profilePath, includesDescendants: true });
     }
   } catch {
     // Keep the parent root protected if profile enumeration is unavailable.

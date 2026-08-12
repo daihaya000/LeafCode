@@ -246,6 +246,26 @@ type AgentResponse = {
 const cachedProvidersByDir = new Map<string, ProviderResponse>();
 const cachedAgentsByDir = new Map<string, AgentResponse>();
 
+/**
+ * Bound the per-directory capability caches. They are keyed by directory and
+ * only ever SET, so without a cap a long-lived server accumulating many
+ * projects would grow without bound and serve stale capabilities forever.
+ * Evict the oldest entries first (insertion order) once the cap is exceeded;
+ * a subsequent request simply refetches, which also refreshes stale
+ * capability data.
+ */
+const CAPABILITY_CACHE_MAX = 64;
+
+function setBoundedCapabilityCache<T>(cache: Map<string, T>, key: string, value: T): void {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > CAPABILITY_CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (typeof oldest !== "string") break;
+    cache.delete(oldest);
+  }
+}
+
 // Short-TTL response cache for read-only GET /provider and GET /agent JSON
 // replies. The Home composer fires both `/api/opencode/provider` and
 // `/api/extensions/provider-models` in the same Promise.all burst, and each
@@ -397,7 +417,7 @@ async function resolveAgents(directory: string | null): Promise<AgentResponse | 
   if (cached) return cached;
   try {
     const agents = await ocServer<AgentResponse>(directory, "/agent");
-    if (directory) cachedAgentsByDir.set(directory, agents);
+    if (directory) setBoundedCapabilityCache(cachedAgentsByDir, directory, agents);
     return agents;
   } catch {
     return undefined;
@@ -413,7 +433,7 @@ async function resolveProviders(directory: string | null): Promise<ProviderRespo
   if (cached) return cached;
   try {
     const providers = await ocServer<ProviderResponse>(directory, "/provider");
-    if (directory) cachedProvidersByDir.set(directory, providers);
+    if (directory) setBoundedCapabilityCache(cachedProvidersByDir, directory, providers);
     return providers;
   } catch {
     return undefined;
@@ -471,9 +491,9 @@ async function cacheCapabilityMetadata(
   }
   try {
     const payload = await upstream.clone().json();
-    if (pathname === "/provider") cachedProvidersByDir.set(directory, payload as ProviderResponse);
+    if (pathname === "/provider") setBoundedCapabilityCache(cachedProvidersByDir, directory, payload as ProviderResponse);
     if (pathname === "/agent" && Array.isArray(payload)) {
-      cachedAgentsByDir.set(directory, payload as AgentResponse);
+      setBoundedCapabilityCache(cachedAgentsByDir, directory, payload as AgentResponse);
     }
   } catch {
     // A malformed metadata response leaves the cache unavailable, which is

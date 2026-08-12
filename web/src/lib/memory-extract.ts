@@ -34,6 +34,7 @@ import {
   activeSessionMessagePath,
   activePromptPath,
 } from "./opencode-paths";
+import { normalizeOcList } from "./attention";
 import type { MessageWithParts } from "./types";
 
 export const MEMORY_EXTRACT_TRANSCRIPT_MAX_CHARS = 16_000;
@@ -269,11 +270,13 @@ export async function runMemoryExtraction(input: {
   // analyse should leave no trace at all.
   let messages: MessageWithParts[];
   try {
-    messages = await ocServer<MessageWithParts[]>(
+    const raw = await ocServer<unknown>(
       directory,
       activeSessionMessagePath(input.sessionId),
       { timeoutMs: 10_000 },
     );
+    // v2 message endpoints wrap the list in `{ data: [...] }`.
+    messages = normalizeOcList<MessageWithParts>(raw);
   } catch {
     const historyRunId = createMemoryExtractionRun({
       workspaceId: input.workspaceId,
@@ -361,11 +364,13 @@ export async function runMemoryExtraction(input: {
     await new Promise((resolve) => setTimeout(resolve, MEMORY_EXTRACT_POLL_MS));
     let polled: MessageWithParts[];
     try {
-      polled = await ocServer<MessageWithParts[]>(
+      const raw = await ocServer<unknown>(
         directory,
         activeSessionMessagePath(sessionID),
         { timeoutMs: 10_000 },
       );
+      // v2 message endpoints wrap the list in `{ data: [...] }`.
+      polled = normalizeOcList<MessageWithParts>(raw);
     } catch {
       continue;
     }

@@ -117,8 +117,23 @@ function isSymlinkTo(linkPath, target) {
 
 function symlinkDir(target, linkPath) {
   mkdirp(path.dirname(linkPath));
-  if (fs.existsSync(linkPath) || fs.lstatSync(linkPath, { throwIfNoEntry: false })) {
-    fs.rmSync(linkPath, { recursive: true, force: true });
+  let existing = null;
+  try {
+    existing = fs.lstatSync(linkPath);
+  } catch {
+    // Not present: nothing to remove.
+  }
+  if (existing) {
+    // Never replace a real directory/file the user created at the mirror
+    // path: recursively deleting it would destroy user data. This matches
+    // web/src/lib/profiles/agents-sync-engine.ts, which throws on the same
+    // condition. Only a symlink/junction (ours, or stale) is removed first.
+    if (!existing.isSymbolicLink()) {
+      throw new Error(
+        `sync target ${linkPath} exists and is not a symbolic link; move it aside manually to let agents-sync create the link`,
+      );
+    }
+    fs.rmSync(linkPath, { force: true });
   }
   if (process.platform === "win32") {
     try {

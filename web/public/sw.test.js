@@ -34,15 +34,21 @@ test("shouldCacheResponse returns false when ok is undefined", () => {
 });
 
 test("service worker uses a new cache version to discard legacy caches", () => {
-  assert.match(serviceWorker, /const CACHE = "opencode-webui-v5";/);
+  assert.match(serviceWorker, /const CACHE = "opencode-webui-v6";/);
 });
 
-test("service worker listens for BUILD_ID messages to wipe stale caches", () => {
+test("service worker listens for BUILD_ID messages to wipe the real cache", () => {
   assert.match(serviceWorker, /addEventListener\("message"/);
   assert.match(serviceWorker, /type === "BUILD_ID"/);
-  assert.match(serviceWorker, /wipeBuildCache/);
+  // The wipe must target the CACHE that navigation responses are stored in
+  // (v5 wiped a BUILD_CACHE that nothing ever wrote to — a no-op).
+  assert.match(serviceWorker, /caches\.delete\(CACHE\)/);
 });
 
-test("service worker keeps /_next/ bypass so chunks are never cached", () => {
+test("service worker caches /_next/ static assets so the offline shell works", () => {
   assert.match(serviceWorker, /url\.pathname\.startsWith\("\/_next\/"\)/);
+  // Cache-first for versioned chunks: the cached navigation HTML references
+  // these hashed files, which must be present offline too. The CACHE is wiped
+  // whenever the build id changes, so stale chunks cannot outlive a deploy.
+  assert.match(serviceWorker, /caches\.match\(req\)/);
 });

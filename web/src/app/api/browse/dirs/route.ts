@@ -5,6 +5,7 @@ import path from "node:path";
 import { listQuickAccess } from "@/lib/quickaccess";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { requireAuthorized } from "@/lib/api-guard";
+import { isLocalHostRequest } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,13 +83,24 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   // Directory enumeration is host-only: even the project picker (files=0)
-  // exposes the host's filesystem layout, so require a loopback caller.
-  // The in-task FileTree (files=1) additionally enforces the allowlist below.
+  // exposes the host's filesystem layout, so require a loopback caller. The
+  // in-task FileTree (files=1) additionally enforces the allowlist below.
   const raw = req.nextUrl.searchParams.get("path");
   const home = os.homedir();
   // Opt-in: the in-task file tree needs files too; the project picker omits
   // this so it keeps listing directories only.
   const includeFiles = req.nextUrl.searchParams.get("files") === "1";
+
+  // files=0 (home/quick-access browsing) is host-only: a signed-in remote
+  // client must not enumerate the host's home directory tree. (Inline
+  // loopback check rather than `rejectUnlessLocal`, which api-guard-coverage
+  // bans in route files because it skips the CSRF check.)
+  if (!includeFiles && !isLocalHostRequest(req)) {
+    return NextResponse.json(
+      { error: "this endpoint is only available from the host machine" },
+      { status: 403 },
+    );
+  }
 
   let resolved: string;
   if (!raw || !raw.trim()) {

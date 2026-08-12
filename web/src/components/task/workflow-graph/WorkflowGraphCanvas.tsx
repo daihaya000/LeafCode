@@ -89,11 +89,6 @@ export function WorkflowGraphCanvas({
   const moveStarted = useRef(false);
   const graphRevisionRef = useRef(graphRevision);
   graphRevisionRef.current = graphRevision;
-  // #region debug log
-  useEffect(() => {
-    void fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'A,B,C',location:'WorkflowGraphCanvas.tsx:78',message:'canvas render inputs',data:{graphRevision,hasViewport:Boolean(graph.viewport),viewport:graph.viewport,nodeCount:nodes.length,nodePositions:nodes.map((node) => ({id:node.id,x:node.position.x,y:node.position.y})),direction},timestamp:Date.now()})}).catch(()=>{});
-  }, [direction, graphRevision, graph.viewport, nodes]);
-  // #endregion
   useEffect(() => () => {
     if (persistTimer.current) clearTimeout(persistTimer.current);
   }, []);
@@ -125,9 +120,6 @@ export function WorkflowGraphCanvas({
     });
   };
   const persistViewport = (_event: unknown, viewport: Viewport) => {
-    // #region debug log
-    void fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'A,B',location:'WorkflowGraphCanvas.tsx:103',message:'move end viewport',data:{viewport,moveStarted:moveStarted.current,graphRevision:graphRevisionRef.current},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (!editingEnabled || !isWorkflowGraphEditEnabled() || !moveStarted.current) return;
     moveStarted.current = false;
     pendingViewport.current = viewport;
@@ -171,9 +163,6 @@ export function WorkflowGraphCanvas({
         onEdgeClick={handleEdgeClick}
         onPaneClick={() => { onSelectNode(null); onSelectEdge(null); }}
         onMoveStart={() => {
-          // #region debug log
-          void fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'A,B',location:'WorkflowGraphCanvas.tsx:161',message:'move start',data:{graphRevision:graphRevisionRef.current},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           moveStarted.current = true;
         }}
         onMoveEnd={persistViewport}

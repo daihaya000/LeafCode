@@ -1,6 +1,6 @@
 import { IMAGE_SEND_SETUP_SLACK_MS } from "./image-send-timeout";
 import { OcError, ocServer } from "./oc-server";
-import { SESSION_LIST_PATH, activeSessionMessagePath, sessionPath } from "./opencode-paths";
+import { SESSION_LIST_PATH, sessionMessagePath, sessionPath } from "./opencode-paths";
 import { readQwenNativeSettings, QWEN_NATIVE_DEFAULTS } from "./profiles/settings";
 
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/([a-z0-9.+-]+));base64,([a-z0-9+/]+={0,2})$/i;
@@ -217,28 +217,48 @@ async function analyzeWithOpenCode(
     // session permissions to deny, so the tools-less path cannot edit/bash.
     const bodyWithTools = { ...baseBody, tools };
     let response: { parts?: { type?: string; text?: string }[] };
+    // The analysis session is a throwaway v1-style session. Its prompt is
+    // always sent over the v1 `/session/{id}/message` POST (message = prompt),
+    // regardless of the API-generation setting: the v2 message endpoint is
+    // GET-only, and the v2 prompt response does not carry the assistant
+    // `parts` this routine needs to read the analysis result back.
+    const readPromptReply = async (raw: unknown): Promise<{ parts?: { type?: string; text?: string }[] }> => {
+      // Defensive: tolerate a future `{ data: ... }` wrapper around the parts.
+      if (
+        raw &&
+        typeof raw === "object" &&
+        !Array.isArray(raw) &&
+        typeof (raw as { data?: unknown }).data === "object" &&
+        (raw as { data?: unknown }).data !== null
+      ) {
+        return (raw as { data: { parts?: { type?: string; text?: string }[] } }).data;
+      }
+      return (raw ?? {}) as { parts?: { type?: string; text?: string }[] };
+    };
     try {
-      response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
+      const raw = await ocServer<unknown>(
         directory,
-        activeSessionMessagePath(sessionId),
+        sessionMessagePath(sessionId),
         {
           method: "POST",
           timeoutMs,
           body: bodyWithTools,
         },
       );
+      response = await readPromptReply(raw);
     } catch (error) {
       if (!isToolsRejectedError(error)) throw error;
       await lockAnalysisSessionPermissions(directory, sessionId);
-      response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
+      const raw = await ocServer<unknown>(
         directory,
-        activeSessionMessagePath(sessionId),
+        sessionMessagePath(sessionId),
         {
           method: "POST",
           timeoutMs,
           body: baseBody,
         },
       );
+      response = await readPromptReply(raw);
     }
     const text = (response.parts ?? [])
       .filter((part) => part.type === "text" && typeof part.text === "string")

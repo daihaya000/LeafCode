@@ -381,19 +381,19 @@ export function filterRevertedMessages(
   revert: SessionRevert | null,
 ): MessageWithParts[] {
   if (!revert?.messageID) return messages;
-  const out: MessageWithParts[] = [];
-  for (const m of messages) {
-    if (m.info.id > revert.messageID) continue;
-    if (m.info.id < revert.messageID) {
-      out.push(m);
-      continue;
-    }
-    // id === revert.messageID
-    if (!revert.partID) continue;
-    const idx = m.parts.findIndex((p) => p.id === revert.partID);
-    if (idx <= 0) continue;
-    out.push({ ...m, parts: m.parts.slice(0, idx) });
-  }
+  // Locate the revert boundary by array index, not by comparing message ids
+  // lexicographically: OpenCode message ids are timestamp-prefixed strings
+  // whose string ordering happens to match chronology today, but the filter
+  // must not depend on that implicit ID format. If the boundary message is
+  // no longer in the transcript, show everything (safer than hiding work).
+  const index = messages.findIndex((m) => m.info.id === revert.messageID);
+  if (index < 0) return messages;
+  // Hide the boundary message and everything after it.
+  const out = messages.slice(0, index);
+  if (!revert.partID) return out;
+  const partIndex = messages[index].parts.findIndex((p) => p.id === revert.partID);
+  if (partIndex <= 0) return out;
+  out.push({ ...messages[index], parts: messages[index].parts.slice(0, partIndex) });
   return out;
 }
 

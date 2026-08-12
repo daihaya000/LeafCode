@@ -8,6 +8,7 @@ import {
 import { applyWorkflowSessionPermissions } from "./opencode-task-permission";
 import { buildWorkflowPrompt } from "./workflow-prompt";
 import { parseImplementResult, parseReviewResult } from "./workflow";
+import { normalizeOcList } from "./attention";
 import type { MessageWithParts } from "./types";
 import type { WorkflowNodeConfig, WorkflowNodeKey } from "./workflow-types";
 import { readWorkflowWorkspaceSnapshot } from "./workflow-git";
@@ -361,15 +362,17 @@ async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<v
   if (!workspace) return;
   let messages: MessageWithParts[];
   try {
-    messages = await ocServer<MessageWithParts[]>(
+    const raw = await ocServer<unknown>(
       workspace.absolute_path,
       activeSessionMessagePath(attempt.opencode_session_id),
       { timeoutMs: 10_000 },
     );
+    // v2 message endpoints wrap the list in `{ data: [...] }`.
+    messages = normalizeOcList<MessageWithParts>(raw);
   } catch {
     return;
   }
-  if (!Array.isArray(messages)) return;
+  if (messages.length === 0) return;
   const boundedMessages = messagesAfterBoundary(messages, attempt.last_message_id);
   if (!boundedMessages) return;
   const result = extractWorkflowResult(boundedMessages, attempt.prompt_marker, info.node_key);
@@ -519,14 +522,14 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
     }
   }
   try {
-    const previousMessages = await ocServer<MessageWithParts[]>(
+    const raw = await ocServer<unknown>(
       workspace.absolute_path,
       activeSessionMessagePath(attempt.opencode_session_id),
       { timeoutMs: 10_000 },
     );
-    const lastMessageId = Array.isArray(previousMessages)
-      ? previousMessages.at(-1)?.info.id ?? null
-      : null;
+    // v2 message endpoints wrap the list in `{ data: [...] }`.
+    const previousMessages = normalizeOcList<MessageWithParts>(raw);
+    const lastMessageId = previousMessages.at(-1)?.info.id ?? null;
     getDb()
       .prepare("UPDATE workflow_node_attempts SET last_message_id = ? WHERE id = ? AND status = 'dispatching'")
       .run(lastMessageId, attempt.id);

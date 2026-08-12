@@ -1,0 +1,132 @@
+# BUG インベントリ（2026-08-12 バグハント）
+
+> 対象リポジトリ: OpenCodeWebUI（`web/` + `host/` + `browser-bridge/`）
+> 検証環境: git HEAD `eadcb41`（クリーン）、Windows / OneDrive
+> このファイルは**発見記録のみ**。修正は本ファイルを参照して別途行う（修正禁止）。
+
+## 修正状況（2026-08-12 全件対応）
+
+以下の全 13 件を修正済み。検証: `tsc --noEmit` / `eslint .`（既存警告 1 件のみ）/
+vitest 287 ファイル・3561 テスト / host 395 テスト / browser-bridge 91 テスト すべて PASS。
+
+| ID | 修正内容 |
+|----|----------|
+| BH-1 | `WorkflowGraphCanvas.tsx` のデバッグ fetch 3 箇所を削除 |
+| BH-2 | `sw.js` を v6 化: ビルドID 変更時に実キャッシュ（`CACHE`）を wipe、`/_next/` をキャッシュしてオフラインシェルを成立。`sw.test.js` / `service-worker.test.js` を新挙動に更新 |
+| BH-3 | `filterRevertedMessages` を message ID の文字列比較から配列 index 境界方式に変更 |
+| BH-4 | `sync-profiles.mjs` の Claude settings JSON パースを try/catch 化（壊れた JSON でもクラッシュしない） |
+| BH-5 | `path-validation.ts`: 他ユーザーのプロファイルを `includesDescendants: true` で保護 |
+| BH-6 | `api-guard.ts` の `Origin: null` コメントを実装と一致する内容に訂正 |
+| BH-7 | `pty-session/input/route.ts` の重複コメントを削除 |
+| BH-8 | プロキシの `cachedProvidersByDir` / `cachedAgentsByDir` に 64 エントリ上限の LRU 風 eviction を追加 |
+| BH-9 | サーバー側トランスクリプト読取に `normalizeOcList`（`{data:[...]}` 吸収）を適用（goal-loop / workflow-scheduler / collaboration-context / memory-extract / task-service）。画像事前解析は v1 `sessionMessagePath` に固定＋応答の `{data}` ラップ防御 |
+| BH-10 | `evaluateWorkflowGraphRuntime` の write_conflict 対象 node を `blockedNodeIds` に追加（無言停滞を pause 化） |
+| BH-11 | `agents-sync.mjs` の `symlinkDir` を web エンジンと同型に: 実体ディレクトリ/ファイルは throw（再帰削除しない） |
+| BH-12 | `stopProcessTreeGracefully` のデッドコード `isAlive(pid) ? 'hard' : 'hard'` を `return 'hard'`＋文書化に整理 |
+| BH-13 | `browse/dirs` の files=0（ホーム配下の列挙）を loopback 限定に（`isLocalHostRequest`、api-guard-coverage の制約に適合） |
+
+---
+
+## 検証で実施したこと
+
+- `tsc --noEmit`（web）: **成功**（型エラーなし）
+- `eslint .`（web）: 成功（警告 1 件のみ: `opencode-generation.settings.test.ts:13` の未使用変数）
+- `vitest run`（web）: **287 ファイル / 3561 テスト PASS（1 skip）**
+- `node --test`（host）: **全 PASS（fail 0）**
+- `node --test`（browser-bridge）: **91 テスト PASS（fail 0）**
+- 手動レビュー: `web/src/lib` / `app/api` / `components` / `host/src` / `browser-bridge` / `scripts`
+
+自動テストは全て通っており、以下は**テストで検出されない**ロジック / 実装上の問題を
+手動レビュー + 実データ照合で確認したもの。
+
+---
+
+## 優先度基準
+
+| 優先度 | 基準 |
+|--------|------|
+| **高** | セキュリティ侵害・データ破壊・コア導線が壊れる・本番コードに調査用残骸 |
+| **中** | 実害あり（条件付き / 頻度限定 / 機能の意図未達） |
+| **低** | 文言ズレ・レア edge ケース・堅牢性のみ |
+
+---
+
+## 高（すぐ直す）
+
+| ID | 要約 | 根拠 / 影響 |
+|----|------|-------------|
+| **BH-1** | `WorkflowGraphCanvas.tsx` にデバッグ用 `fetch` が **3 箇所**残存（コミット済み） | `web/src/components/task/workflow-graph/WorkflowGraphCanvas.tsx:92-96`（レンダリング毎）、`:128-130`（viewport move 終了）、`:174-176`（move 開始）。毎回 `http://127.0.0.1:52338/ingest/8d185c` へ `{graphRevision, viewport, nodePositions, direction}` を POST。ハードコードされた調査用エンドポイント（`hypothesisId:'A,B,C'` 等はデバッグ痕跡）。ポート 52338 に常駐がない環境でも毎レンダリング fetch が走り、グラフ内部状態を外部へ送る。リポジトリルートの `.debug-agent-start.log`（`/ingest/1c340a`）も同じ調査セッションの残骸。→ 削除すべき |
+| **BH-11** | `scripts/agents-sync.mjs` の `symlinkDir` が、ミラー先に**実体ディレクトリ/ファイルが存在する場合に再帰削除**してジャンクションで置き換える（データ破壊） | `scripts/agents-sync.mjs` の `symlinkDir`: `if (fs.existsSync(linkPath) || fs.lstatSync(linkPath, { throwIfNoEntry: false })) { fs.rmSync(linkPath, { recursive: true, force: true }); }` は存在するものを**無条件に再帰削除**。ユーザーが `~/.claude/skills/<name>`（または codex/agents 側）に自分で作った実体ディレクトリを、`agents-sync` 実行時に消してジャンクションに置き換える。さらに `plan()`（`--check`）は同一ケースを `exists but is not the correct symlink (blocked)` かつ `wouldChange: false` と報告して「変更しない」と言うのに、`apply()` は破壊する（チェックモードが誤報）。**web 側エンジン `web/src/lib/profiles/agents-sync-engine.ts` の `symlinkDir` は `existing.isSymbolicLink()` でなければ `throw` して保護しており、CLI と非対称**。→ CLI も throw する（または `plan()` の blocked と一致させる）こと | 
+| **BH-9** | **OpenCode API 世代を v2 に切り替えると、サーバー側のトランスクリプト読み取りが複数機能で壊れる**（v2 のメッセージ応答が `{data:[...]}` ラップのため） | OpenCode v2 の `/api/session/{id}/message`（`SessionMessagesResponse`）は `{ data: Message[], cursor }` 形式。`ocServer()` はラップを解除しない（BFF プロキシ経由は `maybeUnwrapV2Data` が解除するが、サーバー内部の `ocServer` 直呼びは非対象）。`activeSessionMessagePath()` が v2 に解決される設定（Settings→Engine で v2 選択、`isV2ApiGeneration()` がサーバーでも true）で以下が発現: (1) **goal-loop** `goal-loop.ts` `boundaryStartIndex` が `{data:[...]}` に `.findIndex` を呼び TypeError → スケジューラが loop を `scheduler_error` で pause（ループ機能停止）。(2) **workflow** `workflow-scheduler.ts:372` `if (!Array.isArray(messages)) return;` → attempt が `running` のまま**永遠に進行しない**（無言ハング）。(3) **collaboration-context** `collaboration-context.ts` が TypeError を catch して空ブロックを返す（機能喪失は無言）。(4) **memory-extract** `memory-extract.ts` が `.filter`/iteration で TypeError（抽出がタイムアウト/失敗）。(5) **cost 推定** `task-service.ts` `exactMessageCost` が iterate で TypeError（コスト表示が degraded、`/api/tasks/:id/cost` が 500 になり得る）。(6) **画像事前解析** `qwen-native-vision.ts:223` が `activeSessionMessagePath`（v2 では GET-only の message パス）に **POST** する v1 依存 → v2 では 405 で失敗。`hang-watchdog.ts` だけは `normalizeMessageList` で両形式を吸収済み（非対称）。→ 修正は `ocServer` 側か各 consumer に `normalizeMessageList` 相当の吸収を入れること。**実機確認（2026-08-12、OpenCode 1.18.16）**: `GET http://127.0.0.1:4096/api/session/<id>/message?limit=2` → `{"data":[],"cursor":{"previous":null,"next":null}}`（`{data,cursor}` ラップを確認）。`POST /api/session/<id>/message` → 200 だが **SPA の HTML が返る**（v2 message は GET-only のため POST はフォールスルー）→ 画像事前解析の `activeSessionMessagePath` への POST（qwen-native-vision.ts）は v2 で必ず失敗する |
+
+## 中（次に直す）
+
+| ID | 要約 | 根拠 / 影響 |
+|----|------|-------------|
+| **BH-2** | Service Worker の「ビルドID によるキャッシュ無効化」が実質 No-op＋オフラインシェル不成立 | `web/public/sw.js`。`wipeBuildCache()` は `opencode-webui-build`（`BUILD_CACHE`）だけを削除するが、navigation / 静的アセットを実際に書き込むのは `opencode-webui-v5`（`CACHE`）。`activate` ハンドラが `CACHE` 以外を全削除するため `BUILD_CACHE` は常に空で、誰も書き込まない。結果、コメントが意図する「デプロイ後の古いキャッシュ HTML（削除済み `_next` chunk 参照）による白画面防止」は未達（古い `/` が `CACHE` に残る）。さらに `if (url.pathname.startsWith("/_next/")) return;` で `/_next/static/*.js` を一切キャッシュしないため、オフライン時はキャッシュ済み HTML だけが返り JS が読めず白画面になる＝「オフラインアプリシェル」機能が実質動作しない。 |
+
+## 低（後でよい）
+
+| ID | 要約 | 根拠 / 影響 |
+|----|------|-------------|
+| **BH-3** | `filterRevertedMessages` が message ID の文字列大小比較に依存（テストなし） | `web/src/lib/useSessionStream.ts:379-398`。`m.info.id > revert.messageID` の `<`/`>` 比較は、OpenCode の message ID（`msg_<base36タイムスタンプ>…`）では**現行は**時系列順と一致することを実 DB（`opencode.db`）で確認済み（タイムスタンプ部が固定長 base36 のため）。ただし ID 形式への暗黙依存で、単体テストが存在しない。形式が変わると revert の非表示が静かに壊れる。 → テスト追加 or 配列 index 境界方式への変更を検討 |
+| **BH-12** | `stopProcessTreeGracefully` の最終 return がデッドコード（ハードキル後も生存判定を破棄） | `host/src/process-stop.js` の `return isAlive(pid) ? 'hard' : 'hard'` は両分岐とも `'hard'` を返し、ハードキル後もプロセスが生存しているかを呼び出し元へ伝えない（生存なら `'hard'` でなく別値を返すべき）。現状の呼び出し元 `host/src/index.js` は `'hard'` をログ文言にしか使わないため実害なし。→ `return isAlive(pid) ? 'hard' : 'hard'` を生存判定で分岐させるか、戻り値の意味を文書化する |
+| **BH-13** | `GET /api/browse/dirs`（files=0）が「host-only」コメントに反し、認証済みリモートからホストのホーム配下ディレクトリ名を列挙できる | `web/src/app/api/browse/dirs/route.ts`。コメントは「Directory enumeration is host-only … require a loopback caller」と述べるが、実際は `requireAuthorized(req)`（loopback または有効セッション）。リモートでログイン中の利用者は `files=0`（プロジェクトピッカー）でホストの `os.homedir()` 以下のディレクトリ名一覧を読める。`files=1`（in-task FileTree）は `assertAllowedDirectory` で制限済み。ディレクトリ名のみ・認証必須のため実害は低いが、コメントの意図（loopback 限定）と実装が不一致。→ `rejectUnlessLocal` にすべきか、コメントを訂正するか整理する |
+| **BH-10** | workflow graph の `write_conflict` 時、writable node が「ready から外れるだけ」で `blockedNodeIds` にも入らず、ワークフローが pause もせず無言で停滞し得る | `web/src/lib/workflow-graph-runtime.ts` の `evaluateWorkflowGraphRuntime`。`writableReady.length > 1` のとき `readyNodeIds` から除外し `pauseReason = "write_conflict"` を立てるが、対象 node を `blockedNodeIds` に**追加しない**。`workflow-scheduler.ts` は `blockedNodeIds.includes(node.node_key) && graphRuntime.pauseReason` のときだけ `pauseWorkflowForAttempt` するため、write 競合 node はスキップされ続け UI に理由が出ない。**ただし** `validateWorkflowGraph` が `parallel_write_nodes` エラーで事前に弾くため、現状は検証を通過した正常 graph では到達しない防御レイヤのみ（実害は低いが、例外経路の検査漏れ）。 |
+| **BH-4** | `scripts/sync-profiles.mjs` が壊れた Claude settings JSON でクラッシュ | `planSync()` / `applySync()` の `JSON.parse(readFileSync(CLAUDE_SETTINGS))` が uncaught exception。マスター `opencode.jsonc` は `readJsonc()`（コメント除去・trailing comma 許容）で読むのに、`~/.claude/settings.json` が壊れているとスタックトレースで死ぬ。→ try/catch でエラーメッセージ化すべき |
+| **BH-5** | `resolveValidatedAllowlistPath` が他ユーザーのプロファイル子孫を非保護 | `web/src/lib/path-validation.ts`。`getProtectedPaths()` は自ユーザー以外のプロファイル（`C:\Users\OtherUser`）も `includesDescendants: false` で追加するが、その**子孫**（例: `C:\Users\OtherUser\AppData`）は保護されない。自ユーザーのプロファイル子孫を許可するのは意図的（コメント明記）だが、他ユーザーのプロファイル子孫まで許可するのは深層防御の穴。他ユーザー配下を `includesDescendants: true` にする等を検討 |
+| **BH-6** | `api-guard.ts` の `Origin: null` コメントが実装と逆 | `web/src/lib/api-guard.ts` `rejectCrossSite`。実装は `Origin: null`（sandboxed/opaque origin）を `403` で拒否しているのに、コメントは「absent と同様に扱い auth に委ねる」と書いてある。挙動は安全側なので実害なし。コメント修正のみ |
+| **BH-7** | `pty-session/input/route.ts` に同一コメントが 2 重 | `web/src/app/api/pty-session/input/route.ts`。「Measure UTF-8 bytes…」のコメントが 2 回並ぶ。実害なし。削除のみ |
+| **BH-8** | `opencode/[...path]` プロキシの `cachedProvidersByDir` / `cachedAgentsByDir` が無期限に成長 | `web/src/app/api/opencode/[...path]/route.ts`。directory キーでキャッシュを SET するのみで削除/有効期限なし。多数のプロジェクトを開くとメモリ増加＋古い capability（モデルの画像対応が落ちても stale 判定で fail-open 側に残る）リスク。`GET_RESPONSE_CACHE`（5s TTL）と非対称 |
+
+---
+
+## 調査して「バグではない」と確認した候補（再調査防止メモ）
+
+- `filterRevertedMessages` の文字列比較 → 現行 ID 形式では正しく動作（BH-3 参照）。
+- `isBlockedOpencodeWrite` が `/api/config` PATCH を塞がない → OpenCode 1.18.14 の schema には `/config`・`/global/config` のみで `/api/config` は存在せず、現状は塞がっている。
+- `task-status.ts` / `dirstat.ts` / `git.ts` / `api-guard.ts` / `memory-*` / `pty-*` / `hang-watchdog.ts` / `goal-loop.ts` / `workflow-scheduler.ts` → いずれも実データ・テストと整合。
+- 過去のインベントリ（`docs/bugs/2026-07-23-bug-inventory.md` の R35#1 等）は別ループで**修正済み**（`removeWorktree` 根一致拒否、`maskSecrets`、write ブロック追加、`writeCostDisplayPrefs` の部分更新マージ等を現コードで確認）。
+- 本ラウンド追加レビュー: `browser-bridge/extension/*`（content-runtime.js: refs は MutationObserver で常に再構築・generation 照合あり、型イベントは React 制御 input で `.value` 直書きのため controlled component で onChange が効かない可能性はあるが、`InputEvent` を後送りするため実測未確認＝バグ確定せず）、`workflow-graph-runtime/validation/mutations/repository`、`useSessionStream` SSE ハンドラ / reducer / resync、`goal-loop` scheduler、`opencode-extensions`（agent-files/plugins/jsonc-edit/safe-move）全経路、`copy.ts` / `workspace-service` / `profiles/link` / `sw.js`。→ 新規確定は **BH-9**（v2 世代で複数機能破壊）と **BH-10**。
+- **BH-9 のテスト非検出理由**: 各サーバーモジュールのテストは `registerServerOpenCodeApiGenerationResolver` を登録せず v1（bare array）前提のモックで通るため、v2 の `{data:[...]}` 形状がテスト網羅されていない（`rg` で確認: goal-loop / workflow-scheduler / memory-extract / collaboration-context / task-service の各テストに v2 参照なし）。`hang-watchdog.test.ts` のみ `{data:[...]}` の正規化テストあり。
+- **BH-9 の到達可能性を確認**: `web/src/app/api/settings/[key]/route.ts` の `ALLOWED_KEYS` に `OPENCODE_API_GENERATION_SETTING_KEY` が含まれ、`normalizeSettingValue` が `v2` を受理する。つまり Settings→Engine で v2 を選択するとサーバー側 `isV2ApiGeneration()` が true になり BH-9 が発現する。**修正の参考**: `web/src/app/api/git/commit-message/route.ts` は v1 の `sessionMessagePath()` を明示使用しており、v2 設定でも壊れない（v1 ビルダー固定パターン）。goal-loop / workflow も同様に v1 固定 or `normalizeMessageList` 相当の吸収が候補。
+- ターン3 追加レビュー: `host/src/control-server.js`（HMAC セッション・失効・`createLoginThrottle` の username/IP 二段スロットル・admin チェック、trusted-device フロー）→ 全て健全。`api/settings/[key]` ルート（key allowlist + 値正規化）→ 健全。`auto-model.ts`（tier 分類・cost band ・escalation）→ 健全。`useAgents.ts`（directory 変更時に旧一覧を一瞬表示し得るが軽微・バグ確定せず）。`build-web.mjs` / `web-build-mirror.mjs` / `dev.mjs` → 健全（stash/restore/discard と mirror のhard-link/copy 切替）。`opencode-id.ts` → 健全。TaskView の `activeScope`/`extras` は `shellActive`＋owner id で split 時の取り合いを正しく処理。
+- ターン4 追加レビュー: `host/src/caddy-sites.js`（IPv4 リテラルのみ管理、loopback/ドメイン/カスタム port 保存、placeholder 除去、idempotent）→ 健全。`web/src/lib/profiles/copy.ts`（concurrency 付き copyTree、symlink 再現、verifyCopy）→ 健全。`scripts/agents-sync.mjs` → **BH-11 を発見**（web エンジン `agents-sync-engine.ts` と非対称で、実体ディレクトリを再帰削除）。`web/e2e/*.spec.ts` / `playwright.config.ts`（`.next-e2e` 分離 distDir）→ 健全。
+- ターン5 追加レビュー: `ProviderModelsSettings`（auto-settings write path）・`ProfilesSettings` / `profiles/service.ts`（`switchBlockReason`・`isBusy` ガード・`swapLink`）・`goal-loop.ts` の `applyAssistantResult` / `expireStalledTurn` / turn カウント（fresh re-read、`turn_count < max_turns` の WHERE ガード、verification は turn 消費しない）・`memory/consolidate`（dryRun 既定、トランザクション、use_count マージ）・`agent-utils.ts`（rank パース）・`useSessionStream` の reconnect/resync（preferRest ホールドカウンタ、silenceWatch、CONNECTING stall ガード）→ いずれも健全、新規確定バグなし。
+- ターン6 追加レビュー: `memory-key.ts`（trigram Jaccard・polarity 分離・identifier オーバーラップ閾値）→ 健全。`git-restore.ts`（cooldown・`--no-checkout` clone→`.git` move→`reset --hard`、失敗時の progress 記録と再試行）→ 設計妥当（zip インストールのローカル改変は `reset --hard` で失われるが意図的）。`opencode-extensions/mcp.ts`（name 検証・config ロック書き込み）・`addons/codexbar`（usage/tokens/providers ルートは `requireAuthorized` 済み、64MB/300file 上限＋キャッシュ）・`codexbar-auto.ts` → 健全。新規確定バグなし。
+- ターン7: **BH-9 を実機で確認**。稼働中エンジン（127.0.0.1:4096, OpenCode 1.18.16）へ直接照会し、`GET /api/session/{id}/message` が `{"data":[],"cursor":{...}}` を返すこと、`POST /api/session/{id}/message` が 200 で SPA の HTML を返すこと（v2 message は GET-only）を確認。BH-9 の前提（v2 ラップ形状と画像解析の POST 失敗）を実証。`provider-models.ts` の書き込み経路（`validateIdentifier` / `{env:NAME}` 保存 / config ロック / `ensureConfigFile`）・TaskView の Todo 完了警告（`looksFinishedReport` ゲート）→ 健全。
+- ターン8 追加レビュー: `memory-extract.ts`（`lastJsonBlock` / `parseExtractionJson` / `messagesAfter` の delta 抽出、`ALREADY STORED` 防御）→ 健全。`workflow-service.ts`（`createWorkflow` / `reattachWorkflow` / `updateWorkflowNode` の revision CAS）→ 健全。HomeView の submit 後段（workflow/goal-loop 変換と失敗時の DELETE ロールバック、`autoDecision` のループモデル解決）→ 健全。`NextAction.tsx`（generation ref による古い応答破棄）・`useSessionStream` の `session.next.text/reasoning.*` delta 適用（`upsertPart` の text 置換ロジック）→ 健全。新規確定バグなし。
+- ターン9 追加レビュー: `project-agents.ts` / `project-skills.ts`（`SAFE_NAME`・symlink 拒否・`realpath` で root 内検証・2MB 上限）→ 健全。`skill-frontmatter.ts`（block scalar 対応の frontmatter 解析）・`skill-catalog-labels`・`CommandPalette.tsx`（Escape の open 時限定、attention モーダル重なり防止、`find/file` 検索の AbortController）→ 健全。新規確定バグなし。
+- ターン10 追加レビュー: `SessionSwitcher.tsx`（既存切替でも `focusSession` → `syncSessionPermissions` → `onSwitch` の順で権限同期、失敗時 `refresh`＋選択復元、generation/requestId ガード）→ 健全。`AttentionQueueModal.tsx`（busyRef・404 は既応答として除去・フォーカス管理・Escape は busy 時無視）→ 健全。`MessageMetaHeader.tsx`（cost/tokens/effort 表示）→ 健全。新規確定バグなし。
+- ターン11 追加レビュー: `workflow-graph-react-flow.ts`（disabled/unsupported 状態、edge active アニメーション、TB のみ自動レイアウト）・`workflow-graph-layout.ts`（dagre、feedback edge 除外）→ 健全。`difftint.ts`（キーワード→コメント→文字列の順、`(?<!&)#` の R15#3 対応）→ 健全（文字列内 `#`/`//` の誤 tint は軽量ハイライトの既知トレードオフ）。`git-pathspec.ts`（NUL/`..`/magic/glob/絶対パス拒否、`rejectWebuiMeta`）→ 健全（`..` を含むファイル名は誤拒否され得るが安全側）。`openai-pricing.ts` / `model-options.ts`（価格表・intelligence スコア・`shouldDefaultDisableModel` の世代判定）→ 健全。新規確定バグなし。
+- ターン12 追加レビュー: `host/src/port-plan.js`（`netstat` の LISTENING 行・`:port` suffix 照合で `:40960` 等を除外）→ 健全。`host/src/restart-targets.js`（`resolveWebKillPids` の owned PID 優先＋`isOwnedListener` ガード）→ 健全。`host/src/process-stop.js`（dispose→soft→hard、`reapInheritedHolders`、`stopWebTreeSync`）→ **BH-12 を発見**（`stopProcessTreeGracefully` 最終行のデッドコード。実害なし・低）。`browser-bridge/extension/snapshot-safety.mjs`（sensitive 判定・opaque ref・generation 照合）→ 健全。
+- ターン13 追加レビュー: `browser-bridge/extension/background.mjs`（ペアリング→authenticate、persisted sharedTabs の re-validate（phantom タブ防止）、command generation 照合・commandId dedupe、auto-share 権限チェック、Broker URL loopback 制限、`pairing_denied`/`NOT_PAIRED` 処理）→ 健全。`browser-bridge/mcp/memory-server.mjs`（web と同型のメモリ重複検査・FTS・scope 解決）→ 健全。`web/src/lib/aborted-resume.ts`（abort/silent ターン再開判定）・`completion-report.ts`（`完了報告` 行アンカー）・`events.ts` → 健全。新規確定バグなし。
+- ターン14 追加レビュー: `PtyPanel.tsx`（SSE 再接続の指数バックオフ、`{t:"exit"}` で停止、`onResize` の初回 fit 同期、input は `keepalive`＋タイムアウト）→ 健全。`GoalLoopPanel.tsx`（pause/stop/resume/maxTurns 編集、`PAUSE_REASON_HINT` の未定義 key は hint 非表示になるだけ・クラッシュなし、Escape の confirm ダイアログ）→ 健全。新規確定バグなし。
+- ターン15 追加レビュー: `FileTreePanel.tsx`（「上へ」は root 超えを `assertAllowedDirectory` が拒否、reqId ガード）→ 健全。`api/browse/dirs` → **BH-13 を発見**（files=0 が host-only コメントと不一致で認証済みリモートにホーム配下を列挙させ得る。低）。`quickaccess.ts`（Jump List パース・LNK 解決の PowerShell spawn、30s キャッシュ・並列 pending 抑制）→ 健全。
+- ターン16 追加レビュー: `workflow-artifacts.ts`（opaque ref の `data:`/base64 拒否・origin 検証・`verifyBrowserBridgeScreenshot` の tab 共有/所有者照合）→ 健全。`workflow-git.ts`（snapshot の SHA-256 fingerprint）→ 健全。`MarkdownViewerPanel.tsx`（`collectMarkdownEntries` の file/text 分類・画像除外）→ 健全。`workflow-feature-client.ts` → 健全。新規確定バグなし。
+- ターン17 追加レビュー: `Sidebar.tsx` のドラッグリサイズ（`clampWidth`・pointerup で `saveWidth`＋`persistSidebar`、cleanup で body cursor 復元）・プロジェクト展開永続化 → 健全。`provider-model-state.ts`（状態ファイルの検証済み読み込み・`withStateLock` 直列化・`knownModelKeys` の legacy grandfathered 扱い・`removeProviderState` の全トレース掃除）→ 健全。新規確定バグなし。
+- ターン18 追加レビュー: `deploy/Caddyfile.example`（h3 無効化＋`Alt-Svc clear`、`@hostOnlyApis` の loopback 限定・`root.crt` のみ配布、placeholder hostname 除去）→ 健全。`build.bat`（ASCII-only・build guard・mirror distDir 解決・BUILD_ID 検証）→ 健全。`SessionSwitcherDialog.tsx`（フォーカス管理・Tab トラップ・Escape）→ 健全（`onSwitch` の await 漏れは既知・対象外）。新規確定バグなし。
+- ターン19 追加レビュー: `goal-loop.ts` の `buildGoalPrompt` / `buildGoalContinuationPrompt`（完走モードは `status: progress|blocked` のみ・早期完了宣言を無視・turn 数を明示、通常モードは `completed`＋検証ターン言及、recent progress は full で最新5件・continuation で最新2件＋evidence）→ プロンプト間の整合性あり。`useSlashCommands.ts`（`/api/opencode/command` の normalize、directory 依存、cancelled ガード）→ 健全。`memory-idle.ts`（`updated_at` 閾値・ledger dedup・in-flight ガード）→ 健全。新規確定バグなし。
+- ターン20 追加レビュー: `token-saving-settings.ts`（localStorage 一元＋server バックアップ、clamp、`shouldAutoCompact` ゲート）→ 健全。`goal-memory-hook.ts`（goal 完了時抽出の fire-and-forget・auto_extract ゲート）→ 健全。`workflow-executor-registry.ts`（executor 解決・legacy/snapshot 切替）・`npm-cli.ts`（npm-cli.js 解決の where.exe フォールバック）→ 健全。新規確定バグなし。
+- ターン21 追加レビュー: `workflow-control-executor.ts` / `workflow.ts` の `evaluateReviewGate`（skipped/failed/blocked/pass/return_to_implement、blocking severities、`dedupeFindings` の key と並び）・`parseReviewResult` の schema 検証 → 健全。`next-action-text.ts`（transcript 上限・`sanitizeSuggestionCount`/`sanitizePreviousSuggestions`・`normalizeSuggestion` の引用符/番号除去・`extractAssistantText`）→ 健全。新規確定バグなし。
+- ターン22 追加レビュー: `memory-extract.ts` の `resolveLightweightModel`（`chooseAutoModel` で light/cost 解決、失敗時 null）→ 健全。`auto-settings.ts`（localStorage 一元＋server バックアップ、設定キー別の write queue 直列化、`hasStoredAutoSetting` で server 値の上書き回避、storage/CustomEvent 購読）→ 健全。新規確定バグなし。
+- ターン23 追加レビュー: `sidepanel-settings.ts` / `sidebar-settings.ts`（DB バックアップ・書き込み失敗は非 fatal）→ 健全。`useBodyScrollLock.ts`（ネスト lock カウンタで overflow 復元）→ 健全。`useAttentionQueue.ts`（`reconcileDirectory` の v2 keep セッション・`receivedAt > syncStartedAt`・recently-replied 除去、`shouldQueueAttention` で active セッション除外）→ 健全。新規確定バグなし。
+- ターン24 追加レビュー: `sse-health.ts`（heartbeat 15s / silence 45s / upstream connect 20s / client CONNECTING stall 45s の大小関係整合）→ 健全。`MobileMenuHeader.tsx` → 健全。`host/src/auth-store.js`（sha256+salt HMAC・timing-safe 比較・role 正規化・username/password 検証）→ 健全（sha256 は localhost BFF 前提と明記）。新規確定バグなし。
+- ターン25 追加レビュー: `useSessionStream` のタイムアウト定数（`SESSION_MUTATION_TIMEOUT_MS` 60s / `SESSION_COMMAND_TIMEOUT_MS` 295s / `mutationTimeoutForSend` は画像時 `IMAGE_ANALYSIS_SEND_TIMEOUT_MS` 以上）→ 整合。`host/src/secure-file.js`（icacls の `/inheritance:r`・owner/SYSTEM/Admin 再付与・失敗キャッシュ）→ 健全。`host/src/log-file.js`（単一行正規化・世代ローテーション・fs エラー吞み込み）→ 健全。新規確定バグなし。
+- ターン26 追加レビュー: `dist-dir.ts`（NEXT_DIST_DIR が app 内に収まることの検証・絶対パス拒否）→ 健全。`api/git/merge`（`into=branch` の checkout→merge→元ブランチ復帰、コンフリクト時 `merge --abort` で復旧、`assertNoActiveWorkflowForDirectory` ガード、worktree 使用中 409）→ 健全。`install-root.ts` / `install-state.ts`（git 復元の progress/cooldown 記録）→ 健全。新規確定バグなし。
+- ターン27 追加レビュー: `api/fx/usd-jpy`（`requireAuthorized`・失敗 502）→ 健全。`api/git/pr`（gh を argv 直呼び・`--version` 事前チェック・`push -u origin HEAD`→`gh pr create`・base の `assertSafeBranchName`、60s タイムアウト）→ 健全。`devcontainer.ts`（`.devcontainer` 検出）→ 健全。`project-session-store.ts`（セッション manifest の検証付き書き込み）→ 健全。新規確定バグなし。
+- ターン28 追加レビュー: `ollama-provider.ts`（`resolveOllamaModelEntries` は能力取得失敗時に名前推定へ fallback、`ollamaProviderConfig` は `attachment`/`modalities` を付与、`upsertProviderEntry` で config 更新）→ 健全。`workflow-feature.ts`（settings 表→env→default の解決順、client/server の分離）→ 健全。新規確定バグなし。
+- ターン29 追加レビュー: `fx-usd-jpy.ts`（JST 日付キーで 1 日キャッシュ・レート範囲検証・8s タイムアウト）→ 健全。`ollama-cli.ts`（WinGet Links フォールバック・`/api/show` 能力取得の 5s abort・`/api/tags` 実行判定・pull の JSON 行パース）→ 健全。`api/git/show` / `api/git/log`（`assertSafeCommitHash`・pathspec 検証）→ 健全。新規確定バグなし。
+- ターン30 追加レビュー: `opencode-extensions/paths.ts`（`OPENCODE_CONFIG_DIR` override・`configDirStateKey` でプロファイル別の state 分離（realpath＋Windows 小文字正規化）・`opencodeConfigFilePath` の jsonc 優先）→ 健全。`opencode-extensions/http.ts` → 健全。新規確定バグなし。
+- ターン31 追加レビュー: `opencode-extensions/skills.ts`（`walkForSkills` の深さ/件数/走査ディレクトリ上限・nested は view-only・`setSkillEnabled` の `resolveContainedPath`＋`moveEntrySafe`・engine `/skill` 説明で上書き）→ 健全。`client-ip.ts`（**右端**の XFF を使用＝攻撃者制御の左端を信用しない、IPv6 bracket/zone/`::ffff:` 正規化）→ 健全。新規確定バグなし。
+- ターン32 追加レビュー: `localhost-redirect.ts`（loopback/private 判定・`127.0.0.1:18765/health` への no-cors プローブで到達時のみ redirect・public hostname は対象外・800ms タイムアウト）→ 健全。`api/qwen-native/settings`（`providerID::modelID` 形式検証・timeout 範囲クランプ・enabled 時はモデル必須）→ 健全。新規確定バグなし。
+- ターン33 追加レビュー: `qwen-native-vision.ts`（`loadToolDisableMap` の空配列 fail-closed＋5min キャッシュ、`lockAnalysisSessionPermissions` の全 deny、session 作成と tool/id を並列、`DATA_URL_RE` の mime 一致検証、`nativeImageContext` は画像由来を未信頼データとして明示、teardown で session DELETE）→ 健全。新規確定バグなし。
+- ターン34 追加レビュー: `SessionActions.tsx`（v2 は stage→commit の 2 段 revert、v1 は partID 対応、compact の 409 ロック競合リトライ（10s 期限）、`revertUserMessageToComposer` の inclusive revert、generation/busyRef ガード）→ 健全。`HeaderKebabMenu.tsx`（キーボードナビ）→ 健全。新規確定バグなし。
+- ターン35 追加レビュー: `ollama/status`・`ollama/setup`（`requireAuthorized`・`maxDuration`）→ 健全。`message-parts.ts`（`isImageFilePart`・`groupImagePartsForRender`）→ 健全。`project-session-sync.ts`（manifest からの復元で worktree/copies の root 一致拒否・絶対パスを isolation の trusted ディレクトリへ束縛・他 project 所有 id の束縛拒否・idempotent）→ 健全。新規確定バグなし。
+- ターン36 追加レビュー: `context-usage.ts` / `token-usage.ts`（直近 assistant ターンの token で context 使用率、`t.total ??` のフォールバック合計、`cacheHitPct` の 0 除算ガード、`cumulativeTokenUsage` は課金相当の累計と明記）→ 健全。`install-root.ts`（git 判定・インストール root 解決）→ 健全。新規確定バグなし。
+- ターン37 追加レビュー: `CommandPalette.tsx` のタスク/ファイル/アクション選択（`find/file` 検索・active index の items 変化時クランプ・onMouseDown 背景で close）→ 健全。`WorkflowGraphInspector.tsx`（node 切替時の draft/selectedAttempt リセット・retry の workflowRevision・Escape close）→ 健全。新規確定バグなし。
+- ターン38 追加レビュー: `favicon-badge.ts`（64px canvas の tray アイコン再現・ステータスドット・`toDataURL` の lock-down 例外 swallow）→ 健全。`WorkflowGraphEditor.tsx`（CAS ベースの `mutate`（`expectedGraphRevision`）・キーボード（Delete/Escape/Ctrl+矢印）・自動レイアウト・add_edge の kind 決定）→ 健全。新規確定バグなし。
+- ターン39 追加レビュー: `api-guard-coverage.test.ts`（全 `/api` ルートの default-deny 強制・`@addons/*` 再エクスポート解決・ハンドラ数 vs guard 数・public allowlist の縮小維持・proxy の guard が params 解決前）→ 健全（網羅テストが設計として強力）。`AgentSuggestMenu` / `SlashSuggestMenu`（キーボードナビ・aria 属性）→ 健全。新規確定バグなし。
+- ターン40 追加レビュー: `opencode-schema-freshness.test.ts`（spec の path 面 vs 生成 `.d.ts` の一致・`OC_PATH_TEMPLATES` が spec に存在・`VERSION` 形式）→ 健全（stale 生成ファイルによる誤検証を防ぐ）。`StatusBadge.tsx` → 健全。新規確定バグなし。
+- ターン41 追加レビュー: TaskView の busy→idle 遷移（`playSessionCompleteSound`・`setDiffKey`・`refreshTask`・`refreshTodos`・`resync`・`refreshGoalLoop` を scope 一致時のみ、null は reset プレースホルダと判別）→ 健全。`useVoiceInput` の TaskView/HomeView 統合（`disabled` 時 auto-stop）→ 健全。新規確定バグなし。
+- `build.log` の `useSessionStream.ts` 構文エラーは古い失敗記録で、現ファイルは正常（tsc PASS）。

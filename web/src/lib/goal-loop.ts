@@ -29,6 +29,7 @@ import {
   activeSessionMessagePath,
 } from "./opencode-paths";
 import type { MessageWithParts, SessionStatus } from "./types";
+import { normalizeOcList } from "./attention";
 import { scheduleAutoExtractAfterGoalCompleted } from "./goal-memory-hook";
 import { memoryInjectionFor } from "./memory";
 import {
@@ -354,11 +355,13 @@ async function autoCompactGoalLoop(
         ocServer<StatusMap>(directory, SESSION_STATUS_PATH, { timeoutMs: STATUS_TIMEOUT_MS }),
       );
       if (status[loop.sessionId] && status[loop.sessionId].type !== "idle") continue;
-      const currentMessages = await retryTransientOpenCode(() =>
-        ocServer<MessageWithParts[]>(directory, activeSessionMessagePath(loop.sessionId), {
+      const rawMessages = await retryTransientOpenCode(() =>
+        ocServer<unknown>(directory, activeSessionMessagePath(loop.sessionId), {
           timeoutMs: MESSAGE_TIMEOUT_MS,
         }),
       );
+      // v2 message endpoints wrap the list in `{ data: [...] }`.
+      const currentMessages = normalizeOcList<MessageWithParts>(rawMessages);
       const currentUsage = computeContextUsage(currentMessages, providerModelsMap(providers));
       if (
         currentMessages.length < messages.length ||
@@ -586,11 +589,13 @@ export async function createGoalLoop(input: {
   let messages: MessageWithParts[] = [];
   let transcriptReadable = true;
   try {
-    messages = await ocServer<MessageWithParts[]>(
+    const raw = await ocServer<unknown>(
       ws.absolute_path,
       activeSessionMessagePath(input.sessionId),
       { timeoutMs: MESSAGE_TIMEOUT_MS },
     );
+    // v2 message endpoints wrap the list in `{ data: [...] }`.
+    messages = normalizeOcList<MessageWithParts>(raw);
   } catch {
     // A missing transcript cannot prove that the session is idle. Start paused
     // rather than treating it as [] and potentially sending over an unseen turn.
@@ -679,11 +684,13 @@ export async function updateGoalLoopStatus(
     let messages: MessageWithParts[];
     try {
       if (!ws) throw new Error("workspace missing");
-      messages = await ocServer<MessageWithParts[]>(
+      const raw = await ocServer<unknown>(
         ws.absolute_path,
         activeSessionMessagePath(loop.sessionId),
         { timeoutMs: MESSAGE_TIMEOUT_MS },
       );
+      // v2 message endpoints wrap the list in `{ data: [...] }`.
+      messages = normalizeOcList<MessageWithParts>(raw);
       tailMessageId = latestMessageId(messages);
     } catch {
       // Do not resume to queued without a fresh transcript boundary: an empty
@@ -835,11 +842,13 @@ export async function pauseGoalLoopForManualSend(
   let tailMessageId = loop.lastMessageId;
   if (ws) {
     try {
-      const messages = await ocServer<MessageWithParts[]>(
+      const raw = await ocServer<unknown>(
         ws.absolute_path,
         activeSessionMessagePath(loop.sessionId),
         { timeoutMs: MESSAGE_TIMEOUT_MS },
       );
+      // v2 message endpoints wrap the list in `{ data: [...] }`.
+      const messages = normalizeOcList<MessageWithParts>(raw);
       tailMessageId = latestMessageId(messages);
     } catch {
       // Still pause for the manual send, but retain the old boundary. A later
@@ -1480,13 +1489,15 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
 
   let messages: MessageWithParts[];
   try {
-    messages = await retryTransientOpenCode(() =>
-      ocServer<MessageWithParts[]>(
+    const raw = await retryTransientOpenCode(() =>
+      ocServer<unknown>(
         ws.absolute_path,
         activeSessionMessagePath(loop.sessionId),
         { timeoutMs: MESSAGE_TIMEOUT_MS },
       ),
     );
+    // v2 message endpoints wrap the list in `{ data: [...] }`.
+    messages = normalizeOcList<MessageWithParts>(raw);
   } catch {
     // Do not treat a failed read as an empty, idle transcript: queued prompts
     // would otherwise be sent on top of an unseen user or loop turn.

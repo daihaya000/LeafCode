@@ -46,8 +46,6 @@ export async function POST(req: NextRequest) {
   }
   // Measure UTF-8 bytes, not JS chars: a multi-byte payload (CJK, emoji) can
   // be well below the char limit while encoding to far more than 64 KB.
-  // Measure UTF-8 bytes, not JS chars: a multi-byte payload (CJK, emoji) can
-  // be well below the char limit while encoding to far more than 64 KB.
   if (Buffer.byteLength(body.data, "utf8") > MAX_INPUT_BYTES) {
     return NextResponse.json(
       { error: `input exceeds ${MAX_INPUT_BYTES} bytes` },

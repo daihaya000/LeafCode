@@ -1,12 +1,12 @@
 // OpenCode WebUI service worker: offline app shell + static asset caching.
 // Never touches /api/* (BFF proxy + SSE streams) so live data stays live.
 
-// v5: build-id aware cache invalidation. The page sends its BUILD_COMMIT via
-// postMessage on load; when the SW sees a different build id it wipes the
-// navigation cache so a stale cached "/" (referencing deleted _next chunks)
-// can never render as a white screen after a deploy.
-const CACHE = "opencode-webui-v5";
-const BUILD_CACHE = "opencode-webui-build";
+// v6: build-id aware cache invalidation that actually clears the navigation
+// cache. v5 wiped a `BUILD_CACHE` that nothing ever wrote to, so a stale
+// cached "/" (referencing deleted _next chunks) survived deploys. v6 also
+// caches /_next/static/* so the offline shell is functional: the cached HTML
+// can load its (also cached) JS chunks.
+const CACHE = "opencode-webui-v6";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 let activeBuildId = "";
@@ -21,11 +21,8 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-async function wipeBuildCache() {
-  const keys = await caches.keys();
-  await Promise.all(
-    keys.filter((k) => k === BUILD_CACHE).map((k) => caches.delete(k)),
-  );
+async function wipeCache() {
+  await caches.delete(CACHE);
 }
 
 self.addEventListener("message", (event) => {
@@ -39,8 +36,10 @@ self.addEventListener("message", (event) => {
     const incoming = data.id.trim();
     if (!incoming) return;
     if (activeBuildId && activeBuildId !== incoming) {
+      // A new build replaced web/.next: drop every cached entry (the old
+      // navigation HTML references _next chunk hashes that no longer exist).
       event.waitUntil(
-        wipeBuildCache().then(() => {
+        wipeCache().then(() => {
           activeBuildId = incoming;
         }),
       );
@@ -82,9 +81,6 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // Bypass BFF/API and SSE entirely.
   if (url.pathname.startsWith("/api/")) return;
-  // Next build assets are versioned per deployment. Never serve an old chunk
-  // from Cache Storage after a new build has replaced web/.next.
-  if (url.pathname.startsWith("/_next/")) return;
 
   // Navigations: network-first, fall back to cached page then app shell.
   if (req.mode === "navigate") {
@@ -101,7 +97,25 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets: cache-first, populate on miss (except /_next above).
+  // Next build assets are versioned per deployment and the CACHE is wiped
+  // whenever the build id changes, so stale chunks cannot outlive a deploy.
+  // Cache-first keeps the offline shell working: the cached navigation HTML
+  // references these hashed chunks, which must be present offline too.
+  if (url.pathname.startsWith("/_next/")) {
+    event.respondWith(
+      caches.match(req).then(
+        (cached) =>
+          cached ||
+          fetch(req).then((res) => {
+            cachePut(req, res);
+            return res;
+          }),
+      ),
+    );
+    return;
+  }
+
+  // Static assets: cache-first, populate on miss.
   const isStatic =
     /\.(?:png|svg|ico|webmanifest|woff2?|css|js)$/.test(url.pathname);
   if (isStatic) {

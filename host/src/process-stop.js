@@ -173,7 +173,10 @@ export async function stopProcessTreeGracefully(input) {
 
   if (!isAlive(pid)) return 'soft';
   hardKill(pid);
-  return isAlive(pid) ? 'hard' : 'hard';
+  // 'hard' reports that a force-kill was issued. Whether the process actually
+  // exited afterwards is left to the caller (e.g. via isAlive), because the
+  // kill is asynchronous and a quick re-check here is not authoritative.
+  return 'hard';
 }
 
 /**

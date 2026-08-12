@@ -7,6 +7,7 @@ import {
 import { ocServer } from "./oc-server";
 import { SESSION_STATUS_PATH, activeSessionMessagePath } from "./opencode-paths";
 import { extractSessionTouchedPaths } from "./session-touched-files";
+import { normalizeOcList } from "./attention";
 import type { MessageWithParts, SessionStatus } from "./types";
 
 const MAX_COLLABORATORS = 5;
@@ -130,11 +131,13 @@ export async function collaborationContextFor(input: {
       active.map(async (binding): Promise<CollaborationPeer> => {
         let messages: MessageWithParts[] = [];
         try {
-          messages = await ocServer<MessageWithParts[]>(
+          const raw = await ocServer<unknown>(
             input.directory,
             activeSessionMessagePath(binding.opencode_session_id),
             { timeoutMs: 3_000 },
           );
+          // v2 message endpoints wrap the list in `{ data: [...] }`.
+          messages = normalizeOcList<MessageWithParts>(raw);
         } catch {
           // Presence is still useful when a peer transcript is temporarily unavailable.
         }

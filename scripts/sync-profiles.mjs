@@ -235,6 +235,23 @@ function buildTargets(mcp) {
   return { codexBlocks, claudeServers, names };
 }
 
+/**
+ * Parse `~/.claude/settings.json`. Unlike the master `opencode.jsonc`, it must
+ * be strict JSON; a corrupted file used to crash the script with a raw
+ * stack trace. Returns null and a user-facing message instead.
+ */
+function readClaudeSettings() {
+  const original = readFileSync(CLAUDE_SETTINGS, "utf8");
+  try {
+    return { settings: JSON.parse(original), original };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return {
+      error: `skip: ${CLAUDE_SETTINGS} is not valid JSON (${detail})`,
+    };
+  }
+}
+
 function planSync() {
   if (!existsSync(OPENCODE_CONFIG)) {
     return {
@@ -272,20 +289,29 @@ function planSync() {
   }
 
   if (existsSync(CLAUDE_SETTINGS)) {
-    const original = readFileSync(CLAUDE_SETTINGS, "utf8");
-    const settings = JSON.parse(original);
-    const before = JSON.stringify(settings.mcpServers ?? null);
-    settings.mcpServers = claudeServers;
-    const after = JSON.stringify(settings.mcpServers);
-    const inSync = before === after;
-    targets.claude = {
-      exists: true,
-      inSync,
-      wouldChange: !inSync,
-      message: inSync
-        ? `already in sync (${names.length} servers)`
-        : `would rewrite mcpServers (${names.length} servers)`,
-    };
+    const parsed = readClaudeSettings();
+    if ("error" in parsed) {
+      targets.claude = {
+        exists: true,
+        inSync: false,
+        wouldChange: false,
+        message: parsed.error,
+      };
+    } else {
+      const { settings } = parsed;
+      const before = JSON.stringify(settings.mcpServers ?? null);
+      settings.mcpServers = claudeServers;
+      const after = JSON.stringify(settings.mcpServers);
+      const inSync = before === after;
+      targets.claude = {
+        exists: true,
+        inSync,
+        wouldChange: !inSync,
+        message: inSync
+          ? `already in sync (${names.length} servers)`
+          : `would rewrite mcpServers (${names.length} servers)`,
+      };
+    }
   } else {
     targets.claude = {
       exists: false,
@@ -342,25 +368,33 @@ function applySync() {
   }
 
   if (existsSync(CLAUDE_SETTINGS)) {
-    const original = readFileSync(CLAUDE_SETTINGS, "utf8");
-    const settings = JSON.parse(original);
-    const before = JSON.stringify(settings.mcpServers ?? null);
-    settings.mcpServers = claudeServers;
-    const after = JSON.stringify(settings.mcpServers);
-    if (before !== after) {
-      writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2) + "\n", "utf8");
-      changed++;
-      targets.claude = {
-        exists: true,
-        updated: true,
-        message: `wrote ${names.length} mcpServers`,
-      };
-    } else {
+    const parsed = readClaudeSettings();
+    if ("error" in parsed) {
       targets.claude = {
         exists: true,
         updated: false,
-        message: `already in sync (${names.length} servers)`,
+        message: parsed.error,
       };
+    } else {
+      const { settings, original } = parsed;
+      const before = JSON.stringify(settings.mcpServers ?? null);
+      settings.mcpServers = claudeServers;
+      const after = JSON.stringify(settings.mcpServers);
+      if (before !== after) {
+        writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2) + "\n", "utf8");
+        changed++;
+        targets.claude = {
+          exists: true,
+          updated: true,
+          message: `wrote ${names.length} mcpServers`,
+        };
+      } else {
+        targets.claude = {
+          exists: true,
+          updated: false,
+          message: `already in sync (${names.length} servers)`,
+        };
+      }
     }
   } else {
     targets.claude = {

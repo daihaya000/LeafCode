@@ -90,8 +90,9 @@ export function rejectCrossSite(req: Request): NextResponse | null {
 
   const origin = req.headers.get("origin");
   if (origin === null || origin === "" || origin === "null") {
-    // `Origin: null` comes from sandboxed/opaque origins — treat like absent and
-    // let authorization decide, since it carries no usable host to match.
+    // `Origin: null` comes from sandboxed/opaque origins (e.g. a sandboxed
+    // iframe). It carries no usable host to match, so it is rejected outright
+    // rather than treated like an absent header.
     return origin === "null"
       ? forbidden("cross-site requests are not allowed")
       : null;

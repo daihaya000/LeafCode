@@ -18,6 +18,9 @@ function loadWorker() {
   const context = {
     URL,
     Promise,
+    // Network fallback stub so cache-miss handlers settle instead of
+    // producing unhandled rejections.
+    fetch: async () => ({ ok: false }),
     caches: {
       keys: async () => [staleCaches[0], currentCache, staleCaches[1]],
       delete: async (name) => {
@@ -40,14 +43,32 @@ function loadWorker() {
   return { events, deleted };
 }
 
-test("service worker bypasses Next build assets instead of serving Cache Storage", () => {
+test("service worker serves Next build assets through Cache Storage (offline shell)", () => {
+  const { events } = loadWorker();
+  let intercepted = false;
+  // fetch is exercised only as the network fallback after a cache miss; the
+  // vm context must provide it so the handler does not crash.
+  events.get("fetch")({
+    request: {
+      method: "GET",
+      mode: "cors",
+      url: "https://webui.test/_next/static/chunks/8043.js",
+    },
+    respondWith() {
+      intercepted = true;
+    },
+  });
+  assert.equal(intercepted, true);
+});
+
+test("service worker bypasses BFF/API calls entirely", () => {
   const { events } = loadWorker();
   let intercepted = false;
   events.get("fetch")({
     request: {
       method: "GET",
       mode: "cors",
-      url: "https://webui.test/_next/static/chunks/8043.js",
+      url: "https://webui.test/api/tasks",
     },
     respondWith() {
       intercepted = true;
