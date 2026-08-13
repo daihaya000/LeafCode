@@ -1677,9 +1677,6 @@ async function stopChildren() {
   ]);
 }
 
-function formatStatus(name, proc, httpUp) {
-  return formatServiceStatus(name, procRunning(proc), httpUp);
-}
 
 async function refreshStatusMenu() {
   const [opencodeUp, webUp] = await Promise.all([
@@ -1687,10 +1684,10 @@ async function refreshStatusMenu() {
     httpWaiter.isHttpUp(WEBUI_URL),
   ]);
 
-  statusOpencodeItem.title = formatStatus('OpenCode', opencodeProc, opencodeUp);
+  statusOpencodeItem.title = formatServiceStatus('OpenCode', procRunning(opencodeProc), opencodeUp);
   statusWebuiItem.title = procRunning(webBuildProc)
     ? 'WebUI: building…'
-    : formatStatus('WebUI', webProc, webUp);
+    : formatServiceStatus('WebUI', procRunning(webProc), webUp);
 
   // Only push updates to a tray helper whose process is still alive. Once the
   // helper exits, `systray` may linger until the restart lands; sending to it

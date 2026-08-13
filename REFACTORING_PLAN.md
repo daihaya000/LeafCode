@@ -338,6 +338,19 @@ IMPROVEMENT.md のクラスタ分類をそのまま作業単位にする（useSt
 | P6-b | `control-server.js`（929 行）のルート宣言テーブル化（4-2） | 15 ルートの if 連鎖 / `/restart/*` 2 段階解決 / `resolveSession`（365 行） | |
 | P6-c | `service-status.js`（11 行）を状態の正本に（4-3） | | 小 |
 
+**P6-c 完了**: `formatServiceStatus` を状態文字列の正本として確立。
+- index.js の薄いラッパー `formatStatus` を廃止し、トレイメニューは
+  `formatServiceStatus(name, procRunning(proc), httpUp)` を直接参照
+- `service-status.test.js`（3 本）で状態遷移を検証済み
+
+**P6-b 完了（d1efd06 / 44a6b3f）**: ルート解決とハンドラのテーブル化が完了。
+- `matchControlRoute` の if 連鎖 18 ルート → `ROUTE_TABLE`（[method, path, routeId]）の宣言的ルックアップに
+- `/restart/*`・`/stop/*` の 2 段階解決をテーブルで 1 ステップ化
+- route 別ハンドラ 9 ブロック + restart 3 ルートを `routeHandlers` テーブルに変換し、
+  dispatch をルックアップ + `await handler(req, res, { pathname })` に簡素化
+- `resolveSession` は実測 7 行（計画時 365 行は実態と乖離）で分割不要を確認
+- control-server テスト 88 本すべてパス
+
 **P6-a 完了（bdbfb0b 〜 1585c86）**: 11 グループを分離・集約し `index.js` を 3071 → 2299 行（25% 削減）に。
 - 再起動シーケンス: `runServiceRestart` で状態機械化
 - ポート監視: `port-scanner.js`（netstat / ポート占有判定）
