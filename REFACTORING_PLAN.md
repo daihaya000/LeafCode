@@ -313,6 +313,14 @@ IMPROVEMENT.md のクラスタ分類をそのまま作業単位にする（useSt
 - `webui:` イベント 26 個 / 17 ファイル、うちタブ跨ぎは 3 つのみ
 - `recently-replied.ts` はタブ内 Map のみ → `webui-sync` チャネルへ
 
+**完了（5dd0754 〜）**:
+- `recently-replied.ts` を `webui-sync` BroadcastChannel でタブ同期化
+- 確認結果: 他タブ跨ぎ同期（access-mode / subagent-permission / skill-permission /
+  auto-settings / cost-display / hang-timeout / opencode-generation / token-saving）は
+  localStorage + storage イベントで既に対応済み。他のモジュールスコープ Map/Set
+  （autoSettingWriteQueues / inFlightJsonRequests / dirstat cache / pending* 等）は
+  キュー・キャッシュ・進行中フラグのタブ内状態でありタブ跨ぎ不要 → 追加変更なし
+
 ### Phase 5 のリスク
 
 | リスク | 緩和 |
