@@ -24,6 +24,8 @@
 - PowerShell から JSON/パスを読むときは stdout を UTF-8 にする（`[Console]::OutputEncoding`）。一時 `.ps1` を書く場合は UTF-8 **BOM 付き**
 - 配布前: `npm run test:encoding`（`host/src/bat-encoding.test.js`）を通す
 - `host/src/bat-encoding.test.js` がこれを検証する
+- cmd.exe の挙動（`%VAR%` の展開タイミング・`errorlevel` の伝播・`goto` / `call` / `exit /b` の戻り値）は**脳内で追わない**。最小の probe `.bat` を書いて実行し、実際の出力で確認する。1 回で切り分かなければ probe を分割する
+- probe スクリプトは検証用の一時ファイル。タスク終了時に削除する（`git status` で自分が作ったものだけを対象にする）
 
 ## ツール引数スキーマ
 
