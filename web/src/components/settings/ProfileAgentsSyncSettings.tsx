@@ -17,6 +17,7 @@ type AgentsSyncStatus = {
   skills: {
     opencodeRoot: { path: string; exists: boolean; count: number };
     mirrors: Record<string, { path: string; status: ItemStatus }>;
+    hermes: { path: string; status: ItemStatus };
   };
 };
 
@@ -24,6 +25,7 @@ type AgentsSyncResult = {
   ok: boolean;
   instructions: { copied: number; skipped: number; errors: string[] };
   skills: { created: number; skipped: number; errors: string[] };
+  hermes: { updated: number; skipped: number; errors: string[] };
   error?: string;
 };
 
@@ -125,12 +127,13 @@ export function ProfileAgentsSyncSettings() {
         setError(messages || "同期に失敗しました");
         return;
       }
-      const totalChanges = result.instructions.copied + result.skills.created;
+      const totalChanges =
+        result.instructions.copied + result.skills.created + result.hermes.updated;
       if (totalChanges === 0) {
         setResultMessage("すべて同期済みです");
       } else {
         setResultMessage(
-          `${totalChanges} 件を更新しました（instructions ${result.instructions.copied}, skills ${result.skills.created}）`,
+          `${totalChanges} 件を更新しました（instructions ${result.instructions.copied}, skills ${result.skills.created}, hermes ${result.hermes.updated}）`,
         );
       }
       await refresh();
@@ -155,7 +158,8 @@ export function ProfileAgentsSyncSettings() {
     loadState === "ready" &&
     status &&
     instructionItems.every((i) => i.item.status.kind === "ok") &&
-    Object.values(status.skills.mirrors).every((m) => m.status.kind === "ok");
+    Object.values(status.skills.mirrors).every((m) => m.status.kind === "ok") &&
+    status.skills.hermes.status.kind === "ok";
 
   const SIDE_LABELS: Record<string, string> = { claude: "Claude", codex: "Codex", agents: "agents", cursor: "Cursor" };
   const SIDE_TARGET_KEYS: Record<string, string> = {
@@ -182,7 +186,10 @@ export function ProfileAgentsSyncSettings() {
         <p className="text-xs text-faint">
           グローバル設定を一元管理します。マスターは <code className="font-mono">~/.config/opencode/AGENTS.md</code>
           と <code className="font-mono">~/.config/opencode/skills/</code> で、Claude / Codex / Cursor / agents
-          側へミラーします。instructions は内容コピー、skills は symlink で統合します。
+          側へミラーします。instructions は内容コピー、skills は symlink で統合します。Hermes
+          は <code className="font-mono">~/.hermes/config.yaml</code> の{" "}
+          <code className="font-mono">skills.external_dirs</code> に
+          <code className="font-mono">~/.agents/skills</code> を登録し、外部ディレクトリを直接スキャンさせます。
         </p>
 
         {error && (
@@ -329,6 +336,16 @@ export function ProfileAgentsSyncSettings() {
                 </div>
               );
             })}
+
+            {status.skills.hermes && (
+              <InstructionRow
+                label="Hermes (external_dirs)"
+                path={status.skills.hermes.path}
+                status={status.skills.hermes.status}
+                onOpen={() => void openTarget("agents-hermes", "open-file")}
+                opening={openBusy === "agents-hermes"}
+              />
+            )}
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <Button

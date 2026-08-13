@@ -17,12 +17,20 @@
  *   - ~/.codex/skills/<name>/        -> symlink to ~/.config/opencode/skills/<name>
  *   - ~/.agents/skills/<name>/       -> symlink to ~/.config/opencode/skills/<name>
  *   - ~/.cursor/skills/<name>/       -> symlink to ~/.config/opencode/skills/<name>
+ *
+ * Hermes Agent (Nous Research) reads skills from external directories, so no
+ * symlinks are created under ~/.hermes/skills/. Instead, ~/.hermes/config.yaml
+ * gets `skills.external_dirs` pointing at ~/.agents/skills, which Hermes scans
+ * directly alongside its own directory.
  */
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
 const HOME = os.homedir();
+
+/** External skill directory registered in Hermes config.yaml. */
+const HERMES_EXTERNAL_DIR = "~/.agents/skills";
 
 export type AgentsSyncItemStatus =
   | { kind: "ok"; message: string }
@@ -40,6 +48,7 @@ export type AgentsSyncStatus = {
   skills: {
     opencodeRoot: { path: string; exists: boolean; count: number };
     mirrors: Record<string, { path: string; status: AgentsSyncItemStatus }>;
+    hermes: { path: string; status: AgentsSyncItemStatus };
   };
 };
 
@@ -47,6 +56,7 @@ export type AgentsSyncResult = {
   ok: boolean;
   instructions: { copied: number; skipped: number; errors: string[] };
   skills: { created: number; skipped: number; errors: string[] };
+  hermes: { updated: number; skipped: number; errors: string[] };
   error?: string;
 };
 
@@ -61,6 +71,7 @@ export function agentsSyncPaths() {
     codexSkills: path.join(HOME, ".codex", "skills"),
     agentsSkills: path.join(HOME, ".agents", "skills"),
     cursorSkills: path.join(HOME, ".cursor", "skills"),
+    hermesConfig: path.join(HOME, ".hermes", "config.yaml"),
   };
 }
 
@@ -138,6 +149,160 @@ function compareStatus(masterPath: string, mirrorPath: string): AgentsSyncItemSt
   return { kind: "wouldChange", message: "contents differ; will overwrite from master" };
 }
 
+/** Strip surrounding quotes/brackets from a YAML flow-list item. */
+function normalizeExternalDirValue(value: string): string {
+  let t = value.trim();
+  if (t.startsWith("[") || t.startsWith("{")) t = t.slice(1).trim();
+  if (t.endsWith("]") || t.endsWith("}")) t = t.slice(0, -1).trim();
+  if (
+    (t.startsWith('"') && t.endsWith('"')) ||
+    (t.startsWith("'") && t.endsWith("'"))
+  ) {
+    t = t.slice(1, -1).trim();
+  }
+  return t;
+}
+
+/**
+ * True when the top-level `skills:` section of a Hermes config.yaml already
+ * lists HERMES_EXTERNAL_DIR under `external_dirs:` (block or inline form).
+ */
+function hermesExternalDirsConfigured(configText: string): boolean {
+  const lines = configText.split(/\r?\n/);
+  let inSkills = false;
+  let inExternalDirs = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^\S/.test(line)) {
+      inSkills = /^skills\s*:/.test(trimmed);
+      inExternalDirs = false;
+      continue;
+    }
+    if (!inSkills) continue;
+    if (/^external_dirs\s*:/.test(trimmed)) {
+      inExternalDirs = true;
+      const rest = trimmed.replace(/^external_dirs\s*:\s*/, "");
+      if (rest && rest !== "[]" && !rest.startsWith("#")) {
+        for (const part of rest.split(",")) {
+          if (normalizeExternalDirValue(part) === HERMES_EXTERNAL_DIR) return true;
+        }
+      }
+      continue;
+    }
+    if (!inExternalDirs) continue;
+    if (trimmed.startsWith("-")) {
+      if (normalizeExternalDirValue(trimmed.slice(1)) === HERMES_EXTERNAL_DIR) {
+        return true;
+      }
+    } else if (/^[\w.-]+\s*:/.test(trimmed) && !trimmed.startsWith("#")) {
+      inExternalDirs = false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Add HERMES_EXTERNAL_DIR to `skills.external_dirs` of a Hermes config.yaml,
+ * preserving all other lines. Throws when the existing `skills:` section is
+ * inline (`skills: {}`) and cannot be edited safely.
+ */
+function mergeHermesExternalDirs(configText: string): string {
+  const lines = configText.split(/\r?\n/);
+  let skillsIndex = -1;
+  let externalDirsIndex = -1;
+  let lastExternalDirItem = -1;
+  let inlineSkillsRest = "";
+  let inSkills = false;
+  let inExternalDirs = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (/^\S/.test(lines[i])) {
+      inSkills = /^skills\s*:/.test(trimmed);
+      if (inSkills) {
+        skillsIndex = i;
+        inlineSkillsRest = trimmed.replace(/^skills\s*:\s*/, "");
+      }
+      inExternalDirs = false;
+      continue;
+    }
+    if (!inSkills) continue;
+    if (/^external_dirs\s*:/.test(trimmed)) {
+      inExternalDirs = true;
+      externalDirsIndex = i;
+      const rest = trimmed.replace(/^external_dirs\s*:\s*/, "");
+      if (rest && rest !== "[]" && !rest.startsWith("#")) {
+        if (rest.endsWith("]")) {
+          // inline list: `external_dirs: [a, b]` -> append inside the brackets
+          const insertAt = lines[i].lastIndexOf("]");
+          lines[i] =
+            lines[i].slice(0, insertAt) + ", " + HERMES_EXTERNAL_DIR + "]";
+          return lines.join("\n");
+        }
+        throw new Error("existing inline skills.external_dirs cannot be merged");
+      }
+      if (rest === "[]") {
+        // empty flow list: `external_dirs: []` -> switch to block list
+        lines[i] = lines[i].slice(0, lines[i].indexOf("external_dirs") + "external_dirs".length) + ":";
+        lines.splice(i + 1, 0, "    - " + HERMES_EXTERNAL_DIR);
+        return lines.join("\n");
+      }
+      continue;
+    }
+    if (!inExternalDirs) continue;
+    if (trimmed.startsWith("-")) {
+      lastExternalDirItem = i;
+    } else if (/^[\w.-]+\s*:/.test(trimmed) && !trimmed.startsWith("#")) {
+      inExternalDirs = false;
+    }
+  }
+
+  if (skillsIndex >= 0) {
+    if (inlineSkillsRest && inlineSkillsRest !== "{}" && !inlineSkillsRest.startsWith("#")) {
+      throw new Error("existing inline skills section cannot be merged");
+    }
+    const insertAfter = lastExternalDirItem >= 0 ? lastExternalDirItem : externalDirsIndex;
+    if (externalDirsIndex >= 0) {
+      lines.splice(insertAfter + 1, 0, "    - " + HERMES_EXTERNAL_DIR);
+    } else {
+      lines.splice(skillsIndex + 1, 0, "  external_dirs:", "    - " + HERMES_EXTERNAL_DIR);
+    }
+    return lines.join("\n");
+  }
+
+  const tail = configText === "" || configText.endsWith("\n") ? "" : "\n";
+  return (
+    configText +
+    tail +
+    "skills:\n" +
+    "  external_dirs:\n" +
+    "    - " +
+    HERMES_EXTERNAL_DIR +
+    "\n"
+  );
+}
+
+function hermesConfigStatus(): AgentsSyncItemStatus {
+  const p = paths();
+  const text = readIfExists(p.hermesConfig);
+  if (text === null) {
+    return {
+      kind: "wouldChange",
+      message: "config.yaml に skills.external_dirs を追加予定",
+    };
+  }
+  if (hermesExternalDirsConfigured(text)) {
+    return {
+      kind: "ok",
+      message: `external_dirs に ${HERMES_EXTERNAL_DIR} が設定済み`,
+    };
+  }
+  return {
+    kind: "wouldChange",
+    message: `external_dirs に ${HERMES_EXTERNAL_DIR} を追加予定`,
+  };
+}
+
 function instructionsStatus(): AgentsSyncStatus["instructions"] {
   const p = paths();
   const masterExists = fs.existsSync(p.masterMd);
@@ -178,6 +343,7 @@ function skillsStatus(): AgentsSyncStatus["skills"] {
   return {
     opencodeRoot: { path: p.opencodeSkills, exists: fs.existsSync(p.opencodeSkills), count: names.length },
     mirrors,
+    hermes: { path: p.hermesConfig, status: hermesConfigStatus() },
   };
 }
 
@@ -207,6 +373,7 @@ export function applyAgentsSync(): AgentsSyncResult {
     ok: true,
     instructions: { copied: 0, skipped: 0, errors: [] },
     skills: { created: 0, skipped: 0, errors: [] },
+    hermes: { updated: 0, skipped: 0, errors: [] },
   };
 
   if (!fs.existsSync(p.masterMd)) {
@@ -267,7 +434,28 @@ export function applyAgentsSync(): AgentsSyncResult {
     }
   }
 
-  if (result.instructions.errors.length || result.skills.errors.length) {
+  // --- hermes external_dirs ------------------------------------------------
+  try {
+    const current = readIfExists(p.hermesConfig);
+    if (current !== null && hermesExternalDirsConfigured(current)) {
+      result.hermes.skipped++;
+    } else {
+      mkdirp(path.dirname(p.hermesConfig));
+      const next = mergeHermesExternalDirs(current ?? "");
+      fs.writeFileSync(p.hermesConfig, next, "utf8");
+      result.hermes.updated++;
+    }
+  } catch (err) {
+    result.hermes.errors.push(
+      `hermes: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  if (
+    result.instructions.errors.length ||
+    result.skills.errors.length ||
+    result.hermes.errors.length
+  ) {
     result.ok = false;
   }
   return result;

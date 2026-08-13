@@ -59,6 +59,7 @@ describe("agents-sync-engine filesystem operations", () => {
       ok: true,
       instructions: { copied: 3, skipped: 0, errors: [] },
       skills: { created: 4, skipped: 0, errors: [] },
+      hermes: { updated: 1, skipped: 0, errors: [] },
     });
     expect(fs.readFileSync(paths.claudeMd, "utf8")).toBe("shared instructions\n");
     expect(fs.readFileSync(paths.codexMd, "utf8")).toBe("shared instructions\n");
@@ -69,6 +70,120 @@ describe("agents-sync-engine filesystem operations", () => {
     expect(status.skills.mirrors["codex:demo"]?.status.kind).toBe("ok");
     expect(status.skills.mirrors["agents:demo"]?.status.kind).toBe("ok");
     expect(status.skills.mirrors["cursor:demo"]?.status.kind).toBe("ok");
+    expect(status.skills.hermes.status.kind).toBe("ok");
+  });
+
+  it("registers the agents skills dir in hermes config.yaml on first sync", () => {
+    const paths = engine.agentsSyncPaths();
+    engine.writeMasterAgents("shared instructions\n");
+
+    const result = engine.applyAgentsSync();
+
+    expect(result.hermes).toEqual({ updated: 1, skipped: 0, errors: [] });
+    const config = fs.readFileSync(paths.hermesConfig, "utf8");
+    expect(config).toContain("skills:");
+    expect(config).toContain("external_dirs:");
+    expect(config).toContain("- ~/.agents/skills");
+    expect(engine.readAgentsSyncStatus().skills.hermes.status.kind).toBe("ok");
+  });
+
+  it("skips hermes config when external_dirs is already configured", () => {
+    const paths = engine.agentsSyncPaths();
+    engine.writeMasterAgents("shared instructions\n");
+    fs.mkdirSync(path.dirname(paths.hermesConfig), { recursive: true });
+    fs.writeFileSync(
+      paths.hermesConfig,
+      "skills:\n  external_dirs:\n    - ~/.agents/skills\n    - ~/shared/team-skills\n",
+      "utf8",
+    );
+
+    const result = engine.applyAgentsSync();
+
+    expect(result.hermes).toEqual({ updated: 0, skipped: 1, errors: [] });
+    expect(fs.readFileSync(paths.hermesConfig, "utf8")).toBe(
+      "skills:\n  external_dirs:\n    - ~/.agents/skills\n    - ~/shared/team-skills\n",
+    );
+  });
+
+  it("skips hermes config when the entry is present in inline and quoted forms", () => {
+    const paths = engine.agentsSyncPaths();
+    engine.writeMasterAgents("shared instructions\n");
+    fs.mkdirSync(path.dirname(paths.hermesConfig), { recursive: true });
+    fs.writeFileSync(
+      paths.hermesConfig,
+      'skills:\n  external_dirs: ["~/.agents/skills", "~/shared/team-skills"]\n',
+      "utf8",
+    );
+
+    const result = engine.applyAgentsSync();
+
+    expect(result.hermes).toEqual({ updated: 0, skipped: 1, errors: [] });
+  });
+
+  it("appends into an inline external_dirs list", () => {
+    const paths = engine.agentsSyncPaths();
+    engine.writeMasterAgents("shared instructions\n");
+    fs.mkdirSync(path.dirname(paths.hermesConfig), { recursive: true });
+    fs.writeFileSync(
+      paths.hermesConfig,
+      "skills:\n  external_dirs: [~/shared/team-skills]\n",
+      "utf8",
+    );
+
+    const result = engine.applyAgentsSync();
+
+    expect(result.hermes).toEqual({ updated: 1, skipped: 0, errors: [] });
+    expect(fs.readFileSync(paths.hermesConfig, "utf8")).toContain(
+      "external_dirs: [~/shared/team-skills, ~/.agents/skills]",
+    );
+  });
+
+  it("converts an empty inline external_dirs list to a block list", () => {
+    const paths = engine.agentsSyncPaths();
+    engine.writeMasterAgents("shared instructions\n");
+    fs.mkdirSync(path.dirname(paths.hermesConfig), { recursive: true });
+    fs.writeFileSync(paths.hermesConfig, "skills:\n  external_dirs: []\n", "utf8");
+
+    const result = engine.applyAgentsSync();
+
+    expect(result.hermes).toEqual({ updated: 1, skipped: 0, errors: [] });
+    expect(fs.readFileSync(paths.hermesConfig, "utf8")).toContain(
+      "external_dirs:\n    - ~/.agents/skills\n",
+    );
+  });
+
+  it("merges external_dirs into an existing skills section", () => {
+    const paths = engine.agentsSyncPaths();
+    engine.writeMasterAgents("shared instructions\n");
+    fs.mkdirSync(path.dirname(paths.hermesConfig), { recursive: true });
+    fs.writeFileSync(
+      paths.hermesConfig,
+      "# hermes config\nskills:\n  write_approval: true\nterminal:\n  env_passthrough: true\n",
+      "utf8",
+    );
+
+    const result = engine.applyAgentsSync();
+
+    expect(result.hermes).toEqual({ updated: 1, skipped: 0, errors: [] });
+    const config = fs.readFileSync(paths.hermesConfig, "utf8");
+    expect(config).toContain("# hermes config");
+    expect(config).toContain("write_approval: true");
+    expect(config).toContain("external_dirs:\n    - ~/.agents/skills");
+    expect(engine.readAgentsSyncStatus().skills.hermes.status.kind).toBe("ok");
+  });
+
+  it("appends a skills section when hermes config.yaml has no skills key", () => {
+    const paths = engine.agentsSyncPaths();
+    engine.writeMasterAgents("shared instructions\n");
+    fs.mkdirSync(path.dirname(paths.hermesConfig), { recursive: true });
+    fs.writeFileSync(paths.hermesConfig, "memory:\n  write_approval: true\n", "utf8");
+
+    const result = engine.applyAgentsSync();
+
+    expect(result.hermes).toEqual({ updated: 1, skipped: 0, errors: [] });
+    const config = fs.readFileSync(paths.hermesConfig, "utf8");
+    expect(config).toContain("memory:\n  write_approval: true\n");
+    expect(config).toContain("skills:\n  external_dirs:\n    - ~/.agents/skills\n");
   });
 
   it("does not delete a real mirror directory when a symlink is blocked", () => {

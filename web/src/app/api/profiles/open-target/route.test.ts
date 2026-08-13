@@ -25,6 +25,7 @@ const agentsSyncEngineMock = vi.hoisted(() => ({
     agentsSkills: "C:/home/.agents/skills",
     cursorMd: "C:/home/.cursor/AGENTS.md",
     cursorSkills: "C:/home/.cursor/skills",
+    hermesConfig: "C:/home/.hermes/config.yaml",
   })),
 }));
 
@@ -121,6 +122,18 @@ describe("POST /api/profiles/open-target", () => {
     );
     expect(res.status).toBe(200);
     expect(openMock.openFolder).toHaveBeenCalledWith("C:/home/.claude/skills");
+  });
+
+  it("reveals the resolved agents-hermes path as a file", async () => {
+    openMock.openFileReveal.mockReturnValue(null);
+    const res = await POST(
+      localPost("http://127.0.0.1:3000/api/profiles/open-target", {
+        target: "agents-hermes",
+        action: "open-file",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(openMock.openFileReveal).toHaveBeenCalledWith("C:/home/.hermes/config.yaml");
   });
 
   it("returns 500 with the underlying error when opening fails", async () => {

@@ -28,6 +28,7 @@ const TARGET_RESOLVERS: Record<string, () => string> = {
   "skills-codex": () => agentsSyncPaths().codexSkills,
   "skills-agents": () => agentsSyncPaths().agentsSkills,
   "skills-cursor": () => agentsSyncPaths().cursorSkills,
+  "agents-hermes": () => agentsSyncPaths().hermesConfig,
 };
 
 export async function POST(req: Request) {
