@@ -2401,24 +2401,44 @@ function trayAlive() {
   return systray != null && procRunning(systray.process);
 }
 
-async function restartWeb() {
+/**
+ * Runs a service-restart operation exclusively.
+ *
+ * Serializes restarts through the restartingServices flag (a minimal state
+ * machine: idle → busy → idle). Operations that start while another restart
+ * is in flight are rejected with the same log line as before.
+ */
+async function runServiceRestart({ label, logPrefix, throwIfBusy = false, operation }) {
   if (restartingServices) {
     log('Service restart is already in progress');
+    if (throwIfBusy) {
+      throw new Error('a service restart is already in progress');
+    }
     return;
   }
   restartingServices = true;
-  log('Restarting WebUI…');
+  log(`${logPrefix}…`);
   try {
-    await stopWebOnly();
-    await sleep(500);
-    await spawnWeb();
+    await operation();
   } catch (err) {
-    error(`WebUI restart failed: ${err instanceof Error ? err.message : String(err)}`);
+    error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
     throw err;
   } finally {
     restartingServices = false;
     await refreshStatusMenu();
   }
+}
+
+async function restartWeb() {
+  await runServiceRestart({
+    label: 'WebUI restart',
+    logPrefix: 'Restarting WebUI',
+    operation: async () => {
+      await stopWebOnly();
+      await sleep(500);
+      await spawnWeb();
+    },
+  });
 }
 
 /**
@@ -2434,111 +2454,93 @@ async function restartWeb() {
  * current build flow.
  */
 async function stopWebForBuild() {
-  if (restartingServices) {
-    log('Service restart is already in progress');
-    throw new Error('a service restart is already in progress');
-  }
-  restartingServices = true;
-  log('Stopping WebUI on build request…');
-  try {
-    await stopWebOnly();
-    log('WebUI stopped for build');
-  } catch (err) {
-    error(`WebUI stop failed: ${err instanceof Error ? err.message : String(err)}`);
-    throw err;
-  } finally {
-    restartingServices = false;
-    await refreshStatusMenu();
-  }
+  await runServiceRestart({
+    label: 'WebUI stop',
+    logPrefix: 'Stopping WebUI on build request',
+    throwIfBusy: true,
+    operation: async () => {
+      await stopWebOnly();
+      log('WebUI stopped for build');
+    },
+  });
 }
 
 async function restartOpencode() {
-  if (restartingServices) {
-    log('Service restart is already in progress');
-    return;
-  }
-  restartingServices = true;
-  log('Restarting OpenCode…');
-  const previousPort = OPENCODE_PORT;
-  try {
-    await stopOpencodeOnly();
-    await sleep(500);
+  await runServiceRestart({
+    label: 'OpenCode restart',
+    logPrefix: 'Restarting OpenCode',
+    operation: async () => {
+      const previousPort = OPENCODE_PORT;
+      await stopOpencodeOnly();
+      await sleep(500);
 
-    // Same ghost/unhealthy handling as cold start. Crash+taskkill often leaves a
-    // Windows LISTENING socket whose PID is already dead; rebinding then fails
-    // with ServeError unless we fall back to the next free port.
-    const resolved = await resolveOccupiedPort(
-      OPENCODE_PORT,
-      `${OPENCODE_URL}/global/health`,
-      'OpenCode',
-    );
-    if (resolved.port !== OPENCODE_PORT) {
-      setOpencodePort(resolved.port);
-      process.env.OPENCODE_PORT = String(OPENCODE_PORT);
-      process.env.OPENCODE_BASE_URL = OPENCODE_URL;
-    }
-
-    if (resolved.reuse) {
-      log(`Reusing existing OpenCode on :${OPENCODE_PORT}`);
-    } else {
-      const opencodePath = findOpencode();
-      log(`Starting OpenCode: ${opencodePath}`);
-      spawnOpencode(opencodePath);
-      const ready = await waitUntilReady(
+      // Same ghost/unhealthy handling as cold start. Crash+taskkill often leaves a
+      // Windows LISTENING socket whose PID is already dead; rebinding then fails
+      // with ServeError unless we fall back to the next free port.
+      const resolved = await resolveOccupiedPort(
+        OPENCODE_PORT,
         `${OPENCODE_URL}/global/health`,
         'OpenCode',
-        45,
-        { proc: () => opencodeProc },
       );
-      if (!ready) {
-        throw new Error(
-          `OpenCode failed to become ready on :${OPENCODE_PORT} (${OPENCODE_URL}/global/health)`,
-        );
+      if (resolved.port !== OPENCODE_PORT) {
+        setOpencodePort(resolved.port);
+        process.env.OPENCODE_PORT = String(OPENCODE_PORT);
+        process.env.OPENCODE_BASE_URL = OPENCODE_URL;
       }
-    }
 
-    // WebUI bakes OPENCODE_BASE_URL at spawn time — follow port changes.
-    if (OPENCODE_PORT !== previousPort) {
-      log(
-        `OpenCode port changed ${previousPort} → ${OPENCODE_PORT}; restarting WebUI to follow…`,
-      );
-      await stopWebOnly();
-      await sleep(500);
-      await spawnWeb();
-      const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
-        proc: () => webProc,
-      });
-      if (!webReady) {
-        throw new Error(`WebUI failed to become ready after OpenCode port change (${WEBUI_URL})`);
+      if (resolved.reuse) {
+        log(`Reusing existing OpenCode on :${OPENCODE_PORT}`);
+      } else {
+        const opencodePath = findOpencode();
+        log(`Starting OpenCode: ${opencodePath}`);
+        spawnOpencode(opencodePath);
+        const ready = await waitUntilReady(
+          `${OPENCODE_URL}/global/health`,
+          'OpenCode',
+          45,
+          { proc: () => opencodeProc },
+        );
+        if (!ready) {
+          throw new Error(
+            `OpenCode failed to become ready on :${OPENCODE_PORT} (${OPENCODE_URL}/global/health)`,
+          );
+        }
       }
-    }
-  } catch (err) {
-    error(`OpenCode restart failed: ${err instanceof Error ? err.message : String(err)}`);
-    throw err;
-  } finally {
-    restartingServices = false;
-    await refreshStatusMenu();
-  }
+
+      // WebUI bakes OPENCODE_BASE_URL at spawn time — follow port changes.
+      if (OPENCODE_PORT !== previousPort) {
+        log(
+          `OpenCode port changed ${previousPort} → ${OPENCODE_PORT}; restarting WebUI to follow…`,
+        );
+        await stopWebOnly();
+        await sleep(500);
+        await spawnWeb();
+        const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+          proc: () => webProc,
+        });
+        if (!webReady) {
+          throw new Error(`WebUI failed to become ready after OpenCode port change (${WEBUI_URL})`);
+        }
+      }
+    },
+  });
 }
 
 async function restartServices() {
-  if (restartingServices) {
-    log('Service restart is already in progress');
-    return;
-  }
-  restartingServices = true;
-  log('Restarting services…');
-  try {
-    await stopChildren();
-    // stopChildren now awaits waitForPortFree for both ports; no extra sleep needed.
-    await startChildren();
-  } catch (err) {
-    await stopChildren();
-    throw err;
-  } finally {
-    restartingServices = false;
-    await refreshStatusMenu();
-  }
+  await runServiceRestart({
+    label: 'Service restart',
+    logPrefix: 'Restarting services',
+    operation: async () => {
+      try {
+        await stopChildren();
+        // stopChildren now awaits waitForPortFree for both ports; no extra sleep needed.
+        await startChildren();
+      } catch (err) {
+        await stopChildren();
+        throw err;
+      }
+    },
+  });
 }
 
 function writeControlFile() {
@@ -3068,3 +3070,4 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     process.exit(1);
   });
 }
+
