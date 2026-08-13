@@ -132,6 +132,16 @@ describe("POST refresh-title", () => {
       write: false,
       grep: false,
     });
+    // Regression: the transcript must arrive fenced with the summary
+    // instruction in the user part — a raw transcript is read by the model
+    // as a conversation to continue, which produced refusal-style replies.
+    const promptText = (
+      (titlePrompt?.parts as { type: string; text?: string }[] | undefined) ??
+      []
+    )[0]?.text;
+    expect(promptText).toContain("<transcript>");
+    expect(promptText).toContain("</transcript>");
+    expect(promptText).toContain("要約");
     const delIdx = calls.indexOf("DELETE /session/temp1");
     const patchIdx = calls.indexOf("PATCH /session/sess1");
     expect(delIdx).toBeGreaterThan(-1);

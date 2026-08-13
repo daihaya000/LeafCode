@@ -8,7 +8,7 @@ import {
 } from "@/lib/opencode-paths";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 import {
-  buildTranscript,
+  formatTranscriptForTitle,
   latestModelFromMessages,
   sanitizeTitle,
 } from "@/lib/session-title";
@@ -59,8 +59,10 @@ export async function POST(req: NextRequest, context: Ctx) {
     );
   }
 
-  const transcript = buildTranscript(Array.isArray(messages) ? messages : []);
-  if (!transcript.trim()) {
+  const transcript = formatTranscriptForTitle(
+    Array.isArray(messages) ? messages : [],
+  );
+  if (!transcript) {
     return NextResponse.json(
       { error: "この会話にはタイトルを生成できる内容がありません" },
       { status: 422 },

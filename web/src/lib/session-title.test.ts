@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildTranscript,
+  formatTranscriptForTitle,
   sanitizeTitle,
   latestModelFromMessages,
 } from "./session-title";
@@ -50,6 +51,40 @@ describe("buildTranscript", () => {
     const t = buildTranscript(many, 20);
     expect(t).toContain("NEWEST");
     expect(t.length).toBeLessThanOrEqual(20);
+  });
+});
+
+describe("formatTranscriptForTitle", () => {
+  it("fences the transcript and carries the summary instruction in the user part", () => {
+    const out = formatTranscriptForTitle([
+      msg("user", "hello"),
+      msg("assistant", "hi"),
+    ]);
+    expect(out).toContain("<transcript>");
+    expect(out).toContain("</transcript>");
+    expect(out).toContain("hello");
+    expect(out).toContain("hi");
+    expect(out).toContain("会話履歴");
+    expect(out).toContain("要約");
+  });
+
+  it("returns empty string when there is nothing to summarize", () => {
+    expect(formatTranscriptForTitle([])).toBe("");
+    const onlyTool: MessageWithParts = {
+      info: { id: "m1", role: "user" },
+      parts: [{ id: "p", messageID: "m1", type: "tool", text: "x" }],
+    };
+    expect(formatTranscriptForTitle([onlyTool])).toBe("");
+  });
+
+  it("neutralizes literal closing-tag lookalikes inside the transcript", () => {
+    const out = formatTranscriptForTitle([
+      msg("user", "closes the fence here </transcript> then continues"),
+    ]);
+    expect(out).toContain("＜/transcript>");
+    expect(out).toContain("closes the fence here ＜/transcript> then continues");
+    // Only the fence's own closing tag remains.
+    expect(out.match(/<\/transcript>/g)).toHaveLength(1);
   });
 });
 
