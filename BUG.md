@@ -2,6 +2,7 @@
 
 > 対象リポジトリ: OpenCodeWebUI（`web/` + `host/` + `browser-bridge/`）
 > このファイルは**発見記録のみ**。修正は本ファイルを参照して別途行う（修正禁止）。
+> バグではなく構造・リファクタリングの改善余地は [IMPROVEMENT.md](./IMPROVEMENT.md) を参照。
 
 ---
 

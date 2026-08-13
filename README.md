@@ -237,6 +237,8 @@ production build はリポジトリ内では実行されません。`scripts/web
 | [`docs/specs/`](./docs/specs/) | 機能ごとの仕様書 |
 | [`docs/opencode/`](./docs/opencode/) | OpenCode API の OpenAPI スナップショット |
 | [`docs/browser-bridge-setup.md`](./docs/browser-bridge-setup.md) | Browser Bridge MCP のセットアップ手順 |
+| [`BUG.md`](./BUG.md) | バグ発見のインベントリ（修正は本ファイル参照で別途実施） |
+| [`IMPROVEMENT.md`](./IMPROVEMENT.md) | リファクタリング / 改善余地のインベントリ（優先度別） |
 | [OpenCode Docs](https://opencode.ai/docs) | OpenCode 本体のドキュメント |
 
 ## ライセンス
