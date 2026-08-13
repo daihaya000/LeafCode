@@ -5,6 +5,7 @@
 > 関連: [BUG.md](./BUG.md)（BH-1〜13 / BU-1〜10 は修正済み。**構造要因は未解消**）
 >
 > 本ファイルは **どの順で・どう安全に実施するか** の計画。何を直すかの根拠は IMPROVEMENT.md 側にある。
+> **現在の状態: 計画確定・実装未着手**（決定 D5）。方針の確定事項は [§3 決定事項](#3-決定事項2026-08-13-確定) にある。
 > 2026-07 の [`docs/improvement-plan.md`](./docs/improvement-plan.md)（UI/UX を Codex に寄せる計画・ローカル専用）とは別物。
 
 ---
@@ -85,7 +86,7 @@ npm run test:encoding              # .bat エンコード検証
 
 | リスク | 緩和 |
 |--------|------|
-| CI 復活直後に既存の lint/型エラーが露見して赤になる | 復活 PR では**エラーを直すのではなく可視化**が目的。赤が出たら別 PR で修正し、Phase 1 開始前に緑にする |
+| CI 復活直後に既存の lint/型エラーが露見して赤になる | **決定 D3**: 復活 PR では**エラーを直すのではなく可視化**が目的。赤が出ても同 PR では直さず、**別 PR で修正**し、Phase 1 開始前に緑にする（`continue-on-error` での糊塗もしない） |
 | 3500+ テストで CI 時間が伸びる | P0-d の shard 化（8-2）を同 PR 内で追加してよい |
 
 ---
@@ -116,11 +117,14 @@ npm run test:encoding              # .bat エンコード検証
   2. `planSync` / `applySync` / `buildTargets` 等を CLI から削除し、web 実装を import
   3. CLI 固有の `resolveActiveOpencodeConfigPath` / `readClaudeSettings` のみ残す
   4. `agents-sync.mjs`（292 行）↔ `agents-sync-engine.ts`（463 行）も同様
-- **技術的争点**: web は TypeScript、CLI は Node ESM。ビルド無しで import する形が必要。
-  → 先に **PoC（30 分規模）** で方式を決める:
-  - 案 A: ロジックを `.mjs` の共有モジュールに置き、web 側 TS が import（型は `.d.ts` 手書き）
-  - 案 B: CLI 側で `tsx` / `esbuild-register` を使う（依存追加が発生）
-  - 案 C: ビルド成果物を経由（`web/.next` 依存になるため**非推奨**）
+- **共有方式（決定 D1）**: **`.mjs` 共有モジュール方式**を採用する。
+  - ロジックの実体を `.mjs`（Node ESM）に置き、**web 側 TS からも CLI からも import** する
+  - 型は `.d.ts` を手書きで併置し、web 側の型安全性を維持する
+  - 依存追加なし・ビルド不要のため、CLI 単独実行（`node scripts/sync-profiles.mjs`）が保てる
+  - 不採用: `tsx` / `esbuild-register`（devDependency 増 + CLI 起動が重い）、
+    ビルド成果物経由（`web/.next` 依存になる）
+  - **移動先の置き場所は着手時に決める**（`scripts/lib/` か `shared/` か。
+    既存の `browser-bridge/shared/*.mjs` が同種の前例）
 - 完了条件: `npm run sync:profiles:check` / `sync:agents:check` が従来と同一結果。
   CLI 経由でも `cursorServers` が反映される（旧版の取り残しが解消）
 - 検証: 既存の `sync-engine.test.ts` に加え、CLI 実行の smoke（`--check` の差分出力比較）
@@ -135,11 +139,18 @@ npm run test:encoding              # .bat エンコード検証
 #### P1-d. メモリ実装の共有化（5-1）
 
 - 対象: `browser-bridge/shared/memory-schema.mjs`（289 行）↔ `web/src/lib/memory-key.ts` の 5 関数
-- **IMPROVEMENT.md の推奨は案 B（TS 正本 + 同期）**
-- **副次的な要確認事項**: `dataDir` の非 win32 パスが不一致
-  （`~/.opencode-webui` vs `~/.local/share/opencode-webui`）。
-  → これは**動作差**であり、統合前に「どちらが正か」をユーザー判断で決める
-- 完了条件: 類似判定・キー正規化のロジックが 1 箇所
+- 共有方式は D1（`.mjs` 共有）に揃える
+- **`dataDir` の非 win32 パス不一致（決定 D2）**:
+  | 実装 | 非 win32 | win32 |
+  |------|---------|-------|
+  | `web/src/lib/paths.ts:10` | `~/.opencode-webui` | `%APPDATA%\opencode-webui` |
+  | `browser-bridge/mcp/memory-server.mjs:54` | `~/.local/share/opencode-webui` | `%APPDATA%\opencode-webui`（一致） |
+
+  → **`~/.opencode-webui` に統一**（web 側を正本とし、`memory-server.mjs` を変更）。
+  win32 は両者一致のため **Windows での挙動は変わらない**。
+  非 win32 の既存利用者がいる場合のみ、旧パス（`~/.local/share/opencode-webui`）に
+  DB が存在すれば読み替える互換処理を検討する（着手時に実在確認）
+- 完了条件: 類似判定・キー正規化のロジックが 1 箇所。`dataDir` の分岐が 1 実装
 
 ### Phase 1 全体のリスク
 
@@ -155,21 +166,28 @@ npm run test:encoding              # .bat エンコード検証
 **目的**: 全機能が依存する `db.ts`（1670 行 / CREATE TABLE 23 種 / ALTER TABLE 17 箇所）の
 スキーマ変更を追跡可能にする。**Phase 3 以降の分割の前提**。
 
-### 作業単位
+> **決定 D4**: 本フェーズは**実施する**。ただし条件付きで、
+> ①移行は**追加のみ**（DROP / 破壊的 ALTER を作らない）
+> ②**起動時に DB のバックアップコピー**を取る
+> ③**P2-d のスキーマ一致テストを最初に書く**（P2-a の次・移行機構より先）
+> の 3 点を満たさない限り移行機構は投入しない。
+
+### 作業単位（実施順）
 
 | # | 作業 | 完了条件 |
 |---|------|---------|
 | P2-a | 現行スキーマの棚卸し（23 テーブル × 全カラムの最新形を 1 箇所に列挙） | スキーマ定義が読める形で 1 箇所に存在 |
-| P2-b | `PRAGMA user_version` の導入と、既存 DB を version N と見なす初期化 | 既存 DB が壊れない（**冪等**） |
-| P2-c | 散在する `table_info` + `ALTER TABLE`（17 箇所）を順序付き `migrations[]` へ移行 | 関数内のスキーマ変更が 0 になる |
-| P2-d | **新規 DB と移行後 DB のスキーマ一致テスト** | `db.test.ts` で両者の `table_info` が一致 |
+| P2-b | **スキーマ一致テストを先に用意**（新規 DB vs 旧 DB からの移行後） | `db.test.ts` で両者の `table_info` が一致することを検証できる（この時点では現行実装で緑） |
+| P2-c | DB バックアップ（起動時のコピー）の実装 | 移行前の DB ファイルが復旧可能な形で残る |
+| P2-d | `PRAGMA user_version` の導入と、既存 DB を version N と見なす初期化 | 既存 DB が壊れない（**冪等**） |
+| P2-e | 散在する `table_info` + `ALTER TABLE`（17 箇所）を順序付き `migrations[]` へ移行 | 関数内のスキーマ変更が 0 になり、P2-b のテストが緑のまま |
 
 ### リスク（本計画で最も高い）
 
 | リスク | 緩和 |
 |--------|------|
-| 既存ユーザーの DB 破損 | ①移行は追加のみ（DROP / 破壊的 ALTER を作らない）②起動時に DB ファイルのバックアップコピーを取る ③P2-d のテストを**先に**書く |
-| 移行順序の誤りで一部カラムが欠落 | P2-d が「新規作成 DB」と「旧 DB からの移行」の両方を比較するので機械的に検出できる |
+| 既存ユーザーの DB 破損 | D4 の 3 条件（追加のみ / バックアップ / テスト先行）。P2-b・P2-c を P2-d より**先**に置いているのはこのため |
+| 移行順序の誤りで一部カラムが欠落 | P2-b が「新規作成 DB」と「旧 DB からの移行」の両方を比較するので機械的に検出できる |
 | 分割（`db.ts` のファイル分割）を同時にやると原因切り分け不能 | **本フェーズでは分割しない**。マイグレーション機構のみ |
 
 ---
@@ -326,11 +344,19 @@ IMPROVEMENT.md のクラスタ分類をそのまま作業単位にする（useSt
 - 1 Phase = 複数 PR。PR タイトルに節 ID を含める（例: `refactor(6-1): sync ロジックを web 実装へ一本化`）
 - 未着手のまま状況が変わった節（コードが先に変わった等）は、着手前に IMPROVEMENT.md の記述を再検証する
 
-## 3. 判断が必要な事項（着手前にユーザー確認）
+## 3. 決定事項（2026-08-13 確定）
 
-| # | 事項 | 影響 |
-|---|------|------|
-| Q1 | P1-b の TS↔ESM 共有方式（案 A `.mjs` 共有 / 案 B `tsx` 導入） | 依存追加の可否 |
-| Q2 | P1-d の `dataDir` 非 win32 パス不一致（`~/.opencode-webui` vs `~/.local/share/opencode-webui`）のどちらを正とするか | 既存データの参照先 |
-| Q3 | Phase 0 で CI 復活時に既存 lint / 型エラーが出た場合、どこまで同時に直すか | Phase 1 の開始時期 |
-| Q4 | Phase 2（db マイグレーション）の実施可否 — 最もリスクが高い | 既存 DB の安全性 |
+| # | 事項 | 決定 | 反映先 |
+|---|------|------|--------|
+| **D1** | TS↔ESM の共有方式 | **`.mjs` 共有モジュール**（依存追加なし・CLI 単独実行を維持・型は `.d.ts` 手書き） | P1-b, P1-d |
+| **D2** | `dataDir` 非 win32 パスの不一致 | **`~/.opencode-webui` に統一**（web が正本 / `memory-server.mjs` を変更）。win32 は変化なし | P1-d |
+| **D3** | CI 復活時に露見する既存エラー | **可視化のみ**。同 PR では直さず別 PR で修正し、Phase 1 開始前に緑にする（`continue-on-error` も使わない） | Phase 0 |
+| **D4** | db マイグレーション（Phase 2） | **実施する**。ただし「追加のみ / 起動時バックアップ / スキーマ一致テスト先行」の 3 条件必須 | Phase 2 |
+| **D5** | 着手タイミング | **計画確定のみで一旦停止**。実装は未着手。再開時は Phase 0 から | 全体 |
+
+### 未決（着手時に判断）
+
+| # | 事項 |
+|---|------|
+| U1 | D1 の共有モジュールの置き場所（`scripts/lib/` か `shared/` か。前例は `browser-bridge/shared/*.mjs`） |
+| U2 | D2 で旧パス（`~/.local/share/opencode-webui`）に既存 DB がある場合の互換読み替えの要否（非 win32 利用の実在確認が先） |
