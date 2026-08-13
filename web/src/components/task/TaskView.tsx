@@ -118,6 +118,7 @@ import {
 import { getJson, ocJson, sendJson, timedFetch } from "@/lib/client";
 import { SIDE_DEFAULT, useTaskPanels } from "./use-task-panels";
 import { useSessionPermissions } from "./use-session-permissions";
+import { useGoalLoop } from "./use-goal-loop";
 import { prepareAttachedImage } from "@/lib/prepare-attached-image";
 import {
   AUTO_MODEL_OPTION,
@@ -595,6 +596,22 @@ export function TaskView({
     permissionTick,
     setPermissionTick,
   } = useSessionPermissions();
+  const {
+    goalLoop,
+    setGoalLoop,
+    goalLoopEnabled,
+    setGoalLoopEnabled,
+    goalLoopAcceptance,
+    setGoalLoopAcceptance,
+    goalLoopMaxTurns,
+    setGoalLoopMaxTurns,
+    goalLoopForceFullRun,
+    setGoalLoopForceFullRun,
+    goalLoopBusy,
+    setGoalLoopBusy,
+    goalLoopError,
+    setGoalLoopError,
+  } = useGoalLoop();
   const router = useRouter();
   const { setExtras } = useShellExtras();
   const setActiveScope = useShellSetActiveScope();
@@ -603,18 +620,11 @@ export function TaskView({
   const [task, setTask] = useState<TaskSummary | null>(() =>
     readCachedTaskSummary(taskId),
   );
-  const [goalLoop, setGoalLoop] = useState<GoalLoopDto | null>(null);
   /**
    * Composer-level Goal loop switch. The composer textarea carries the goal
    * text (same as the top page), so there is no separate goal field and the
    * form costs zero vertical space while OFF.
    */
-  const [goalLoopEnabled, setGoalLoopEnabled] = useState(false);
-  const [goalLoopAcceptance, setGoalLoopAcceptance] = useState("");
-  const [goalLoopMaxTurns, setGoalLoopMaxTurns] = useState(10);
-  const [goalLoopForceFullRun, setGoalLoopForceFullRun] = useState(false);
-  const [goalLoopBusy, setGoalLoopBusy] = useState(false);
-  const [goalLoopError, setGoalLoopError] = useState<string | null>(null);
   const goalLoopBusyRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pageVisible, setPageVisible] = useState(
@@ -1980,7 +1990,7 @@ export function TaskView({
       if (taskRef.current?.id === requestedTaskId) return;
       setLoadError(err instanceof Error ? err.message : "タスクを読み込めません");
     }
-  }, [taskId]);
+  }, [taskId, setGoalLoop]);
 
   const refreshTaskCost = useCallback(async () => {
     if (!mountedRef.current) return;
@@ -2046,7 +2056,7 @@ export function TaskView({
         goalLoopRefreshBusyRef.current = null;
       }
     }
-  }, [taskId]);
+  }, [taskId, setGoalLoop, setGoalLoopError]);
 
   /**
    * Resolve Auto for a client-side send (addendum spec §4). Follow-ups bypass
@@ -2173,6 +2183,12 @@ export function TaskView({
       model,
       resolveAutoSelection,
       taskId,
+      setGoalLoop,
+      setGoalLoopAcceptance,
+      setGoalLoopBusy,
+      setGoalLoopEnabled,
+      setGoalLoopError,
+      setGoalLoopForceFullRun,
     ],
   );
 
@@ -2193,7 +2209,7 @@ export function TaskView({
       modelTouchedRef.current = true;
     }
     setGoalLoopEnabled(nextEnabled);
-  }, [goalLoop, goalLoopEnabled]);
+  }, [goalLoop, goalLoopEnabled, setGoalLoopAcceptance, setGoalLoopEnabled, setGoalLoopForceFullRun, setGoalLoopMaxTurns]);
 
   const changeGoalLoopState = useCallback(
     async (action: "pause" | "resume" | "stop" | "finish") => {
@@ -2217,7 +2233,7 @@ export function TaskView({
         setGoalLoopBusy(false);
       }
     },
-    [taskId],
+    [taskId, setGoalLoop, setGoalLoopBusy, setGoalLoopError],
   );
 
   const updateGoalLoopMaxTurns = useCallback(
@@ -2243,7 +2259,7 @@ export function TaskView({
         setGoalLoopBusy(false);
       }
     },
-    [taskId],
+    [taskId, setGoalLoop, setGoalLoopBusy, setGoalLoopError],
   );
 
 
@@ -2283,7 +2299,7 @@ export function TaskView({
     ) {
       setGoalLoopEnabled(false);
     }
-  }, [goalLoop?.status]);
+  }, [goalLoop?.status, setGoalLoopEnabled]);
 
   /** Composer is waiting for POST /goal-loop to answer. */
   const goalLoopStarting = goalLoopEnabled && !goalLoopLive && goalLoopBusy;
@@ -2961,7 +2977,7 @@ export function TaskView({
     deliveryMode,
     contextUsage,
     task?.directory,
-  ]);
+, setGoalLoop, setGoalLoopError]);
 
   // Drain only follow-ups that belong to the currently viewed session. Queue
   // items keep their scopeKey so switching sessions cannot auto-send another
