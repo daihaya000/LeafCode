@@ -230,6 +230,19 @@ production build はリポジトリ内では実行されません。`scripts/web
 
 `.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）へ分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。`scripts/start-webui.bat` は英語の要約行を先に出力してから日本語の詳細を表示するため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落しても処理は完走します。README 内の `bat` コード例も ASCII のみとしてください。確認は `npm run test:encoding` です。詳細は [`docs/specs/bat-encoding-safety.md`](./docs/specs/bat-encoding-safety.md) を参照してください。
 
+### ログとデバッグファイルの扱い
+
+ログ出力は **host の `log-buffer` / `log-file` に集約**されています（`host/src/log-buffer.js`
+はリングバッファ、`host/src/log-file.js` はディスク書き込み。設定「全般」タブのログビューアが
+両方を参照します）。ホストが管理する子プロセスの出力は `recordLog` を経由してこの集約へ
+入ります。
+
+- 新規ログ出力を追加するときは、`console.log` の直書きではなく `log` / `error`（host）や
+  `recordLog` 経由にしてください
+- リポジトリ直下の `*.log`（`bb.log` / `build.log` / `typecheck.log` 等）は `.gitignore`
+  対象でローカル専用です。コミットしないでください
+- 一時的なデバッグログはタスク完了時に削除します
+
 ## ドキュメント
 
 | 文書 | 内容 |
