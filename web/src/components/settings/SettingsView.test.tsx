@@ -571,9 +571,10 @@ describe("SettingsView", () => {
     );
 
     render(<SettingsView />);
-    await waitFor(() => expect(responses).toHaveLength(1));
 
     fireEvent.click(await screen.findByRole("tab", { name: "全般" }));
+    await waitFor(() => expect(responses).toHaveLength(1));
+
     fireEvent.click(screen.getByRole("button", { name: "手動" }));
     fireEvent.click(screen.getByRole("button", { name: "自動（本日）" }));
     await waitFor(() => expect(responses).toHaveLength(2));
