@@ -38,8 +38,30 @@ jobs:
       - name: Unit tests
         run: npm test
 
-  # NOTE: `next build` (web) は CI では実行しない。
-  # 理由: 本番ビルドはローカル稼働中の WebUI と競合するため、エージェント/CI からの
-  # 自動実行は禁止している（AGENTS.md / scripts/build-web.mjs 参照）。
-  # ビルド検証はユーザーの明示指示時のみ。E2E（playwright）は webServer 起動が前提のため
-  # CI 化スコープは IMPROVEMENT.md 8-4 / REFACTORING_PLAN Phase 7 で確定する。
+  # E2E の CI 化スコープ（IMPROVEMENT 8-4）: 全 59 テストは実行時間が長いため、
+  # smoke.spec.ts のみ CI で実行する。webServer（playwright.config.ts）が
+  # `next build` を NEXT_DIST_DIR 分離で実行するため、ローカル稼働中の WebUI
+  # には影響しない。頻度: push / PR ごと。
+  e2e-smoke:
+    name: e2e (smoke only)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: npx playwright install chromium
+
+      - name: E2E smoke
+        run: npm run e2e:smoke
