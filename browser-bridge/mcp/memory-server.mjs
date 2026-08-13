@@ -47,11 +47,13 @@ function resolveDataDir(env) {
     return path.resolve(env.OPENCODE_WEBUI_DATA_DIR);
   }
   // Mirror web/src/lib/paths.ts when the absolute path was not injected.
+  // Non-win32 path is ~/.opencode-webui (D2: unified on the web value; the
+  // old ~/.local/share/opencode-webui is no longer used).
   if (process.platform === 'win32') {
     const base = env.APPDATA ?? path.join((env.HOME || env.USERPROFILE || ''), 'AppData', 'Roaming');
     return path.join(base, 'opencode-webui');
   }
-  return path.join(env.HOME || env.HOME_PATH || '', '.local', 'share', 'opencode-webui');
+  return path.join(env.HOME || env.HOME_PATH || '', '.opencode-webui');
 }
 
 export function resolveWorkspace({ argv, env }) {

@@ -4,6 +4,34 @@
  * kinds, provenance, size limits, and FTS phrase escaping.
  */
 
+import {
+  jaccard,
+  lengthCompatible,
+  memoryIdentifiers,
+  memoryPolarity,
+  memorySimilarityVerdict,
+  memoryTrigrams,
+  normalizeMemoryKey,
+  MEMORY_IDENTIFIER_OVERLAP,
+  MEMORY_SIMILARITY_DIFFERENT_IDENTIFIERS,
+  MEMORY_SIMILARITY_NO_IDENTIFIERS,
+  MEMORY_SIMILARITY_SAME_IDENTIFIERS,
+  MEMORY_TRIGRAM_SIZE,
+} from '../../scripts/lib/memory-key.mjs';
+export {
+  jaccard,
+  memoryIdentifiers,
+  memoryPolarity,
+  memorySimilarityVerdict,
+  memoryTrigrams,
+  normalizeMemoryKey,
+  MEMORY_IDENTIFIER_OVERLAP,
+  MEMORY_SIMILARITY_DIFFERENT_IDENTIFIERS,
+  MEMORY_SIMILARITY_NO_IDENTIFIERS,
+  MEMORY_SIMILARITY_SAME_IDENTIFIERS,
+  MEMORY_TRIGRAM_SIZE,
+};
+
 export const MEMORY_KINDS = Object.freeze(['fact', 'preference', 'lesson', 'reference']);
 export const MEMORY_PROVENANCES = Object.freeze([
   'agent',
@@ -102,108 +130,6 @@ export function toFtsPhrase(query) {
   const sanitized = String(query).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
   if (sanitized.length === 0) return '""';
   return `"${sanitized.replaceAll('"', '""')}"`;
-}
-
-// --- Dedupe key / near-duplicate detection -------------------------------
-// Mirrors web/src/lib/memory-key.ts. Both sides write `memories.norm_key` and
-// both must agree on what counts as the same proposition, otherwise the MCP
-// server reintroduces the paraphrase duplicates the web side filters out.
-
-const IGNORED_CHARS_RE = /[\s\p{P}\p{S}]+/gu;
-const JP_TAIL_RE =
-  /(?:しています|しました|されています|されている|されました|しておく|している|すべきである|することがある|する必要がある|すること|されます|される|すべき|します|したまま|した|する|であり|であるため|である|ます|です|だった|になっている|になる)$/u;
-const JP_NEGATIVE_TAIL_RE =
-  /(?:してはいけない|してはならない|すべきではない|しないこと|されていない|されません|されない|しません|ではない|しない|ません|ない)$/u;
-const NEGATIVE_MARKER = 'nai';
-
-export const MEMORY_SIMILARITY_SAME_IDENTIFIERS = 0.6;
-export const MEMORY_SIMILARITY_DIFFERENT_IDENTIFIERS = 0.85;
-export const MEMORY_SIMILARITY_NO_IDENTIFIERS = 0.75;
-export const MEMORY_IDENTIFIER_OVERLAP = 0.6;
-export const MEMORY_TRIGRAM_SIZE = 3;
-
-export function memoryPolarity(content) {
-  if (typeof content !== 'string') return 'affirmative';
-  const text = content.normalize('NFKC').toLowerCase().replace(IGNORED_CHARS_RE, '');
-  return JP_NEGATIVE_TAIL_RE.test(text) ? 'negative' : 'affirmative';
-}
-
-export function normalizeMemoryKey(content) {
-  if (typeof content !== 'string') return '';
-  const text = content.normalize('NFKC').toLowerCase().replace(IGNORED_CHARS_RE, '');
-  const negative = JP_NEGATIVE_TAIL_RE.exec(text);
-  if (negative) return `${text.slice(0, negative.index)}${NEGATIVE_MARKER}`;
-  return text.replace(JP_TAIL_RE, '');
-}
-
-export function memoryIdentifiers(content) {
-  const out = new Set();
-  if (typeof content !== 'string') return out;
-  const matches = content.normalize('NFKC').toLowerCase().match(/[a-z0-9][a-z0-9._/:-]{1,}/g) ?? [];
-  for (const raw of matches) {
-    const token = raw.replace(/^[._/:-]+|[._/:-]+$/g, '');
-    if (token.length < 2) continue;
-    if (/^[0-9.]+$/.test(token)) continue;
-    out.add(token);
-  }
-  return out;
-}
-
-export function memoryTrigrams(normalized) {
-  const grams = new Set();
-  if (normalized.length === 0) return grams;
-  if (normalized.length <= MEMORY_TRIGRAM_SIZE) {
-    grams.add(normalized);
-    return grams;
-  }
-  for (let i = 0; i + MEMORY_TRIGRAM_SIZE <= normalized.length; i += 1) {
-    grams.add(normalized.slice(i, i + MEMORY_TRIGRAM_SIZE));
-  }
-  return grams;
-}
-
-export function jaccard(a, b) {
-  if (a.size === 0 || b.size === 0) return a.size === b.size ? 1 : 0;
-  let shared = 0;
-  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
-  for (const gram of small) {
-    if (large.has(gram)) shared += 1;
-  }
-  const union = a.size + b.size - shared;
-  return union === 0 ? 0 : shared / union;
-}
-
-function lengthCompatible(a, b) {
-  if (a.length === 0 || b.length === 0) return a.length === b.length;
-  const ratio = a.length > b.length ? a.length / b.length : b.length / a.length;
-  return ratio <= 2;
-}
-
-/** Same contract as memorySimilarityVerdict in web/src/lib/memory-key.ts. */
-export function memorySimilarityVerdict(existing, candidate) {
-  if (memoryPolarity(existing) !== memoryPolarity(candidate)) {
-    return { duplicate: false, similarity: 0, threshold: 1, reason: 'opposite-polarity' };
-  }
-  const normExisting = normalizeMemoryKey(existing);
-  const normCandidate = normalizeMemoryKey(candidate);
-  if (normExisting.length > 0 && normExisting === normCandidate) {
-    return { duplicate: true, similarity: 1, threshold: 0, reason: 'norm-key' };
-  }
-  const idsExisting = memoryIdentifiers(existing);
-  const idsCandidate = memoryIdentifiers(candidate);
-  const bothEmpty = idsExisting.size === 0 && idsCandidate.size === 0;
-  const sameSubject = !bothEmpty && jaccard(idsExisting, idsCandidate) >= MEMORY_IDENTIFIER_OVERLAP;
-  const threshold = bothEmpty
-    ? MEMORY_SIMILARITY_NO_IDENTIFIERS
-    : sameSubject
-      ? MEMORY_SIMILARITY_SAME_IDENTIFIERS
-      : MEMORY_SIMILARITY_DIFFERENT_IDENTIFIERS;
-  const reason = bothEmpty ? 'no-identifiers' : sameSubject ? 'same-identifiers' : 'different-identifiers';
-  if (!lengthCompatible(normExisting, normCandidate)) {
-    return { duplicate: false, similarity: 0, threshold, reason };
-  }
-  const similarity = jaccard(memoryTrigrams(normExisting), memoryTrigrams(normCandidate));
-  return { duplicate: similarity >= threshold, similarity, threshold, reason };
 }
 
 const MEMORY_ID_RE = /^[A-Za-z0-9_-]{1,256}$/;
