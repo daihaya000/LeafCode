@@ -116,6 +116,67 @@ describe("ocJson timeout", () => {
     await expect(ocJson("/session/status", "/repo")).rejects.toThrow(SyntaxError);
   });
 
+  /**
+   * The engine reports failures as `{_tag, message, service?}`, not
+   * `{error}`. Reading only `error` reduced every engine failure to
+   * "<path> failed: <status>" — a compact rejected with
+   * `503 ServiceUnavailableError` gave the user no reason at all.
+   */
+  it.each([
+    [
+      "engine error shape",
+      { _tag: "ServiceUnavailableError", message: "provider is unavailable", service: "opencode-go" },
+      "provider is unavailable (opencode-go)",
+    ],
+    ["WebUI route shape", { error: "OpenCode engine unavailable" }, "OpenCode engine unavailable"],
+    [
+      "detail only",
+      { detail: "upstream reset the connection" },
+      "upstream reset the connection",
+    ],
+    [
+      "tagged without message",
+      { _tag: "ServiceUnavailableError" },
+      "ServiceUnavailableError: /api/session/s1/compact failed: 503",
+    ],
+    ["no body", undefined, "/api/session/s1/compact failed: 503"],
+  ])("ocJson surfaces the %s of a failed response", async (_name, body, expected) => {
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 503,
+        text: async () => (body === undefined ? "" : JSON.stringify(body)),
+      })),
+    );
+
+    const error = await ocJson("/api/session/s1/compact", "/repo", {
+      method: "POST",
+      body: {},
+    }).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(503);
+    expect((error as ApiError).message).toBe(expected);
+  });
+
+  it.each([
+    ["getJson", () => getJson("/api/tasks")],
+    ["sendJson", () => sendJson("POST", "/api/tasks", {})],
+  ])("%s surfaces an engine-shaped error message", async (_name, call) => {
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 500,
+        text: async () => JSON.stringify({ message: "engine exploded" }),
+      })),
+    );
+
+    await expect(call()).rejects.toThrow("engine exploded");
+  });
+
   it.each([
     ["getJson", () => getJson("/api/tasks", undefined, { timeoutMs: 1000 })],
     ["sendJson", () => sendJson("POST", "/api/tasks", {}, undefined, { timeoutMs: 1000 })],

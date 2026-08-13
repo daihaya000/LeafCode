@@ -116,6 +116,46 @@ async function parseJsonBody<T>(res: Response): Promise<T> {
   return JSON.parse(text) as T;
 }
 
+/**
+ * Human-readable reason for a failed response.
+ *
+ * Two error shapes reach the browser: the WebUI's own routes answer with
+ * `{ error, detail? }`, while the OpenCode engine answers with
+ * `{ _tag, message, service? }` and the proxy forwards non-2xx bodies
+ * untouched. Reading only `error` therefore discarded every engine message and
+ * showed `<path> failed: <status>` instead of the real cause — e.g. a compact
+ * rejected with `503 ServiceUnavailableError` told the user nothing.
+ *
+ * An empty body (no JSON at all, e.g. a reverse proxy answering while the BFF
+ * is down) keeps the path/status fallback, which is the only information there.
+ */
+export function responseErrorMessage(
+  body: unknown,
+  path: string,
+  status: number,
+): string {
+  const text = (value: unknown): string | null =>
+    typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+  if (text(body)) return text(body)!;
+  if (body && typeof body === "object") {
+    const shape = body as {
+      error?: unknown;
+      message?: unknown;
+      detail?: unknown;
+      service?: unknown;
+      _tag?: unknown;
+    };
+    const reason = text(shape.error) ?? text(shape.message) ?? text(shape.detail);
+    if (reason) {
+      const service = text(shape.service);
+      return service ? `${reason} (${service})` : reason;
+    }
+    const tag = text(shape._tag);
+    if (tag) return `${tag}: ${path} failed: ${status}`;
+  }
+  return `${path} failed: ${status}`;
+}
+
 async function readJsonWithTimeout<T>(
   res: Response,
   path: string,
@@ -297,8 +337,7 @@ async function getJsonUnshared<T>(
     const body = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
       throw new ApiError(
-        (body as { error?: string } | undefined)?.error ??
-          `${path} failed: ${res.status}`,
+        responseErrorMessage(body, path, res.status),
         res.status,
       );
     }
@@ -329,8 +368,7 @@ export async function sendJson<T>(
     const data = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
       throw new ApiError(
-        (data as { error?: string } | undefined)?.error ??
-          `${path} failed: ${res.status}`,
+        responseErrorMessage(data, path, res.status),
         res.status,
       );
     }
@@ -378,10 +416,10 @@ export async function ocJson<T>(
     });
     const data = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
-      const msg =
-        (data as { error?: string } | null)?.error ??
-        `${path} failed: ${res.status}`;
-      throw new ApiError(msg, res.status);
+      throw new ApiError(
+        responseErrorMessage(data, path, res.status),
+        res.status,
+      );
     }
     return data as T;
   } catch (err) {
