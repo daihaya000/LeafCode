@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import {
-  collaborationContextFor,
-  prependCollaborationContext,
 } from "@/lib/collaboration-context";
 import {
   markCollaborationSnapshotCompacted,
   findWorkspaceIdsBySession,
-  findWorkspaceIdsBySessionAndDirectory,
   releaseSessionCompactionLock,
   tryAcquireSessionCompactionLock,
 } from "@/lib/db";
 import {
-  claimMemoryInjectionForSession,
   releaseMemoryInjectionClaim,
   type MemoryInjectionClaim,
 } from "@/lib/memory";
@@ -67,64 +63,12 @@ const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 290_000;
  * itself. See docs/specs/goal-loop.md invariant I9.
  */
 
-function injectWorkspaceMemory(
-  requestBody: ArrayBuffer,
-  sessionId: string,
-  directory: string,
-): { body: ArrayBuffer; claim: MemoryInjectionClaim | null } {
-  const workspaces = findWorkspaceIdsBySessionAndDirectory(sessionId, directory);
-  // A session can belong to more than one workspace; inject only when the
-  // ownership is unambiguous so one project's context never leaks into another.
-  if (workspaces.length !== 1) return { body: requestBody, claim: null };
-  try {
-    const body = JSON.parse(new TextDecoder().decode(requestBody)) as {
-      parts?: Array<{ type?: unknown; text?: unknown }>;
-    };
-    const firstText = body.parts?.find((part) => part.type === "text" && typeof part.text === "string");
-    if (
-      !firstText ||
-      typeof firstText.text !== "string"
-    ) {
-      return { body: requestBody, claim: null };
-    }
-    const claim = claimMemoryInjectionForSession(
-      workspaces[0]!,
-      sessionId,
-      firstText.text,
-    );
-    if (!claim) return { body: requestBody, claim: null };
-    firstText.text = `${claim.block}\n${firstText.text}`;
-    return { body: new TextEncoder().encode(JSON.stringify(body)).buffer, claim };
-  } catch {
-    return { body: requestBody, claim: null };
-  }
-}
-
-async function injectCollaborationContext(
-  requestBody: ArrayBuffer,
-  sessionId: string,
-  directory: string,
-): Promise<ArrayBuffer> {
-  const workspaces = findWorkspaceIdsBySessionAndDirectory(sessionId, directory);
-  if (workspaces.length !== 1) return requestBody;
-  try {
-    const block = await collaborationContextFor({
-      workspaceId: workspaces[0]!,
-      sessionId,
-      directory,
-    });
-    if (!block) return requestBody;
-    const body = JSON.parse(new TextDecoder().decode(requestBody)) as Record<string, unknown>;
-    return new TextEncoder()
-      .encode(JSON.stringify(prependCollaborationContext(body, block)))
-      .buffer;
-  } catch {
-    // Collaboration awareness is best-effort and must never block a prompt.
-    return requestBody;
-  }
-}
 
 import { requireAuthorized } from "@/lib/api-guard";
+import {
+  injectCollaborationContext,
+  injectWorkspaceMemory,
+} from "@/lib/opencode-proxy/inject";
 import {
   cacheCapabilityMetadata,
   supportsImageInput,
