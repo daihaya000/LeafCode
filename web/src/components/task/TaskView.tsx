@@ -204,6 +204,11 @@ import { VoiceInputButton } from "@/components/VoiceInputButton";
 import type { GoalLoopDto } from "@/lib/goal-loop";
 import type { TaskSummary, Todo } from "@/lib/types";
 import type { ProviderModelsDto } from "@/lib/extensions";
+import {
+  readCachedTaskSummary,
+  rememberTaskSummary,
+  __clearTaskSummaryCacheForTest,
+} from "@/lib/task-summary-cache";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
 import { GoalLoopPanel } from "./GoalLoopPanel";
@@ -290,7 +295,6 @@ type QueuedFollowUp = {
 
 type ComposerDraft = { input: string; attachments: Attachment[] };
 
-const TASK_CACHE_MAX = 24;
 const COMPOSER_DRAFT_CACHE_MAX = 48;
 
 /** Shown when Auto finds no connected + enabled candidate (addendum spec §4). */
@@ -315,26 +319,7 @@ function formatAutoDecisionNotice(decision: AutoDecision): string {
     decision.variant ? ` · effort ${decision.variant}` : ""
   } — ${decision.reason}`;
 }
-const taskSummaryCache = new Map<string, TaskSummary>();
 const composerDraftCache = new Map<string, ComposerDraft>();
-
-function rememberTaskSummary(task: TaskSummary) {
-  taskSummaryCache.delete(task.id);
-  taskSummaryCache.set(task.id, task);
-  while (taskSummaryCache.size > TASK_CACHE_MAX) {
-    const oldest = taskSummaryCache.keys().next().value;
-    if (typeof oldest !== "string") break;
-    taskSummaryCache.delete(oldest);
-  }
-}
-
-function readCachedTaskSummary(taskId: string): TaskSummary | null {
-  const cached = taskSummaryCache.get(taskId);
-  if (!cached) return null;
-  taskSummaryCache.delete(taskId);
-  taskSummaryCache.set(taskId, cached);
-  return cached;
-}
 
 function rememberComposerDraft(scopeKey: string, draft: ComposerDraft) {
   if (!scopeKey) return;
@@ -356,7 +341,7 @@ function readComposerDraft(scopeKey: string): ComposerDraft | undefined {
 }
 
 export function __clearTaskViewCachesForTest() {
-  taskSummaryCache.clear();
+  __clearTaskSummaryCacheForTest();
   composerDraftCache.clear();
 }
 

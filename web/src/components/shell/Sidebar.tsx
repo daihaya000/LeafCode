@@ -36,6 +36,7 @@ import {
   writeSidebarToServer,
 } from "@/lib/sidebar-settings";
 import { TASK_DRAG_MIME } from "@/lib/task-drag";
+import { prefetchTaskSummaries } from "@/lib/task-summary-cache";
 import { useTaskSplit } from "./TaskSplitContext";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
 
@@ -424,7 +425,12 @@ export function Sidebar({
         setProjectsLoadError(true);
       }
       if (tasksResult.status === "fulfilled") {
-        setTasks(tasksResult.value.tasks ?? []);
+        const fetchedTasks = tasksResult.value.tasks ?? [];
+        setTasks(fetchedTasks);
+        // Warm the shared task summary cache with the latest 5 sessions so a
+        // task detail page paints its title/status instantly (TaskView seeds
+        // its header from this cache on mount). Reuses data already fetched.
+        prefetchTaskSummaries(fetchedTasks, 5);
         updateEngineHealth(tasksResult.value.engineOk);
         if (typeof tasksResult.value.archivedCount === "number") {
           setArchivedTaskCount(tasksResult.value.archivedCount);
