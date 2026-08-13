@@ -116,6 +116,7 @@ import {
   type SidePanelKind,
 } from "@/lib/side-panel-state";
 import { getJson, ocJson, sendJson, timedFetch } from "@/lib/client";
+import { SIDE_DEFAULT, useTaskPanels } from "./use-task-panels";
 import { prepareAttachedImage } from "@/lib/prepare-attached-image";
 import {
   AUTO_MODEL_OPTION,
@@ -379,7 +380,8 @@ function TodoPanel({
    * 完了チェック"). */
   warn?: boolean;
 }) {
-  const [open, setOpen] = useState(Boolean(forceOpen));
+  
+const [open, setOpen] = useState(Boolean(forceOpen));
   useEffect(() => {
     if (forceOpen) setOpen(true);
   }, [forceOpen]);
@@ -456,7 +458,6 @@ function TodoPanel({
 }
 
 const SIDE_WIDTH_KEY = "webui.sidepanel.width";
-const SIDE_DEFAULT = 520;
 const SIDE_MIN = 280;
 const SIDE_MAX = 900;
 /** Keep enough room for the chat column when the right panel is wide. */
@@ -545,6 +546,36 @@ export function TaskView({
   taskId: string;
   onCloseSplit?: () => void;
 }) {
+  const {
+    tab,
+    setTab,
+    viewTab,
+    setViewTab,
+    workflowFocusNode,
+    setWorkflowFocusNode,
+    showDiff,
+    setShowDiff,
+    sidePanel,
+    setSidePanel,
+    sideWidth,
+    setSideWidth,
+    sideResizing,
+    setSideResizing,
+    viewportIsLg,
+    setViewportIsLg,
+    isMd,
+    setIsMd,
+    diffKey,
+    setDiffKey,
+    focusFile,
+    setFocusFile,
+    showScrollButton,
+    setShowScrollButton,
+    showScrollTopButton,
+    setShowScrollTopButton,
+    filteredFilesCount,
+    setFilteredFilesCount,
+  } = useTaskPanels();
   const router = useRouter();
   const { setExtras } = useShellExtras();
   const setActiveScope = useShellSetActiveScope();
@@ -596,7 +627,7 @@ export function TaskView({
       goalLoopRefreshSequenceRef.current += 1;
       goalLoopRefreshBusyRef.current = null;
     };
-  }, [taskId]);
+  }, [taskId, setViewTab, setWorkflowFocusNode]);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -606,25 +637,11 @@ export function TaskView({
       goalLoopRefreshBusyRef.current = null;
     };
   }, [taskId]);
-  const [tab, setTab] = useState<ChatTab>("chat");
-  const [viewTab, setViewTab] = useState<"chat" | "workflow" | "diff">("chat");
   const wasSplitActiveRef = useRef(false);
-  const [workflowFocusNode, setWorkflowFocusNode] = useState<string | null>(null);
-  const [showDiff, setShowDiff] = useState(true);
-  const [sidePanel, setSidePanel] = useState<SidePanelKind>("graph");
-  const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
-  const [sideResizing, setSideResizing] = useState(false);
-  const [viewportIsLg, setViewportIsLg] = useState(false);
   const isLg = viewportIsLg && !splitActive;
   // Initialize from the actual matchMedia to avoid desktop permanent collapse
   // (isMd starts false on SSR/first paint, causing initialCollapsed=true on desktop).
-  const [isMd, setIsMd] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(min-width: 768px)").matches;
-  });
   const sideDragRef = useRef<{ x: number; w: number } | null>(null);
-  const [diffKey, setDiffKey] = useState(0);
-  const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [tokenSavingNotice, setTokenSavingNotice] = useState<string | null>(null);
@@ -739,8 +756,6 @@ export function TaskView({
   // Last observed scroller offset, used to tell a real upward user scroll from
   // a bottom drifting away because content grew.
   const lastScrollTopRef = useRef(0);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const [showScrollTopButton, setShowScrollTopButton] = useState(false);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const autoReplyIdsRef = useRef<Set<string>>(new Set());
@@ -1088,7 +1103,7 @@ export function TaskView({
       mqMd.removeEventListener("change", apply);
       window.removeEventListener("resize", apply);
     };
-  }, []);
+  }, [setIsMd, setShowDiff, setSidePanel, setSideWidth, setTab, setViewportIsLg]);
 
   useEffect(() => {
     if (!sideResizing) return;
@@ -1118,7 +1133,7 @@ export function TaskView({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [sideResizing]);
+  }, [sideResizing, setSideResizing, setSideWidth]);
 
   useEffect(() => {
     const onMode = (e: Event) => {
@@ -1447,15 +1462,15 @@ export function TaskView({
     setTab(next);
     setViewTab(next === "diff" ? "diff" : "chat");
     writeChatTab(next);
-  }, []);
+  }, [setTab, setViewTab]);
   const changeShowDiff = useCallback((next: boolean) => {
     setShowDiff(next);
     writeShowDiff(next);
-  }, []);
+  }, [setShowDiff]);
   const changeSidePanel = useCallback((next: SidePanelKind) => {
     setSidePanel(next);
     writeSidePanel(next);
-  }, []);
+  }, [setSidePanel]);
 
   /** 現在開いているパネルのアイコンを再クリックすると右ペイン全体を閉じ、
       別のパネルのアイコンならそのパネルを開く。以前はDiffアイコンだけが
@@ -1478,14 +1493,14 @@ export function TaskView({
     setWorkflowFocusNode(nodeId);
     setViewTab("chat");
     changeTab("chat");
-  }, [changeTab]);
+  }, [changeTab, setViewTab, setWorkflowFocusNode]);
 
   const openWorkflowDiff = useCallback((nodeId: string) => {
     setWorkflowFocusNode(nodeId);
     changeSidePanel("diff");
     setViewTab("diff");
     changeTab("diff");
-  }, [changeSidePanel, changeTab]);
+  }, [changeSidePanel, changeTab, setViewTab, setWorkflowFocusNode]);
 
   const { permissions, replyPermission, replyQuestion, rejectQuestion } = stream;
   const attention = useOptionalGlobalAttention();
@@ -2373,7 +2388,7 @@ export function TaskView({
       if (goalLoop) void refreshGoalLoop();
     }
     prevStatusRef.current = cur;
-  }, [goalLoop, refreshGoalLoop, refreshTask, refreshTodos, resync, streamScopeKey, streamStatusType]);
+  }, [goalLoop, refreshGoalLoop, refreshTask, refreshTodos, resync, streamScopeKey, streamStatusType, setDiffKey]);
 
   const prevNotifiedStatusRef = useRef<string | null | undefined>(null);
   useEffect(() => {
@@ -2413,7 +2428,7 @@ export function TaskView({
       setDiffKey((k) => k + 1);
     }
     prevPatchRef.current = patchSignature;
-  }, [patchSignature]);
+  }, [patchSignature, setDiffKey]);
 
   const isAtBottom = useCallback((el: HTMLElement) => {
     return el.scrollTop + el.clientHeight >= el.scrollHeight - 80;
@@ -2453,7 +2468,7 @@ export function TaskView({
     else if (el.scrollTop < prevTop - 4) stickRef.current = false;
     setShowScrollButton(!atBottom && !stickRef.current);
     setShowScrollTopButton(!isAtTop(el));
-  }, [isAtBottom, isAtTop]);
+  }, [isAtBottom, isAtTop, setShowScrollButton, setShowScrollTopButton]);
 
   // Auto-stick scroll to bottom. We intentionally avoid rAF timeouts because
   // mobile Safari can ignore scrollTo during inertial scrolling; re-running
@@ -2551,14 +2566,13 @@ export function TaskView({
   // Visible file count from DiffPane (respects type + session filters).
   // Falls back to the dirstat-based `task.filesChanged` when DiffPane has not
   // reported yet (e.g. tab not active).
-  const [filteredFilesCount, setFilteredFilesCount] = useState<number | null>(null);
   const badgeCount = filteredFilesCount ?? (task?.filesChanged ?? 0);
 
   // Reset the DiffPane-reported count when switching tasks so a stale count
   // from the previous task does not flash in the badge.
   useEffect(() => {
     setFilteredFilesCount(null);
-  }, [task?.id]);
+  }, [task?.id, setFilteredFilesCount]);
 
   // Context window usage, derived from the most recent assistant turn's
   // token usage against that model's known context limit (see
@@ -3326,7 +3340,7 @@ export function TaskView({
     } finally {
       if (mountedRef.current) setManualResyncing(false);
     }
-  }, [manualResyncing, resync, working]);
+  }, [manualResyncing, resync, working, setDiffKey]);
 
   useEffect(() => {
     setCopied(false);
@@ -3434,7 +3448,7 @@ export function TaskView({
     } finally {
       setTaskActionBusy(null);
     }
-  }, [refreshTask, task, taskActionBusy]);
+  }, [refreshTask, task, taskActionBusy, setViewTab]);
 
   const convertToTask = useCallback(async () => {
     if (!task || taskActionBusy) return;
@@ -3476,7 +3490,7 @@ export function TaskView({
     } finally {
       setTaskActionBusy(null);
     }
-  }, [refreshTask, task, taskActionBusy]);
+  }, [refreshTask, task, taskActionBusy, setViewTab]);
 
   const ensureSession = useCallback(async () => {
     if (!task || taskActionBusy) return;
@@ -3524,7 +3538,7 @@ export function TaskView({
     } finally {
       setTaskActionBusy(null);
     }
-  }, [task?.directory, task?.sessionId, stream, taskActionBusy]);
+  }, [task?.directory, task?.sessionId, stream, taskActionBusy, setDiffKey]);
 
   // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
@@ -3917,7 +3931,7 @@ export function TaskView({
       changeTab("diff");
       changeSidePanel("diff");
     },
-    [task?.directory, changeShowDiff, changeTab, changeSidePanel],
+    [task?.directory, changeShowDiff, changeTab, changeSidePanel, setFocusFile],
   );
 
   useEffect(() => {
