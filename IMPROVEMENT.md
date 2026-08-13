@@ -262,6 +262,17 @@ Claude / OpenAI の 2 つは「OAuth popup → ポーリング → 接続状態�
 手書きで揺れている（例: BH-13 の `browse/dirs`）。ガードの適用規則を
 `api-guard.ts` に「ポリシー」として集約し、route 側はポリシー名を指定する形に揃える。
 
+> **2026-08-13 調査（対応判断: 現状のまま・改善不要）**:
+> `api-guard.ts`（148 行）は既に「単一の認可ゲート」として整理されている:
+> - `requireAuthorized`（CSRF + loopback/セッション認可）、`PUBLIC_API_ROUTES`（明示的公開）、
+>   `api-guard-coverage.test.ts`（ガード漏れをビルドで検出）
+> - 使用実態: 125 ファイル・304 箇所。呼び出しパターンはほぼ全て
+>   `const denied = await requireAuthorized(req); if (denied) return denied;` で統一済み
+>   （「揺れ」は確認されず、BH-13 の該当箇所は既にガード済み）
+> - `requireHostMachine` は意図的に未使用で保持（コメント明記）
+> → 2-3 はクローズ（さらなる「ポリシー名指定」化は過剰設計のリスク）。
+> 設定同期（2-2）の調査・対応は別途。
+
 ### 2-4. 【低】route のテストカバレッジ
 
 `web/src/app/api` 配下 **133 route 中 72 のみ**テストあり（54%）。特に以下はテストが無い:
