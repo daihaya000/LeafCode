@@ -1,5 +1,7 @@
 # setup.bat が文字化け／エンコードで実行できない問題の恒久対策
 
+> 実装ステータス: ✅ 実装済み（参照: `host/src/bat-encoding.test.js` / `npm run test:encoding`）
+
 > **追記（統合後）**: 本ファイルが対象としていた `setup.bat` は、`docs/specs/setup-start-webui-merge.md` に基づき
 > `start-webui.bat` へ統合されて削除されました。本文中の `setup.bat` への言及は当時の事故記録・調査ログとして
 > そのまま残しています。現在のASCII/CRLF制約や日本語メッセージ分離の方針は `start-webui.bat` にも同様に適用されており、

@@ -1,5 +1,7 @@
 # 設定「全般」タブにホストログのライブ表示を追加
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/components/settings/HostLogPanel.tsx` / `host/src/log-buffer.js` / `log-file.js`）
+
 ## 背景
 
 トレイホスト（`host/src/index.js`）が起動する `node src/index.js` は OpenCode / WebUI(Next.js) / Caddy
