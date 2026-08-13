@@ -120,6 +120,7 @@ import { SIDE_DEFAULT, useTaskPanels } from "./use-task-panels";
 import { useSessionPermissions } from "./use-session-permissions";
 import { useGoalLoop } from "./use-goal-loop";
 import { useAutoTask } from "./use-auto-task";
+import { useTaskModelConfig } from "./use-task-model-config";
 import { prepareAttachedImage } from "@/lib/prepare-attached-image";
 import {
   AUTO_MODEL_OPTION,
@@ -170,7 +171,6 @@ import {
 import {
   getIntelligenceVariants,
   isIntelligenceVariant,
-  type IntelligenceVariant,
   type ProviderModelMeta,
 } from "@/lib/model-variants";
 import { decideNotification, notificationText } from "@/lib/notify";
@@ -630,6 +630,29 @@ export function TaskView({
     autoReplyFailedIds,
     setAutoReplyFailedIds,
   } = useAutoTask();
+  const {
+    modelOptions,
+    setModelOptions,
+    modelLabels,
+    modelCapabilities,
+    setModelCapabilities,
+    qwenNativeAvailable,
+    setQwenNativeAvailable,
+    agents,
+    setAgents,
+    agentModels,
+    setAgentModels,
+    model,
+    setModel,
+    serverDefaultModel,
+    setServerDefaultModel,
+    agent,
+    setAgent,
+    intelligence,
+    setIntelligence,
+    providerModelsMap,
+    setProviderModelsMap,
+  } = useTaskModelConfig(taskId);
   const router = useRouter();
   const { setExtras } = useShellExtras();
   const setActiveScope = useShellSetActiveScope();
@@ -718,38 +741,12 @@ export function TaskView({
   const taskDeleteTriggerRef = useRef<HTMLElement | null>(null);
   const revertConfirmRef = useRef<HTMLDivElement | null>(null);
   const revertTriggerRef = useRef<HTMLElement | null>(null);
-  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
-  const modelLabels = useMemo<Readonly<Record<string, string>>>(
-    () =>
-      Object.fromEntries(
-        modelOptions.map((option) => [option.value, option.label]),
-      ),
-    [modelOptions],
-  );
-  const [modelCapabilities, setModelCapabilities] = useState<
-    Record<string, { attachment?: boolean; image?: boolean }>
-  >({});
-  const [qwenNativeAvailable, setQwenNativeAvailable] = useState(false);
-  const [agents, setAgents] = useState<string[]>([]);
-  const [agentModels, setAgentModels] = useState<Record<string, { providerID: string; modelID: string }>>({});
-  // Seed Auto synchronously for tasks created from HomeView. Waiting for the
-  // provider fetch leaves a render where the model is empty, allowing the
-  // assistant-reply seeding effect to replace Auto with its resolved model.
-  const [model, setModel] = useState(() =>
-    readAutoTaskRecord(taskId) ? AUTO_MODEL_VALUE : "",
-  );
-  const [serverDefaultModel, setServerDefaultModel] = useState<string | null>(null);
   const modelTouchedRef = useRef(false);
-  const [agent, setAgent] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const inputRef = useRef(input);
   const attachmentsRef = useRef(attachments);
   const composerScopeRef = useRef("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
-  const [providerModelsMap, setProviderModelsMap] = useState<
-    Record<string, ProviderModelMeta>
-  >({});
   /** Guards the one-shot escalation retry against effect re-entry. */
   const autoRetryFiredRef = useRef(false);
   /** Previous `sessionError`; `undefined` until the first observation. */
@@ -1214,7 +1211,7 @@ export function TaskView({
         }
       }
     })();
-  }, []);
+  }, [setServerDefaultModel]);
 
   // Apply localStorage のサブエージェント権限を、タスクを開いた／セッションを
   // 切り替えた／新規セッションを bind したタイミングで OpenCode 側へ同期する。
@@ -1367,7 +1364,7 @@ export function TaskView({
     };
     window.addEventListener(DEFAULT_MODEL_EVENT, onDefault);
     return () => window.removeEventListener(DEFAULT_MODEL_EVENT, onDefault);
-  }, [modelOptions]);
+  }, [modelOptions, setIntelligence, setModel]);
 
   const changeAccessMode = useCallback(
     async (mode: AccessMode) => {
@@ -1938,7 +1935,7 @@ export function TaskView({
         /* non-fatal */
       }
     })();
-  }, [taskId, setAutoInputs]);
+  }, [taskId, setAutoInputs, setAgent, setAgentModels, setAgents, setIntelligence, setModel, setModelCapabilities, setModelOptions, setProviderModelsMap, setQwenNativeAvailable]);
 
   const refreshTask = useCallback(async () => {
     if (!mountedRef.current) return;
@@ -2193,7 +2190,7 @@ export function TaskView({
       modelTouchedRef.current = true;
     }
     setGoalLoopEnabled(nextEnabled);
-  }, [goalLoop, goalLoopEnabled, setGoalLoopAcceptance, setGoalLoopEnabled, setGoalLoopForceFullRun, setGoalLoopMaxTurns]);
+  }, [goalLoop, goalLoopEnabled, setGoalLoopAcceptance, setGoalLoopEnabled, setGoalLoopForceFullRun, setGoalLoopMaxTurns, setAgent, setIntelligence, setModel]);
 
   const changeGoalLoopState = useCallback(
     async (action: "pause" | "resume" | "stop" | "finish") => {
@@ -3202,7 +3199,7 @@ export function TaskView({
     } finally {
       notifyTasksChanged();
     }
-  }, [working, stream, touchActivity, refreshSessionTitle]);
+  }, [working, stream, touchActivity, refreshSessionTitle, setAgent, setIntelligence]);
 
   /**
    * 中断（`MessageAbortedError`）または無言終了したターンを、同じプロンプトの
@@ -3258,7 +3255,7 @@ export function TaskView({
     if (!intelligenceVariants.some((v) => v === intelligence)) {
       setIntelligence("");
     }
-  }, [intelligence, intelligenceVariants]);
+  }, [intelligence, intelligenceVariants, setIntelligence]);
 
   // Prefer last assistant message's model once stream is loaded.
   // Seeding runs at most once per session scope: once a model is resolved
@@ -3288,7 +3285,7 @@ export function TaskView({
         ? current
         : serverDefaultModel,
     );
-  }, [model, modelOptions, serverDefaultModel, taskId]);
+  }, [model, modelOptions, serverDefaultModel, taskId, setModel]);
   useEffect(() => {
     if (seededModelRef.current || !stream.loaded || modelOptions.length === 0) return;
     // When the composer is set to Auto — either carried over from HomeView
@@ -3318,7 +3315,7 @@ export function TaskView({
       }
       break;
     }
-  }, [stream.loaded, stream.messages, modelOptions, model]);
+  }, [stream.loaded, stream.messages, modelOptions, model, setIntelligence, setModel]);
 
   useEffect(() => {
     autoReplyIdsRef.current.clear();
