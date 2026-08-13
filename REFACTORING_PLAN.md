@@ -338,6 +338,22 @@ IMPROVEMENT.md のクラスタ分類をそのまま作業単位にする（useSt
 | P6-b | `control-server.js`（929 行）のルート宣言テーブル化（4-2） | 15 ルートの if 連鎖 / `/restart/*` 2 段階解決 / `resolveSession`（365 行） | |
 | P6-c | `service-status.js`（11 行）を状態の正本に（4-3） | | 小 |
 
+**P6-a 完了（bdbfb0b 〜 1585c86）**: 11 グループを分離・集約し `index.js` を 3071 → 2299 行（25% 削減）に。
+- 再起動シーケンス: `runServiceRestart` で状態機械化
+- ポート監視: `port-scanner.js`（netstat / ポート占有判定）
+- プロセス停止: `process-stop.js` へ統合（`isProcessAlive` / `stopOpencodeProcessTree` / `reapOpencodePortHolders`）
+- ロック: `lock-file.js`（`readLock` / `writeLock` / `removeLock` 等）
+- プロセス情報: `process-info.js`（コマンドライン / 作成時刻 / tray 子判定）
+- ヘルスチェック: `health.js`（`createHttpWaiter` + `procRunning`）
+- npm CLI: `npm-cli.js`（`spawnNpm`）
+- ビルド補助: `removeBrokenWebBuild` を `web-runtime.js` へ
+- Caddy URL 解析: `caddy-sites.js` へ集約（`parseCaddy*` / `pickBrowserUrl`）
+- OpenCode CLI: `opencode-upgrade.js`（`createOpencodeUpgrader` + `repairNpmOpencodeStub`）
+- Windows 統合: `windows-integration.js`（音声入力 / ファイアウォール）
+- Browser Bridge: `browser-bridge.js`（`createBrowserBridgeManager`）
+- 残り（トレイ / 終了処理）: systray とモジュール状態の密結合のため分割保留（リスク大・利益小）
+- host テスト 400 本すべてパス
+
 - host は**テスト 395 本**があるため、分割の検証がしやすい（Phase 3〜5 より安全）
 - P1-c（プロセス/パス解決の共有化）を先に済ませておくと、分割時の依存が整理済みになる
 

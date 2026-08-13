@@ -24,6 +24,31 @@ function clientIpOf(req) {
 }
 
 /**
+ * Host-control route table: [method, path, routeId].
+ * `/restart/*` and `/stop/*` are POST-only, resolved in one step.
+ */
+const ROUTE_TABLE = [
+  ['GET', '/health', 'health'],
+  ['GET', '/logs', 'logs'],
+  ['GET', '/users', 'users'],
+  ['POST', '/users', 'users'],
+  ['DELETE', '/users', 'users'],
+  ['GET', '/auth/config', 'auth-config'],
+  ['POST', '/auth/config', 'auth-config'],
+  ['GET', '/browser/config', 'browser-config'],
+  ['POST', '/browser/config', 'browser-config'],
+  ['POST', '/auth/login', 'auth'],
+  ['POST', '/auth/logout', 'auth'],
+  ['POST', '/auth/verify', 'auth'],
+  ['POST', '/restart/webui', 'webui'],
+  ['POST', '/restart/opencode', 'opencode'],
+  ['POST', '/restart/all', 'all'],
+  ['POST', '/stop/webui', 'stop-webui'],
+  ['POST', '/voice-input', 'voice-input'],
+  ['POST', '/allow-firewall', 'allow-firewall'],
+];
+
+/**
  * Match a host-control HTTP route.
  * @param {string} method
  * @param {string} pathname
@@ -32,25 +57,9 @@ function clientIpOf(req) {
 export function matchControlRoute(method, pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
   const m = method.toUpperCase();
-  if (m === 'GET' && path === '/health') return 'health';
-  if (m === 'GET' && path === '/logs') return 'logs';
-  if (m === 'GET' && path === '/users') return 'users';
-  if (m === 'POST' && path === '/users') return 'users';
-  if (m === 'DELETE' && path === '/users') return 'users';
-  if (m === 'GET' && path === '/auth/config') return 'auth-config';
-  if (m === 'POST' && path === '/auth/config') return 'auth-config';
-  if (m === 'GET' && path === '/browser/config') return 'browser-config';
-  if (m === 'POST' && path === '/browser/config') return 'browser-config';
-  if (m === 'POST' && path === '/auth/login') return 'auth';
-  if (m === 'POST' && path === '/auth/logout') return 'auth';
-  if (m === 'POST' && path === '/auth/verify') return 'auth';
-  if (m !== 'POST') return null;
-  if (path === '/restart/webui') return 'webui';
-  if (path === '/restart/opencode') return 'opencode';
-  if (path === '/restart/all') return 'all';
-  if (path === '/stop/webui') return 'stop-webui';
-  if (path === '/voice-input') return 'voice-input';
-  if (path === '/allow-firewall') return 'allow-firewall';
+  for (const [routeMethod, routePath, route] of ROUTE_TABLE) {
+    if (m === routeMethod && path === routePath) return route;
+  }
   return null;
 }
 
