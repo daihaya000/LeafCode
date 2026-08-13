@@ -379,6 +379,499 @@ export function createControlRequestHandler(handlers) {
     return session;
   }
 
+  const routeHandlers = {
+  'health': async (req, res) => {
+    res.writeHead(200, JSON_HEADERS);
+    res.end(JSON.stringify({ ok: true, service: 'opencode-webui-host' }));
+    return;
+  },
+
+  'stop-webui': async (req, res) => {
+    // Unlike restart, the caller (build.bat) must know the port is actually
+    // free before it overwrites web/.next, so respond only after the stop
+    // completes. A 501 tells the caller this host cannot stop the WebUI, so
+    // it must not fall back to killing (the host would just restart it).
+    if (typeof handlers.onStopWebui !== 'function') {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'stop is not supported by this host' }));
+      return;
+    }
+    try {
+      await handlers.onStopWebui();
+    } catch (err) {
+      res.writeHead(500, JSON_HEADERS);
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return;
+    }
+    res.writeHead(200, JSON_HEADERS);
+    res.end(JSON.stringify({ ok: true, target: 'webui', stopped: true }));
+    return;
+  },
+
+  'allow-firewall': async (req, res) => {
+    if (typeof handlers.onAllowFirewall !== 'function') {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(
+        JSON.stringify({ ok: false, error: 'firewall allow is not supported by this host' }),
+      );
+      return;
+    }
+    try {
+      const result = await handlers.onAllowFirewall();
+      res.writeHead(200, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: true, target: 'allow-firewall', ...(result ?? {}) }));
+    } catch (err) {
+      res.writeHead(500, JSON_HEADERS);
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+    return;
+  },
+
+  'logs': async (req, res) => {
+    if (typeof handlers.onGetLogs !== 'function') {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'logs are not supported by this host' }));
+      return;
+    }
+    let since = null;
+    const rawSince = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get(
+      'since',
+    );
+    if (rawSince !== null) {
+      const n = Number(rawSince);
+      if (Number.isFinite(n)) since = n;
+    }
+    const { entries, nextSeq } = handlers.onGetLogs(since);
+    res.writeHead(200, JSON_HEADERS);
+    res.end(JSON.stringify({ entries, nextSeq }));
+    return;
+  },
+
+  'voice-input': async (req, res) => {
+    if (typeof handlers.onVoiceInput !== 'function') {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'voice input is not supported by this host' }));
+      return;
+    }
+    try {
+      await handlers.onVoiceInput();
+    } catch (err) {
+      res.writeHead(500, JSON_HEADERS);
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return;
+    }
+    res.writeHead(200, JSON_HEADERS);
+    res.end(JSON.stringify({ ok: true, target: 'voice-input', launched: true }));
+    return;
+  },
+
+  'users': async (req, res) => {
+    const authStore = handlers.authStore;
+    if (!authStore) {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'user management is not supported by this host' }));
+      return;
+    }
+    const method = req.method?.toUpperCase() ?? 'GET';
+    if (method === 'GET') {
+      res.writeHead(200, JSON_HEADERS);
+      res.end(JSON.stringify({ users: authStore.listUsers() }));
+      return;
+    }
+
+    // Mutating operations (POST/DELETE) require an admin session. The one
+    // exception is the first POST on a fresh install: there cannot be an
+    // admin session until that first admin user exists.
+    const session = await resolveSession(req);
+    const ip = clientIpOf(req) ?? undefined;
+    const bootstrap = method === 'POST' && !authStore.hasUsers();
+    if ((!session && !bootstrap) || (session && authStore.isAdmin?.(session.username) !== true)) {
+      auditLog.record({
+        action: 'authz.denied',
+        actor: session?.username,
+        target: '/users',
+        ip,
+        result: 'deny',
+        reason: session ? 'not_admin' : 'no_session',
+      });
+      res.writeHead(403, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
+      return;
+    }
+
+    if (method === 'DELETE') {
+      const body = await readJsonBody(req);
+      const username = isPlainObject(body) && typeof body.username === 'string' ? body.username : '';
+      if (!username) {
+        res.writeHead(400, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'username is required' }));
+        return;
+      }
+      const result = authStore.deleteUser(username);
+      auditLog.record({
+        action: 'user.delete',
+        actor: session.username,
+        target: username,
+        ip,
+        result: result.ok ? 'allow' : 'deny',
+        reason: result.ok ? undefined : result.error,
+      });
+      res.writeHead(result.ok ? 200 : 404, JSON_HEADERS);
+      res.end(JSON.stringify(result));
+      return;
+    }
+    // POST
+    const body = await readJsonBody(req);
+    const username = isPlainObject(body) && typeof body.username === 'string' ? body.username : '';
+    const password = isPlainObject(body) && typeof body.password === 'string' ? body.password : '';
+    if (!username || !password) {
+      res.writeHead(400, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'username and password are required' }));
+      return;
+    }
+    const existed = authStore.listUsers().some(
+      (u) => u.username.trim().toLowerCase() === username.trim().toLowerCase(),
+    );
+    const result = authStore.upsertUser(username, password);
+    auditLog.record({
+      // The password itself is never recorded, only that it was set.
+      action: existed ? 'user.update' : 'user.create',
+      actor: session?.username ?? username,
+      target: username,
+      ip,
+      result: result.ok ? 'allow' : 'deny',
+      reason: result.ok ? undefined : result.error,
+    });
+    res.writeHead(result.ok ? 200 : 400, JSON_HEADERS);
+    res.end(JSON.stringify(result));
+    return;
+  },
+
+  'auth-config': async (req, res) => {
+    const authStore = handlers.authStore;
+    if (!authStore?.readConfig) {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(
+        JSON.stringify({ ok: false, error: 'auth config is not supported by this host' }),
+      );
+      return;
+    }
+    const supported = authStore.windowsAuthSupported === true;
+    if ((req.method?.toUpperCase() ?? 'GET') === 'GET') {
+      const config = authStore.readConfig();
+      res.writeHead(200, JSON_HEADERS);
+      res.end(
+        JSON.stringify({
+          windowsAuth: config.windowsAuth === true,
+          windowsAuthSupported: supported,
+          hasUsers: authStore.hasUsers(),
+        }),
+      );
+      return;
+    }
+    // POST — admin only, like /users mutations.
+    if (!authStore.writeConfig) {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(
+        JSON.stringify({ ok: false, error: 'auth config is read-only on this host' }),
+      );
+      return;
+    }
+    const session = await resolveSession(req);
+    const configIp = clientIpOf(req) ?? undefined;
+    if (!session || authStore.isAdmin?.(session.username) !== true) {
+      auditLog.record({
+        action: 'authz.denied',
+        actor: session?.username,
+        target: '/auth/config',
+        ip: configIp,
+        result: 'deny',
+        reason: session ? 'not_admin' : 'no_session',
+      });
+      res.writeHead(403, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
+      return;
+    }
+    const body = await readJsonBody(req);
+    if (!isPlainObject(body) || typeof body.windowsAuth !== 'boolean') {
+      res.writeHead(400, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'windowsAuth must be a boolean' }));
+      return;
+    }
+    if (body.windowsAuth && !supported) {
+      res.writeHead(400, JSON_HEADERS);
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: 'Windows 認証はこの OS では利用できません',
+        }),
+      );
+      return;
+    }
+    const saved = authStore.writeConfig({ windowsAuth: body.windowsAuth });
+    auditLog.record({
+      action: 'authconfig.update',
+      actor: session.username,
+      target: 'windowsAuth',
+      ip: configIp,
+      result: 'allow',
+      reason: saved.windowsAuth === true ? 'enabled' : 'disabled',
+    });
+    res.writeHead(200, JSON_HEADERS);
+    res.end(
+      JSON.stringify({
+        ok: true,
+        windowsAuth: saved.windowsAuth === true,
+        windowsAuthSupported: supported,
+        hasUsers: authStore.hasUsers(),
+      }),
+    );
+    return;
+  },
+
+  'browser-config': async (req, res) => {
+    const browserConfig = handlers.browserConfig;
+    if (!browserConfig?.read) {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'browser config is not supported by this host' }));
+      return;
+    }
+    const session = await resolveSession(req);
+    const noUsers = handlers.authStore?.hasUsers?.() !== true;
+    if (!noUsers && (!session || browserConfig.isAdmin?.(session.username) !== true)) {
+      res.writeHead(403, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
+      return;
+    }
+    if ((req.method?.toUpperCase() ?? 'GET') === 'GET') {
+      res.writeHead(200, JSON_HEADERS);
+      res.end(JSON.stringify(browserConfig.read()));
+      return;
+    }
+    const body = await readJsonBody(req);
+    if (!isPlainObject(body) || typeof body.autoOpenBrowser !== 'boolean') {
+      res.writeHead(400, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'autoOpenBrowser must be a boolean' }));
+      return;
+    }
+    const saved = browserConfig.write?.(body);
+    if (!saved) {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'browser config is read-only on this host' }));
+      return;
+    }
+    res.writeHead(200, JSON_HEADERS);
+    res.end(JSON.stringify({ ok: true, ...saved }));
+    return;
+  },
+
+  'auth': async (req, res, ctx) => {
+    const { pathname } = ctx;
+    const authStore = handlers.authStore;
+    if (!authStore) {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'authentication is not supported by this host' }));
+      return;
+    }
+    const subRoute = pathname.replace(/^\/auth\//, '').replace(/\/+$/, '') || '';
+    if (subRoute === 'logout') {
+      // Revoke the specific session token, not just clear the cookie. Without
+      // this a stolen token stays valid for 7 days because the signature is
+      // stateless.
+      const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
+      const token = getSessionCookie(req.headers?.cookie);
+      const session = token ? verifySessionToken(secret, token) : null;
+      if (session) {
+        revocationStore.revoke(session.jti);
+        auditLog.record({
+          action: 'logout',
+          actor: session.username,
+          ip: clientIpOf(req) ?? undefined,
+          result: 'allow',
+        });
+      }
+      const trustedDeviceToken = getTrustedDeviceCookie(req.headers?.cookie);
+      if (trustedDeviceToken) handlers.trustedDeviceStore?.revoke(trustedDeviceToken);
+      clearAuthCookie(res);
+      res.writeHead(200, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (subRoute === 'verify') {
+      // The BFF cannot check the signature itself (the secret lives only in
+      // this process), so it forwards the browser's session token here. This
+      // is what turns the login gate from a cosmetic UI check into a real
+      // authorization decision.
+      const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
+      const body = await readJsonBody(req);
+      const token =
+        isPlainObject(body) && typeof body.token === 'string'
+          ? body.token
+          : getSessionCookie(req.headers?.cookie);
+      const session = token ? verifySessionToken(secret, token) : null;
+      const trustedDeviceToken = isPlainObject(body) && typeof body.trustedDeviceToken === 'string'
+        ? body.trustedDeviceToken
+        : getTrustedDeviceCookie(req.headers?.cookie);
+      const trustedDevice = trustedDeviceToken ? handlers.trustedDeviceStore?.verify(trustedDeviceToken) : null;
+      if ((!session || revocationStore.isRevoked(session.jti)) && !trustedDevice) {
+        res.writeHead(401, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'invalid session' }));
+        return;
+      }
+      res.writeHead(200, JSON_HEADERS);
+      const username = trustedDevice?.username ?? session.username;
+      res.end(JSON.stringify({ ok: true, username, jti: session?.jti, isAdmin: authStore.isAdmin?.(username) === true }));
+      return;
+    }
+    if (subRoute !== 'login') {
+      res.writeHead(404, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'not found' }));
+      return;
+    }
+    const body = await readJsonBody(req);
+    const username = isPlainObject(body) && typeof body.username === 'string' ? body.username : '';
+    const password = isPlainObject(body) && typeof body.password === 'string' ? body.password : '';
+    const trustDevice = isPlainObject(body) && body.trustDevice === true;
+    const clientIp = clientIpOf(req);
+    if (!username || !password) {
+      res.writeHead(400, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'username and password are required' }));
+      return;
+    }
+    // Throttle before touching Windows: every failed ValidateCredentials call
+    // counts toward the OS account lockout policy, so an unlimited endpoint
+    // would let a LAN client lock the operator out of their own machine.
+    // A null IP means "unknown" (no proxy in front), so it is not throttled —
+    // otherwise every unproxied client would share a single counter.
+    const ipRetryMs = clientIp ? ipThrottle.retryAfterMs(clientIp) : 0;
+    const retryAfterMs = Math.max(throttle.retryAfterMs(username), ipRetryMs);
+    if (retryAfterMs > 0) {
+      const retryAfterSec = Math.ceil(retryAfterMs / 1000);
+      auditLog.record({
+        action: 'login.throttled',
+        actor: username,
+        ip: clientIp ?? undefined,
+        result: 'deny',
+        reason: ipRetryMs > 0 ? 'ip_rate_limit' : 'user_rate_limit',
+      });
+      res.writeHead(429, { ...JSON_HEADERS, 'Retry-After': String(retryAfterSec) });
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: `試行回数が多すぎます。${retryAfterSec} 秒後に再試行してください`,
+          retryAfterSeconds: retryAfterSec,
+        }),
+      );
+      return;
+    }
+
+    // Local users.json first: it is cheap and carries no lockout risk.
+    let source = null;
+    if (authStore.verifyUser(username, password)) {
+      source = 'local';
+    } else if (
+      authStore.readConfig?.().windowsAuth === true &&
+      authStore.verifyWindowsUser
+    ) {
+      try {
+        if (await authStore.verifyWindowsUser(username, password)) {
+          source = 'windows';
+        }
+      } catch {
+        // Treat a validator crash as a failed login, never as a pass.
+        source = null;
+      }
+    }
+
+    if (!source) {
+      throttle.recordFailure(username);
+      if (clientIp) ipThrottle.recordFailure(clientIp);
+      auditLog.record({
+        action: 'login.failure',
+        actor: username,
+        ip: clientIp ?? undefined,
+        result: 'deny',
+        reason: 'invalid_credentials',
+      });
+      res.writeHead(401, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'invalid credentials' }));
+      return;
+    }
+
+    throttle.reset(username);
+    // The IP counter is deliberately NOT reset: one successful login must not
+    // wipe the evidence of failed attempts against other accounts from the
+    // same address, which would make the per-IP limit trivial to bypass.
+    auditLog.record({
+      action: 'login.success',
+      actor: username,
+      ip: clientIp ?? undefined,
+      result: 'allow',
+      reason: source,
+    });
+    const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
+    const token = trustDevice ? handlers.trustedDeviceStore?.issue(username) : null;
+    const cookie = token ? trustedDeviceCookieHeader(token) : authCookieHeader(signSessionToken(secret, username));
+    res.writeHead(200, { ...JSON_HEADERS, 'Set-Cookie': cookie });
+    res.end(JSON.stringify({ ok: true, username, source, trustedDevice: Boolean(token) }));
+    return;
+  },
+
+  webui: async (req, res) => {
+    // Acknowledge before killing the service so the caller can flush the response.
+    res.writeHead(202, JSON_HEADERS);
+    res.end(JSON.stringify({ ok: true, target: 'webui', accepted: true }));
+    setImmediate(() => {
+      Promise.resolve()
+        .then(() => handlers.onRestartWebui())
+        .catch(() => {
+          // Errors are logged by the host restart functions.
+        });
+    });
+  },
+
+  opencode: async (req, res) => {
+    // Acknowledge before killing the service so the caller can flush the response.
+    res.writeHead(202, JSON_HEADERS);
+    res.end(JSON.stringify({ ok: true, target: 'opencode', accepted: true }));
+    setImmediate(() => {
+      Promise.resolve()
+        .then(() => handlers.onRestartOpencode())
+        .catch(() => {
+          // Errors are logged by the host restart functions.
+        });
+    });
+  },
+
+  all: async (req, res) => {
+    // Acknowledge before killing the service so the caller can flush the response.
+    res.writeHead(202, JSON_HEADERS);
+    res.end(JSON.stringify({ ok: true, target: 'all', accepted: true }));
+    setImmediate(() => {
+      Promise.resolve()
+        .then(() => handlers.onRestartAll())
+        .catch(() => {
+          // Errors are logged by the host restart functions.
+        });
+    });
+  },
+  };
+
   return async (req, res) => {
     // DNS rebinding guard: a browser can reach 127.0.0.1:18765 via an attacker
     // domain that resolves to 127.0.0.1, making the request same-origin and
@@ -406,475 +899,13 @@ export function createControlRequestHandler(handlers) {
       return;
     }
 
-    if (route === 'health') {
-      res.writeHead(200, JSON_HEADERS);
-      res.end(JSON.stringify({ ok: true, service: 'opencode-webui-host' }));
+    const handler = routeHandlers[route];
+    if (!handler) {
+      res.writeHead(404, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'not found' }));
       return;
     }
-
-    if (route === 'stop-webui') {
-      // Unlike restart, the caller (build.bat) must know the port is actually
-      // free before it overwrites web/.next, so respond only after the stop
-      // completes. A 501 tells the caller this host cannot stop the WebUI, so
-      // it must not fall back to killing (the host would just restart it).
-      if (typeof handlers.onStopWebui !== 'function') {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'stop is not supported by this host' }));
-        return;
-      }
-      try {
-        await handlers.onStopWebui();
-      } catch (err) {
-        res.writeHead(500, JSON_HEADERS);
-        res.end(
-          JSON.stringify({
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        );
-        return;
-      }
-      res.writeHead(200, JSON_HEADERS);
-      res.end(JSON.stringify({ ok: true, target: 'webui', stopped: true }));
-      return;
-    }
-
-    if (route === 'allow-firewall') {
-      if (typeof handlers.onAllowFirewall !== 'function') {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(
-          JSON.stringify({ ok: false, error: 'firewall allow is not supported by this host' }),
-        );
-        return;
-      }
-      try {
-        const result = await handlers.onAllowFirewall();
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: true, target: 'allow-firewall', ...(result ?? {}) }));
-      } catch (err) {
-        res.writeHead(500, JSON_HEADERS);
-        res.end(
-          JSON.stringify({
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        );
-      }
-      return;
-    }
-
-    if (route === 'logs') {
-      if (typeof handlers.onGetLogs !== 'function') {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'logs are not supported by this host' }));
-        return;
-      }
-      let since = null;
-      const rawSince = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get(
-        'since',
-      );
-      if (rawSince !== null) {
-        const n = Number(rawSince);
-        if (Number.isFinite(n)) since = n;
-      }
-      const { entries, nextSeq } = handlers.onGetLogs(since);
-      res.writeHead(200, JSON_HEADERS);
-      res.end(JSON.stringify({ entries, nextSeq }));
-      return;
-    }
-
-    if (route === 'voice-input') {
-      if (typeof handlers.onVoiceInput !== 'function') {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'voice input is not supported by this host' }));
-        return;
-      }
-      try {
-        await handlers.onVoiceInput();
-      } catch (err) {
-        res.writeHead(500, JSON_HEADERS);
-        res.end(
-          JSON.stringify({
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        );
-        return;
-      }
-      res.writeHead(200, JSON_HEADERS);
-      res.end(JSON.stringify({ ok: true, target: 'voice-input', launched: true }));
-      return;
-    }
-
-    if (route === 'users') {
-      const authStore = handlers.authStore;
-      if (!authStore) {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'user management is not supported by this host' }));
-        return;
-      }
-      const method = req.method?.toUpperCase() ?? 'GET';
-      if (method === 'GET') {
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({ users: authStore.listUsers() }));
-        return;
-      }
-
-      // Mutating operations (POST/DELETE) require an admin session. The one
-      // exception is the first POST on a fresh install: there cannot be an
-      // admin session until that first admin user exists.
-      const session = await resolveSession(req);
-      const ip = clientIpOf(req) ?? undefined;
-      const bootstrap = method === 'POST' && !authStore.hasUsers();
-      if ((!session && !bootstrap) || (session && authStore.isAdmin?.(session.username) !== true)) {
-        auditLog.record({
-          action: 'authz.denied',
-          actor: session?.username,
-          target: '/users',
-          ip,
-          result: 'deny',
-          reason: session ? 'not_admin' : 'no_session',
-        });
-        res.writeHead(403, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
-        return;
-      }
-
-      if (method === 'DELETE') {
-        const body = await readJsonBody(req);
-        const username = isPlainObject(body) && typeof body.username === 'string' ? body.username : '';
-        if (!username) {
-          res.writeHead(400, JSON_HEADERS);
-          res.end(JSON.stringify({ ok: false, error: 'username is required' }));
-          return;
-        }
-        const result = authStore.deleteUser(username);
-        auditLog.record({
-          action: 'user.delete',
-          actor: session.username,
-          target: username,
-          ip,
-          result: result.ok ? 'allow' : 'deny',
-          reason: result.ok ? undefined : result.error,
-        });
-        res.writeHead(result.ok ? 200 : 404, JSON_HEADERS);
-        res.end(JSON.stringify(result));
-        return;
-      }
-      // POST
-      const body = await readJsonBody(req);
-      const username = isPlainObject(body) && typeof body.username === 'string' ? body.username : '';
-      const password = isPlainObject(body) && typeof body.password === 'string' ? body.password : '';
-      if (!username || !password) {
-        res.writeHead(400, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'username and password are required' }));
-        return;
-      }
-      const existed = authStore.listUsers().some(
-        (u) => u.username.trim().toLowerCase() === username.trim().toLowerCase(),
-      );
-      const result = authStore.upsertUser(username, password);
-      auditLog.record({
-        // The password itself is never recorded, only that it was set.
-        action: existed ? 'user.update' : 'user.create',
-        actor: session?.username ?? username,
-        target: username,
-        ip,
-        result: result.ok ? 'allow' : 'deny',
-        reason: result.ok ? undefined : result.error,
-      });
-      res.writeHead(result.ok ? 200 : 400, JSON_HEADERS);
-      res.end(JSON.stringify(result));
-      return;
-    }
-
-    if (route === 'auth-config') {
-      const authStore = handlers.authStore;
-      if (!authStore?.readConfig) {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(
-          JSON.stringify({ ok: false, error: 'auth config is not supported by this host' }),
-        );
-        return;
-      }
-      const supported = authStore.windowsAuthSupported === true;
-      if ((req.method?.toUpperCase() ?? 'GET') === 'GET') {
-        const config = authStore.readConfig();
-        res.writeHead(200, JSON_HEADERS);
-        res.end(
-          JSON.stringify({
-            windowsAuth: config.windowsAuth === true,
-            windowsAuthSupported: supported,
-            hasUsers: authStore.hasUsers(),
-          }),
-        );
-        return;
-      }
-      // POST — admin only, like /users mutations.
-      if (!authStore.writeConfig) {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(
-          JSON.stringify({ ok: false, error: 'auth config is read-only on this host' }),
-        );
-        return;
-      }
-      const session = await resolveSession(req);
-      const configIp = clientIpOf(req) ?? undefined;
-      if (!session || authStore.isAdmin?.(session.username) !== true) {
-        auditLog.record({
-          action: 'authz.denied',
-          actor: session?.username,
-          target: '/auth/config',
-          ip: configIp,
-          result: 'deny',
-          reason: session ? 'not_admin' : 'no_session',
-        });
-        res.writeHead(403, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
-        return;
-      }
-      const body = await readJsonBody(req);
-      if (!isPlainObject(body) || typeof body.windowsAuth !== 'boolean') {
-        res.writeHead(400, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'windowsAuth must be a boolean' }));
-        return;
-      }
-      if (body.windowsAuth && !supported) {
-        res.writeHead(400, JSON_HEADERS);
-        res.end(
-          JSON.stringify({
-            ok: false,
-            error: 'Windows 認証はこの OS では利用できません',
-          }),
-        );
-        return;
-      }
-      const saved = authStore.writeConfig({ windowsAuth: body.windowsAuth });
-      auditLog.record({
-        action: 'authconfig.update',
-        actor: session.username,
-        target: 'windowsAuth',
-        ip: configIp,
-        result: 'allow',
-        reason: saved.windowsAuth === true ? 'enabled' : 'disabled',
-      });
-      res.writeHead(200, JSON_HEADERS);
-      res.end(
-        JSON.stringify({
-          ok: true,
-          windowsAuth: saved.windowsAuth === true,
-          windowsAuthSupported: supported,
-          hasUsers: authStore.hasUsers(),
-        }),
-      );
-      return;
-    }
-
-    if (route === 'browser-config') {
-      const browserConfig = handlers.browserConfig;
-      if (!browserConfig?.read) {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'browser config is not supported by this host' }));
-        return;
-      }
-      const session = await resolveSession(req);
-      const noUsers = handlers.authStore?.hasUsers?.() !== true;
-      if (!noUsers && (!session || browserConfig.isAdmin?.(session.username) !== true)) {
-        res.writeHead(403, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
-        return;
-      }
-      if ((req.method?.toUpperCase() ?? 'GET') === 'GET') {
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify(browserConfig.read()));
-        return;
-      }
-      const body = await readJsonBody(req);
-      if (!isPlainObject(body) || typeof body.autoOpenBrowser !== 'boolean') {
-        res.writeHead(400, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'autoOpenBrowser must be a boolean' }));
-        return;
-      }
-      const saved = browserConfig.write?.(body);
-      if (!saved) {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'browser config is read-only on this host' }));
-        return;
-      }
-      res.writeHead(200, JSON_HEADERS);
-      res.end(JSON.stringify({ ok: true, ...saved }));
-      return;
-    }
-
-    if (route === 'auth') {
-      const authStore = handlers.authStore;
-      if (!authStore) {
-        res.writeHead(501, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'authentication is not supported by this host' }));
-        return;
-      }
-      const subRoute = pathname.replace(/^\/auth\//, '').replace(/\/+$/, '') || '';
-      if (subRoute === 'logout') {
-        // Revoke the specific session token, not just clear the cookie. Without
-        // this a stolen token stays valid for 7 days because the signature is
-        // stateless.
-        const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
-        const token = getSessionCookie(req.headers?.cookie);
-        const session = token ? verifySessionToken(secret, token) : null;
-        if (session) {
-          revocationStore.revoke(session.jti);
-          auditLog.record({
-            action: 'logout',
-            actor: session.username,
-            ip: clientIpOf(req) ?? undefined,
-            result: 'allow',
-          });
-        }
-        const trustedDeviceToken = getTrustedDeviceCookie(req.headers?.cookie);
-        if (trustedDeviceToken) handlers.trustedDeviceStore?.revoke(trustedDeviceToken);
-        clearAuthCookie(res);
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: true }));
-        return;
-      }
-      if (subRoute === 'verify') {
-        // The BFF cannot check the signature itself (the secret lives only in
-        // this process), so it forwards the browser's session token here. This
-        // is what turns the login gate from a cosmetic UI check into a real
-        // authorization decision.
-        const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
-        const body = await readJsonBody(req);
-        const token =
-          isPlainObject(body) && typeof body.token === 'string'
-            ? body.token
-            : getSessionCookie(req.headers?.cookie);
-        const session = token ? verifySessionToken(secret, token) : null;
-        const trustedDeviceToken = isPlainObject(body) && typeof body.trustedDeviceToken === 'string'
-          ? body.trustedDeviceToken
-          : getTrustedDeviceCookie(req.headers?.cookie);
-        const trustedDevice = trustedDeviceToken ? handlers.trustedDeviceStore?.verify(trustedDeviceToken) : null;
-        if ((!session || revocationStore.isRevoked(session.jti)) && !trustedDevice) {
-          res.writeHead(401, JSON_HEADERS);
-          res.end(JSON.stringify({ ok: false, error: 'invalid session' }));
-          return;
-        }
-        res.writeHead(200, JSON_HEADERS);
-        const username = trustedDevice?.username ?? session.username;
-        res.end(JSON.stringify({ ok: true, username, jti: session?.jti, isAdmin: authStore.isAdmin?.(username) === true }));
-        return;
-      }
-      if (subRoute !== 'login') {
-        res.writeHead(404, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'not found' }));
-        return;
-      }
-      const body = await readJsonBody(req);
-      const username = isPlainObject(body) && typeof body.username === 'string' ? body.username : '';
-      const password = isPlainObject(body) && typeof body.password === 'string' ? body.password : '';
-      const trustDevice = isPlainObject(body) && body.trustDevice === true;
-      const clientIp = clientIpOf(req);
-      if (!username || !password) {
-        res.writeHead(400, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'username and password are required' }));
-        return;
-      }
-      // Throttle before touching Windows: every failed ValidateCredentials call
-      // counts toward the OS account lockout policy, so an unlimited endpoint
-      // would let a LAN client lock the operator out of their own machine.
-      // A null IP means "unknown" (no proxy in front), so it is not throttled —
-      // otherwise every unproxied client would share a single counter.
-      const ipRetryMs = clientIp ? ipThrottle.retryAfterMs(clientIp) : 0;
-      const retryAfterMs = Math.max(throttle.retryAfterMs(username), ipRetryMs);
-      if (retryAfterMs > 0) {
-        const retryAfterSec = Math.ceil(retryAfterMs / 1000);
-        auditLog.record({
-          action: 'login.throttled',
-          actor: username,
-          ip: clientIp ?? undefined,
-          result: 'deny',
-          reason: ipRetryMs > 0 ? 'ip_rate_limit' : 'user_rate_limit',
-        });
-        res.writeHead(429, { ...JSON_HEADERS, 'Retry-After': String(retryAfterSec) });
-        res.end(
-          JSON.stringify({
-            ok: false,
-            error: `試行回数が多すぎます。${retryAfterSec} 秒後に再試行してください`,
-            retryAfterSeconds: retryAfterSec,
-          }),
-        );
-        return;
-      }
-
-      // Local users.json first: it is cheap and carries no lockout risk.
-      let source = null;
-      if (authStore.verifyUser(username, password)) {
-        source = 'local';
-      } else if (
-        authStore.readConfig?.().windowsAuth === true &&
-        authStore.verifyWindowsUser
-      ) {
-        try {
-          if (await authStore.verifyWindowsUser(username, password)) {
-            source = 'windows';
-          }
-        } catch {
-          // Treat a validator crash as a failed login, never as a pass.
-          source = null;
-        }
-      }
-
-      if (!source) {
-        throttle.recordFailure(username);
-        if (clientIp) ipThrottle.recordFailure(clientIp);
-        auditLog.record({
-          action: 'login.failure',
-          actor: username,
-          ip: clientIp ?? undefined,
-          result: 'deny',
-          reason: 'invalid_credentials',
-        });
-        res.writeHead(401, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: false, error: 'invalid credentials' }));
-        return;
-      }
-
-      throttle.reset(username);
-      // The IP counter is deliberately NOT reset: one successful login must not
-      // wipe the evidence of failed attempts against other accounts from the
-      // same address, which would make the per-IP limit trivial to bypass.
-      auditLog.record({
-        action: 'login.success',
-        actor: username,
-        ip: clientIp ?? undefined,
-        result: 'allow',
-        reason: source,
-      });
-      const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
-      const token = trustDevice ? handlers.trustedDeviceStore?.issue(username) : null;
-      const cookie = token ? trustedDeviceCookieHeader(token) : authCookieHeader(signSessionToken(secret, username));
-      res.writeHead(200, { ...JSON_HEADERS, 'Set-Cookie': cookie });
-      res.end(JSON.stringify({ ok: true, username, source, trustedDevice: Boolean(token) }));
-      return;
-    }
-
-    // Acknowledge before killing WebUI so the caller can flush the response.
-    res.writeHead(202, JSON_HEADERS);
-    res.end(JSON.stringify({ ok: true, target: route, accepted: true }));
-
-    const run =
-      route === 'webui'
-        ? handlers.onRestartWebui
-        : route === 'opencode'
-          ? handlers.onRestartOpencode
-          : handlers.onRestartAll;
-
-    setImmediate(() => {
-      Promise.resolve()
-        .then(() => run())
-        .catch(() => {
-          // Errors are logged by the host restart functions.
-        });
-    });
+    await handler(req, res, { pathname });
   };
 }
 
