@@ -392,7 +392,7 @@ const ToolPartView = memo(function ToolPartView({
         />
       )}
       {open && (
-        <div className="max-h-80 space-y-3 overflow-y-auto border-t border-border bg-surface px-3 py-3">
+        <div className="max-h-80 space-y-3 overflow-x-hidden overflow-y-auto border-t border-border bg-surface px-3 py-3">
           {fields.length > 0 && (
             <dl className="space-y-2">
               {fields.map((f) => (
@@ -416,14 +416,14 @@ const ToolPartView = memo(function ToolPartView({
               )}
             >
               {status === "error" ? (
-                <pre className="whitespace-pre-wrap font-sans text-xs">{niceOutput}</pre>
+                <pre className="whitespace-pre-wrap break-words font-sans text-xs">{niceOutput}</pre>
               ) : (
                 <Markdown text={niceOutput} />
               )}
             </div>
           )}
           {!niceOutput && rawOutput && (
-            <pre className="whitespace-pre-wrap font-mono text-xs text-faint">
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs text-faint">
               {rawOutput.length > 2000 ? rawOutput.slice(0, 2000) + "\n…" : rawOutput}
             </pre>
           )}
