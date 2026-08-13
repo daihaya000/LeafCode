@@ -299,3 +299,20 @@ function hasNewerFile(dir, buildMtimeMs, distDir, fsApi) {
   }
   return false;
 }
+/**
+ * Remove an incomplete production build (no BUILD_ID yet) so a fresh build
+ * cannot be shadowed by partial output.
+ * @param {string} buildDir
+ * @param {{ log?: (message: string) => void }} [deps]
+ */
+export function removeBrokenWebBuild(buildDir, deps = {}) {
+  const log = deps.log ?? (() => {});
+  if (!defaultExistsSync(buildDir) || defaultExistsSync(join(buildDir, 'BUILD_ID'))) return;
+  log(`Removing incomplete production build: ${buildDir}`);
+  rmSync(buildDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 250,
+  });
+}

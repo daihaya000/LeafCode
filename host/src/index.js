@@ -1229,17 +1229,6 @@ function stopStrayCaddy() {
   }
 }
 
-function removeBrokenWebBuild() {
-  const buildDir = WEB_DIST_DIR;
-  if (!existsSync(buildDir) || existsSync(join(buildDir, 'BUILD_ID'))) return;
-  log(`Removing incomplete production build: ${buildDir}`);
-  rmSync(buildDir, {
-    recursive: true,
-    force: true,
-    maxRetries: 10,
-    retryDelay: 250,
-  });
-}
 
 /**
  * Run npm through its JavaScript CLI instead of a .cmd shell shim. This keeps
@@ -1250,7 +1239,7 @@ function removeBrokenWebBuild() {
  * Build the production WebUI when prod mode has no usable or stale BUILD_ID.
  * Concurrent callers (e.g. overlapping restart triggers) share the same
  * in-flight build instead of starting a second `npm run build`, which would
- * otherwise let `removeBrokenWebBuild()` delete the first build's output
+ * otherwise let `removeBrokenWebBuild(WEB_DIST_DIR, { log })` delete the first build's output
  * mid-flight.
  */
 function buildWebProduction(reason = 'missing') {
@@ -1263,7 +1252,7 @@ function buildWebProduction(reason = 'missing') {
 
 function buildWebProductionInternal(reason = 'missing') {
   return new Promise((resolve, reject) => {
-    removeBrokenWebBuild();
+    removeBrokenWebBuild(WEB_DIST_DIR, { log });
     const reasonText =
       reason === 'stale'
         ? 'Production WebUI build is stale (sources newer than BUILD_ID); rebuilding before start…'
