@@ -3,7 +3,7 @@ import {
   SKILL_PERMISSION_OPTIONS,
   type SkillPermission,
 } from "@/lib/skill-permission";
-import { GhostSelect } from "@/components/ui";
+import { PermissionGhostSelect } from "@/components/PermissionGhostSelect";
 
 export function SkillPermissionSelect({
   value,
@@ -16,13 +16,14 @@ export function SkillPermissionSelect({
   disabled?: boolean;
   className?: string;
 }) {
-  const current = SKILL_PERMISSION_OPTIONS.find((o) => o.value === value);
   return (
-    <GhostSelect
+    <PermissionGhostSelect
       value={value}
+      onChange={onChange}
+      options={SKILL_PERMISSION_OPTIONS}
       disabled={disabled}
-      title={current?.title}
-      aria-label="スキル"
+      className={className}
+      ariaLabel="スキル"
       icon={
         value === "deny" ? (
           <Ban className="h-3.5 w-3.5" />
@@ -30,16 +31,7 @@ export function SkillPermissionSelect({
           <Sparkles className="h-3.5 w-3.5" />
         )
       }
-      valueLabel={current?.label ?? value}
       tone={value === "deny" ? "warning" : "default"}
-      onChange={(value) => onChange(value as SkillPermission)}
-      className={className}
-    >
-      {SKILL_PERMISSION_OPTIONS.map((o) => (
-        <option key={o.value} value={o.value} title={o.title}>
-          {o.label}
-        </option>
-      ))}
-    </GhostSelect>
+    />
   );
 }

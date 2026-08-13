@@ -2,7 +2,7 @@
 
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { ACCESS_MODE_OPTIONS, type AccessMode } from "@/lib/access-mode";
-import { GhostSelect } from "@/components/ui";
+import { PermissionGhostSelect } from "@/components/PermissionGhostSelect";
 
 export function AccessModeSelect({
   value,
@@ -15,13 +15,14 @@ export function AccessModeSelect({
   disabled?: boolean;
   className?: string;
 }) {
-  const current = ACCESS_MODE_OPTIONS.find((o) => o.value === value);
   return (
-    <GhostSelect
+    <PermissionGhostSelect
       value={value}
+      onChange={onChange}
+      options={ACCESS_MODE_OPTIONS}
       disabled={disabled}
-      title={current?.title}
-      aria-label="アクセスモード"
+      className={className}
+      ariaLabel="アクセスモード"
       icon={
         value === "full" ? (
           <ShieldAlert className="h-3.5 w-3.5" />
@@ -29,16 +30,7 @@ export function AccessModeSelect({
           <ShieldCheck className="h-3.5 w-3.5" />
         )
       }
-      valueLabel={current?.label ?? value}
       tone={value === "full" ? "warning" : "default"}
-      onChange={(value) => onChange(value as AccessMode)}
-      className={className}
-    >
-      {ACCESS_MODE_OPTIONS.map((o) => (
-        <option key={o.value} value={o.value} title={o.title}>
-          {o.label}
-        </option>
-      ))}
-    </GhostSelect>
+    />
   );
 }

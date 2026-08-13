@@ -5,7 +5,7 @@ import {
   SUBAGENT_PERMISSION_OPTIONS,
   type SubagentPermission,
 } from "@/lib/subagent-permission";
-import { GhostSelect } from "@/components/ui";
+import { PermissionGhostSelect } from "@/components/PermissionGhostSelect";
 
 export function SubagentPermissionSelect({
   value,
@@ -18,13 +18,14 @@ export function SubagentPermissionSelect({
   disabled?: boolean;
   className?: string;
 }) {
-  const current = SUBAGENT_PERMISSION_OPTIONS.find((o) => o.value === value);
   return (
-    <GhostSelect
+    <PermissionGhostSelect
       value={value}
+      onChange={onChange}
+      options={SUBAGENT_PERMISSION_OPTIONS}
       disabled={disabled}
-      title={current?.title}
-      aria-label="サブエージェント"
+      className={className}
+      ariaLabel="サブエージェント"
       icon={
         value === "deny" ? (
           <BotOff className="h-3.5 w-3.5" />
@@ -32,16 +33,7 @@ export function SubagentPermissionSelect({
           <Bot className="h-3.5 w-3.5" />
         )
       }
-      valueLabel={current?.label ?? value}
       tone={value === "deny" ? "warning" : "default"}
-      onChange={(value) => onChange(value as SubagentPermission)}
-      className={className}
-    >
-      {SUBAGENT_PERMISSION_OPTIONS.map((o) => (
-        <option key={o.value} value={o.value} title={o.title}>
-          {o.label}
-        </option>
-      ))}
-    </GhostSelect>
+    />
   );
 }
