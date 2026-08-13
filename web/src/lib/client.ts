@@ -4,6 +4,13 @@
 
 import { assertSafeOpenCodePath } from "./opencode-id";
 import { directoryHeaders } from "./directory-header";
+import {
+  invalidatePrefix,
+  policyForPath,
+  readCached,
+  writeCache,
+  type StaleCachePolicy,
+} from "./stale-cache";
 
 /** Default abort for hung BFF/engine calls that omit an explicit timeout. */
 export const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
@@ -206,16 +213,62 @@ export async function timedFetch(
 // /api/tasks together) without serving stale data after a request settles.
 const inFlightJsonRequests = new Map<string, Promise<unknown>>();
 
+// Cached GETs that are stale are re-validated in the background; this set
+// prevents two re-validations of the same URL from racing each other.
+const revalidatingJsonRequests = new Set<string>();
+
 export function getJson<T>(
   path: string,
   params?: Record<string, string | undefined>,
   init?: { timeoutMs?: number },
 ): Promise<T> {
-  const key = `${apiUrl(path, params)}\0${init?.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS}`;
+  const url = apiUrl(path, params);
+  const key = `${url}\0${init?.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS}`;
   const existing = inFlightJsonRequests.get(key);
   if (existing) return existing as Promise<T>;
 
+  const policy = policyForPath(new URL(url).pathname);
+  if (policy) {
+    return getJsonWithCache<T>(path, params, init, url, key, policy);
+  }
+
   const request = getJsonUnshared<T>(path, params, init);
+  inFlightJsonRequests.set(key, request);
+  const clear = () => {
+    if (inFlightJsonRequests.get(key) === request) {
+      inFlightJsonRequests.delete(key);
+    }
+  };
+  void request.then(clear, clear);
+  return request;
+}
+
+function getJsonWithCache<T>(
+  path: string,
+  params: Record<string, string | undefined> | undefined,
+  init: { timeoutMs?: number } | undefined,
+  url: string,
+  key: string,
+  policy: StaleCachePolicy,
+): Promise<T> {
+  const hit = readCached(url, policy);
+  if (hit) {
+    if (Date.now() - hit.at >= policy.freshMs && !revalidatingJsonRequests.has(url)) {
+      revalidatingJsonRequests.add(url);
+      getJsonUnshared<T>(path, params, init)
+        .then((data) => writeCache(url, data, policy))
+        .catch(() => {
+          // Keep serving the stale entry; re-validation is best-effort.
+        })
+        .finally(() => revalidatingJsonRequests.delete(url));
+    }
+    return Promise.resolve(hit.data as T);
+  }
+
+  const request = getJsonUnshared<T>(path, params, init).then((data) => {
+    writeCache(url, data, policy);
+    return data;
+  });
   inFlightJsonRequests.set(key, request);
   const clear = () => {
     if (inFlightJsonRequests.get(key) === request) {
@@ -274,12 +327,21 @@ export async function sendJson<T>(
         res.status,
       );
     }
+    // A successful write invalidates the first two URL segments of every
+    // cached GET (e.g. PATCH /api/projects/{id} drops the /api/projects list).
+    invalidatePrefix(cacheInvalidationPrefix(path));
     return data as T;
   } catch (err) {
     asTimeoutError(path, err, signal?.aborted === true);
   } finally {
     clear();
   }
+}
+
+/** Normalize a write path to the prefix shared with its read endpoints. */
+function cacheInvalidationPrefix(path: string): string {
+  const match = /^(\/api\/[^/]+)/.exec(path);
+  return match ? match[1] : path;
 }
 
 /** Browser → BFF → OpenCode proxy call with the workspace directory attached. */

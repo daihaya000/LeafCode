@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getJson, ocJson, sendJson, timedFetch } from "./client";
+import { resetStaleCacheForTests } from "./stale-cache";
 
 describe("ocJson timeout", () => {
   afterEach(() => {
@@ -312,5 +313,75 @@ describe("timedFetch body readers", () => {
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(408);
     releaseRead({ done: true, value: undefined });
+  });
+});
+
+describe("getJson stale-while-revalidate cache", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    localStorage.clear();
+    resetStaleCacheForTests();
+  });
+
+  function stubFetch(body: unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        text: async () => JSON.stringify(body),
+      })),
+    );
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+  }
+
+  it("caches a cacheable GET and serves the fresh entry without refetching", async () => {
+    stubFetch({ projects: ["a"] });
+    await expect(getJson("/api/projects")).resolves.toEqual({ projects: ["a"] });
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await expect(getJson("/api/projects")).resolves.toEqual({ projects: ["a"] });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cache dynamic endpoints", async () => {
+    stubFetch({ tasks: [] });
+    await getJson("/api/tasks");
+    await getJson("/api/tasks");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("serves a stale entry immediately and re-validates in the background", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    stubFetch({ projects: ["a"] });
+    await getJson("/api/projects");
+
+    // 31s later the 30s fresh window has expired.
+    vi.setSystemTime(new Date("2026-01-01T00:00:31Z"));
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(
+      async () => ({
+        ok: true,
+        text: async () => JSON.stringify({ projects: ["b"] }),
+      }) as unknown as Response,
+    );
+
+    await expect(getJson("/api/projects")).resolves.toEqual({ projects: ["a"] });
+    await vi.waitFor(async () => {
+      const data = await getJson<{ projects: string[] }>("/api/projects");
+      expect(data.projects).toEqual(["b"]);
+    });
+  });
+
+  it("invalidates cached GETs after a successful write", async () => {
+    stubFetch({ projects: ["a"] });
+    await getJson("/api/projects");
+
+    stubFetch({ ok: true });
+    await sendJson("PATCH", "/api/projects/p1");
+
+    stubFetch({ projects: ["b"] });
+    await expect(getJson("/api/projects")).resolves.toEqual({ projects: ["b"] });
   });
 });
