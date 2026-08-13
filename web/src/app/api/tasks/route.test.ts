@@ -28,7 +28,9 @@ vi.mock("@/lib/workspace-service", () => ({
     value === "devcontainer",
 }));
 
-vi.mock("@/lib/oc-server", () => ({
+vi.mock("@/lib/oc-server", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/oc-server")>("@/lib/oc-server");
+  return {
   OcError: class OcError extends Error {
     status: number;
     constructor(message: string, status: number) {
@@ -36,13 +38,15 @@ vi.mock("@/lib/oc-server", () => ({
       this.status = status;
     }
   },
+  unwrapOcData: actual.unwrapOcData,
   ocServer: vi.fn().mockImplementation(
     async (_dir: string | null, path: string) => {
       if (path === "/session") return { id: "session-1" };
       return {};
     },
   ),
-}));
+  };
+});
 
 vi.mock("@/lib/db", () => ({
   bindSession: vi.fn(),
