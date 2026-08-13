@@ -29,7 +29,7 @@ import {
   activeSessionMessagePath,
 } from "./opencode-paths";
 import type { MessageWithParts, SessionStatus } from "./types";
-import { normalizeOcList } from "./attention";
+import { unwrapOcData } from "./oc-server";
 import { scheduleAutoExtractAfterGoalCompleted } from "./goal-memory-hook";
 import { memoryInjectionFor } from "./memory";
 import {
@@ -368,7 +368,7 @@ async function autoCompactGoalLoop(
         }),
       );
       // v2 message endpoints wrap the list in `{ data: [...] }`.
-      const currentMessages = normalizeOcList<MessageWithParts>(rawMessages);
+      const currentMessages = unwrapOcData<MessageWithParts>(rawMessages);
       const currentUsage = computeContextUsage(currentMessages, providerModelsMap(providers));
       if (
         currentMessages.length < messages.length ||
@@ -603,7 +603,7 @@ export async function createGoalLoop(input: {
       { timeoutMs: MESSAGE_TIMEOUT_MS },
     );
     // v2 message endpoints wrap the list in `{ data: [...] }`.
-    messages = normalizeOcList<MessageWithParts>(raw);
+    messages = unwrapOcData<MessageWithParts>(raw);
   } catch {
     // A missing transcript cannot prove that the session is idle. Start paused
     // rather than treating it as [] and potentially sending over an unseen turn.
@@ -698,7 +698,7 @@ export async function updateGoalLoopStatus(
         { timeoutMs: MESSAGE_TIMEOUT_MS },
       );
       // v2 message endpoints wrap the list in `{ data: [...] }`.
-      messages = normalizeOcList<MessageWithParts>(raw);
+      messages = unwrapOcData<MessageWithParts>(raw);
       tailMessageId = latestMessageId(messages);
     } catch {
       // Do not resume to queued without a fresh transcript boundary: an empty
@@ -871,7 +871,7 @@ export async function pauseGoalLoopForManualSend(
         { timeoutMs: MESSAGE_TIMEOUT_MS },
       );
       // v2 message endpoints wrap the list in `{ data: [...] }`.
-      const messages = normalizeOcList<MessageWithParts>(raw);
+      const messages = unwrapOcData<MessageWithParts>(raw);
       tailMessageId = latestMessageId(messages);
     } catch {
       // Still pause for the manual send, but retain the old boundary. A later
@@ -1525,7 +1525,7 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
       ),
     );
     // v2 message endpoints wrap the list in `{ data: [...] }`.
-    messages = normalizeOcList<MessageWithParts>(raw);
+    messages = unwrapOcData<MessageWithParts>(raw);
   } catch {
     // Do not treat a failed read as an empty, idle transcript: queued prompts
     // would otherwise be sent on top of an unseen user or loop turn.

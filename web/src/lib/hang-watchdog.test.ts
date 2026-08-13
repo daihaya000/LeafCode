@@ -5,7 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageWithParts } from "./types";
 
 const { ocServer } = vi.hoisted(() => ({ ocServer: vi.fn() }));
-vi.mock("./oc-server", () => ({ ocServer }));
+vi.mock("./oc-server", async () => {
+  const actual = await vi.importActual<typeof import("./oc-server")>("./oc-server");
+  return { ocServer, unwrapOcData: actual.unwrapOcData };
+});
 
 const dataDir = mkdtempSync(path.join(os.tmpdir(), "opencode-hang-watchdog-"));
 process.env.APPDATA = dataDir;

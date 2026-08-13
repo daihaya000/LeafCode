@@ -8,14 +8,18 @@ const { ocServer, runGit } = vi.hoisted(() => ({
   runGit: vi.fn(),
 }));
 
-vi.mock("./oc-server", () => ({
-  ocServer,
-  OcError: class OcError extends Error {
-    constructor(message: string, readonly status: number) {
-      super(message);
-    }
-  },
-}));
+vi.mock("./oc-server", async () => {
+  const actual = await vi.importActual<typeof import("./oc-server")>("./oc-server");
+  return {
+    ocServer,
+    unwrapOcData: actual.unwrapOcData,
+    OcError: class OcError extends Error {
+      constructor(message: string, readonly status: number) {
+        super(message);
+      }
+    },
+  };
+});
 vi.mock("./git", () => ({ runGit }));
 vi.mock("./collaboration-context", () => ({
   collaborationContextFor: vi.fn(async () => ""),

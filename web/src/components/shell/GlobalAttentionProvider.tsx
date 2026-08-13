@@ -21,12 +21,12 @@ import {
   parseGlobalEvent,
   parseGlobalSessionCreated,
   isResolvedEvent,
-  normalizeOcList,
   replyPath,
   attentionItemKey,
   type AttentionItem,
   type AttentionScope,
 } from "@/lib/attention";
+import { unwrapOcData } from "@/lib/oc-server";
 import {
   ACCESS_MODE_EVENT,
   ACCESS_MODE_STORAGE_KEY,
@@ -147,7 +147,7 @@ async function directChildSessionIdsFor(
       `/session/${parentSessionID}/children`,
       directory,
     );
-    return normalizeOcList<RestChildSession>(list)
+    return unwrapOcData<RestChildSession>(list)
       .map((child) => child.id)
       .filter((id): id is string => Boolean(id));
   } catch {
@@ -374,14 +374,14 @@ export function GlobalAttentionProvider({
         let permissions: RestPermission[] = [];
         try {
           const list = await ocJson<unknown>("/question", directory);
-          questions = normalizeOcList<RestQuestion>(list);
+          questions = unwrapOcData<RestQuestion>(list);
           questionsOk = true;
         } catch {
           /* leave questions unsynced for this directory */
         }
         try {
           const list = await ocJson<unknown>("/permission", directory);
-          permissions = normalizeOcList<RestPermission>(list);
+          permissions = unwrapOcData<RestPermission>(list);
           permissionsOk = true;
         } catch {
           /* leave permissions unsynced for this directory */
@@ -422,7 +422,7 @@ export function GlobalAttentionProvider({
             ]);
             if (pq !== null) {
               v2QuestionOkSessions.add(sessionID);
-              for (const q of normalizeOcList<RestQuestion>(pq)) {
+              for (const q of unwrapOcData<RestQuestion>(pq)) {
                 v2Questions.push(
                   toQuestionItem(
                     directory,
@@ -434,7 +434,7 @@ export function GlobalAttentionProvider({
             }
             if (pp !== null) {
               v2PermissionOkSessions.add(sessionID);
-              for (const p of normalizeOcList<RestPermission>(pp)) {
+              for (const p of unwrapOcData<RestPermission>(pp)) {
                 v2Permissions.push(
                   toPermissionItem(
                     directory,

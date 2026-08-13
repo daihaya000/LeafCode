@@ -23,10 +23,14 @@ vi.mock("./profiles/settings", () => ({
   readQwenNativeSettings: () => ({ ...h.settings }),
 }));
 
-vi.mock("./oc-server", () => ({
-  ocServer: h.ocServer,
-  OcError: h.OcError,
-}));
+vi.mock("./oc-server", async () => {
+  const actual = await vi.importActual<typeof import("./oc-server")>("./oc-server");
+  return {
+    ocServer: h.ocServer,
+    OcError: h.OcError,
+    unwrapOcData: actual.unwrapOcData,
+  };
+});
 
 // Keep the display-only attachment store out of the developer's data dir;
 // vision-attachments.test.ts covers the real filesystem behaviour.

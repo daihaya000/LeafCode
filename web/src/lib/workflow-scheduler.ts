@@ -8,7 +8,7 @@ import {
 import { applyWorkflowSessionPermissions } from "./opencode-task-permission";
 import { buildWorkflowPrompt } from "./workflow-prompt";
 import { parseImplementResult, parseReviewResult } from "./workflow";
-import { normalizeOcList } from "./attention";
+import { unwrapOcData } from "./oc-server";
 import type { MessageWithParts } from "./types";
 import type { WorkflowNodeConfig, WorkflowNodeKey } from "./workflow-types";
 import { readWorkflowWorkspaceSnapshot } from "./workflow-git";
@@ -368,7 +368,7 @@ async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<v
       { timeoutMs: 10_000 },
     );
     // v2 message endpoints wrap the list in `{ data: [...] }`.
-    messages = normalizeOcList<MessageWithParts>(raw);
+    messages = unwrapOcData<MessageWithParts>(raw);
   } catch {
     return;
   }
@@ -528,7 +528,7 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
       { timeoutMs: 10_000 },
     );
     // v2 message endpoints wrap the list in `{ data: [...] }`.
-    const previousMessages = normalizeOcList<MessageWithParts>(raw);
+    const previousMessages = unwrapOcData<MessageWithParts>(raw);
     const lastMessageId = previousMessages.at(-1)?.info.id ?? null;
     getDb()
       .prepare("UPDATE workflow_node_attempts SET last_message_id = ? WHERE id = ? AND status = 'dispatching'")

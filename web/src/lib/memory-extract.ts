@@ -34,7 +34,7 @@ import {
   activeSessionMessagePath,
   activePromptPath,
 } from "./opencode-paths";
-import { normalizeOcList } from "./attention";
+import { unwrapOcData } from "./oc-server";
 import type { MessageWithParts } from "./types";
 
 export const MEMORY_EXTRACT_TRANSCRIPT_MAX_CHARS = 16_000;
@@ -276,7 +276,7 @@ export async function runMemoryExtraction(input: {
       { timeoutMs: 10_000 },
     );
     // v2 message endpoints wrap the list in `{ data: [...] }`.
-    messages = normalizeOcList<MessageWithParts>(raw);
+    messages = unwrapOcData<MessageWithParts>(raw);
   } catch {
     const historyRunId = createMemoryExtractionRun({
       workspaceId: input.workspaceId,
@@ -370,7 +370,7 @@ export async function runMemoryExtraction(input: {
         { timeoutMs: 10_000 },
       );
       // v2 message endpoints wrap the list in `{ data: [...] }`.
-      polled = normalizeOcList<MessageWithParts>(raw);
+      polled = unwrapOcData<MessageWithParts>(raw);
     } catch {
       continue;
     }

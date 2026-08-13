@@ -10,6 +10,25 @@ export class OcError extends Error {
   }
 }
 
+/**
+ * OpenCode REST wraps list responses as `{ data: T[] }` (v2 generation) while
+ * older generations return a bare array. Single unwrap for every list-returning
+ * ocServer call (IMPROVEMENT 3-3): anything that is not an array or a
+ * `{ data: array }` wrapper yields `[]`, so consumers never branch on the
+ * generation shape.
+ */
+export function unwrapOcData<T>(pending: unknown): T[] {
+  if (Array.isArray(pending)) return pending as T[];
+  if (
+    pending &&
+    typeof pending === "object" &&
+    Array.isArray((pending as { data?: unknown }).data)
+  ) {
+    return (pending as { data: T[] }).data;
+  }
+  return [];
+}
+
 /** Server-side (BFF → OpenCode) JSON call with directory context + timeout. */
 export async function ocServer<T>(
   directory: string | null,

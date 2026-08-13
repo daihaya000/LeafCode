@@ -20,7 +20,7 @@ import {
   HANG_TIMEOUT_SETTING_KEY,
   clampHangTimeoutMs,
 } from "./hang-timeout";
-import { ocServer } from "./oc-server";
+import { ocServer, unwrapOcData } from "./oc-server";
 import {
   PERMISSION_LIST_PATH,
   QUESTION_LIST_PATH,
@@ -331,15 +331,6 @@ function hasWatchedTurnAssistantActivity(
     .some((message) => message.info.role === "assistant");
 }
 
-/** OpenCode REST may wrap lists as `{ data: T[] }`. */
-function normalizeMessageList(raw: unknown): MessageWithParts[] | null {
-  if (Array.isArray(raw)) return raw as MessageWithParts[];
-  if (raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data)) {
-    return (raw as { data: MessageWithParts[] }).data;
-  }
-  return null;
-}
-
 type PendingRow = { id?: unknown; sessionID?: unknown };
 
 /** OpenCode REST often wraps lists as `{ data: T[] }` instead of a bare array. */
@@ -536,7 +527,7 @@ async function evaluateWatch(
   statuses: Record<string, SessionStatus>,
   timeoutMs: number,
 ): Promise<void> {
-  let messages: MessageWithParts[] | null = null;
+  let messages: MessageWithParts[] = [];
   if (!isBusy(statuses?.[row.session_id])) {
     // An idle turn can still be a silent provider response, or the engine can
     // briefly report idle between agent steps while a tool is still running.
@@ -545,8 +536,8 @@ async function evaluateWatch(
       const raw = await ocServer<unknown>(row.directory, activeSessionMessagePath(row.session_id), {
         timeoutMs: MESSAGES_TIMEOUT_MS,
       });
-      messages = normalizeMessageList(raw);
-      if (messages === null) return;
+      messages = unwrapOcData<MessageWithParts>(raw);
+      if (messages.length === 0) return;
     } catch (error) {
       logWatchdog("could not confirm a completed response — leaving the watch armed", row, error);
       return;
@@ -570,18 +561,18 @@ async function evaluateWatch(
   const now = Date.now();
   if (now - row.last_progress_at < timeoutMs) return;
 
-  if (messages === null) {
+  if (messages.length === 0) {
     try {
       const raw = await ocServer<unknown>(row.directory, activeSessionMessagePath(row.session_id), {
         timeoutMs: MESSAGES_TIMEOUT_MS,
       });
-      messages = normalizeMessageList(raw);
+      messages = unwrapOcData<MessageWithParts>(raw);
     } catch (error) {
       logWatchdog("could not confirm activity — leaving the watch armed", row, error);
       return;
     }
   }
-  if (messages === null) return;
+  if (messages.length === 0) return;
 
   // `/session/status` can remain busy after the final assistant message is
   // already complete. At the inactivity threshold, the transcript is the

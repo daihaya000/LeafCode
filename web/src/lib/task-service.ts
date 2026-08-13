@@ -16,7 +16,7 @@ import { estimateOpenAIApiCost, lookupModelPricing } from "./openai-pricing";
 import { readProviderModelState } from "./provider-model-state";
 import { restoreAllKnownProjects } from "./project-session-sync";
 import { deriveTaskStatus } from "./task-status";
-import { normalizeOcList } from "./attention";
+import { unwrapOcData } from "./oc-server";
 import type { MessageInfo, MessageWithParts, SessionStatus, TaskSummary } from "./types";
 
 type StatusMap = Record<string, SessionStatus>;
@@ -155,7 +155,7 @@ async function estimateSessionCostWithCache(
       { timeoutMs: 1_500 },
     );
     // v2 message endpoints wrap the list in `{ data: [...] }`.
-    messages = normalizeOcList<MessageWithParts>(raw);
+    messages = unwrapOcData<MessageWithParts>(raw);
   } catch {
     // The aggregate estimate remains useful when the transcript is unavailable.
     return aggregate;
