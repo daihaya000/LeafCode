@@ -255,6 +255,21 @@ Claude / OpenAI の 2 つは「OAuth popup → ポーリング → 接続状態�
 > 各設定の**永続化ポリシー**（local のみ / local + server / server 優先）を明示し、
 > API を `read*`（同期）+ `write*(value, {syncToServer})` に統一する。
 
+> **2026-08-13 対応済み（サーバ側レジストリ + 同型パターンの共通化）**:
+> - `web/src/lib/settings-registry.ts` を新設: 許容キー / boolean 化 / キー別バリデーションを
+>   1 箇所に集約。`/api/settings/[key]/route.ts` は 324 → 120 行（コミット `b810625`）。
+> - `web/src/lib/setting-sync.ts` の `createSettingSync({storageKey, serverPath, eventName})`
+>   を新設し、**同型パターンの 2 ファイル**を宣言的に書き換え:
+>   `default-model.ts` 201 → 88 行（`1aa4990`）、`generation-model.ts` 114 → 66 行（`4f968cd`）。
+>   永続化ポリシー（localStorage が同期正本・サーバは永続バックアップ）はヘルパーの
+>   コメントに明記。
+> - **対象外とした実装（意図的な違いとして記録）**: `auto-settings.ts` は 3 キーを
+>   `Promise.all` で一括読む複数キー設計、`sidebar-settings.ts` は JSON 束ね（1 行に
+>   複数フィールド）で、単一キー同期ヘルパーと混ぜると可読性が下がるため移行しない。
+>   localStorage のみ（`access-mode` 等）はそもそも対象外。
+> - 残: `useSettingAction`（busy state 共通化）は 1-1 の SettingsView タブ切り出し時に
+>   組み込む（後述 5-c）。
+
 ### 2-3. 【中】Route Handler の認可パターン重複
 
 133 の route のうち 127 が `requireAuthorized` / `isLocalHostRequest` 系ガードを
