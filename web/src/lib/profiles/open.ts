@@ -7,6 +7,28 @@
  */
 import { spawnSync } from "node:child_process";
 
+/** Open action accepted by the profiles open routes (IMPROVEMENT 2-5). */
+export type OpenAction = "open-file" | "open-folder";
+
+/**
+ * Validate an action from a request body. Shared by the profiles open routes
+ * so the action check and the open invocation stay in one place.
+ */
+export function parseOpenAction(action: unknown): OpenAction | null {
+  return action === "open-file" || action === "open-folder" ? action : null;
+}
+
+/**
+ * Run an open action on a single target. Returns an error message or null.
+ * Shared by the profiles open routes (IMPROVEMENT 2-5).
+ */
+export function runOpenAction(
+  action: OpenAction,
+  target: string,
+): string | null {
+  return action === "open-file" ? openFileReveal(target) : openFolder(target);
+}
+
 /** Open `target` (a directory) in the OS file manager. */
 export function openFolder(target: string): string | null {
   if (process.platform === "win32") {

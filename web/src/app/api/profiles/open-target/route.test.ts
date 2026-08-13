@@ -5,6 +5,12 @@ const fsMock = vi.hoisted(() => ({ existsSync: vi.fn() }));
 const openMock = vi.hoisted(() => ({
   openFileReveal: vi.fn(),
   openFolder: vi.fn(),
+  parseOpenAction: vi.fn((action: unknown) =>
+    action === "open-file" || action === "open-folder" ? action : null,
+  ),
+  runOpenAction: vi.fn((action: "open-file" | "open-folder", target: string) =>
+    action === "open-file" ? openMock.openFileReveal(target) : openMock.openFolder(target),
+  ),
 }));
 const syncEngineMock = vi.hoisted(() => ({
   profilePaths: vi.fn(() => ({

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs";
 import { requireAuthorized } from "@/lib/api-guard";
-import { openFileReveal, openFolder } from "@/lib/profiles/open";
+import {
+  openFolder,
+  parseOpenAction,
+  runOpenAction,
+} from "@/lib/profiles/open";
 import { profilePaths } from "@/lib/profiles/sync-engine";
 import { agentsSyncPaths } from "@/lib/profiles/agents-sync-engine";
 
@@ -45,8 +49,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "リクエスト本文が不正です" }, { status: 400 });
   }
 
-  const { target, action } = body;
-  if (action !== "open-file" && action !== "open-folder") {
+  const target = body.target;
+  const action = parseOpenAction(body.action);
+  if (!action) {
     return NextResponse.json(
       { error: "action は open-file または open-folder のみ有効です" },
       { status: 400 },
@@ -67,8 +72,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const err =
-    action === "open-file" ? openFileReveal(resolved) : openFolder(resolved);
+  const err = runOpenAction(action, resolved);
   if (err) {
     return NextResponse.json({ error: err }, { status: 500 });
   }
