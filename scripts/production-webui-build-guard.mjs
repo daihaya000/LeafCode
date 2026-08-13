@@ -3,28 +3,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mirrorWebDir, resolveMirrorRoot } from "./web-build-mirror.mjs";
 import { resolveHostControlUrl } from "./lib/host-control.mjs";
+import { parseListeningPids } from "../host/src/port-plan.js";
+
+export { parseListeningPids, resolveHostControlUrl };
 
 const defaultWebDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "web");
-
-export function parseListeningPids(output, port) {
-  const pids = new Set();
-  const portSuffix = `:${port}`;
-  for (const line of String(output).split(/\r?\n/)) {
-    if (!/\bLISTENING\b/i.test(line)) continue;
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 5) continue;
-    const localAddress = parts[1] ?? "";
-    const pid = Number(parts.at(-1));
-    if (
-      Number.isFinite(pid) &&
-      pid > 0 &&
-      (localAddress.endsWith(portSuffix) || localAddress.endsWith(`]${portSuffix}`))
-    ) {
-      pids.add(pid);
-    }
-  }
-  return [...pids];
-}
 
 /**
  * Recognises this installation's production server. Since the build moved to
