@@ -576,6 +576,24 @@ export function Sidebar({
     (task) => task.status === "working",
   );
 
+  // Prefetch task detail routes so opening a task from the list feels
+  // instant. These are dynamic routes rendered via router.push (not
+  // next/link), so the viewport prefetch heuristic never covers them;
+  // prefetch once per task id, deduplicated as the poll refreshes the list.
+  const prefetchedTaskRoutes = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const task of tasks) {
+      if (prefetchedTaskRoutes.current.has(task.id)) continue;
+      prefetchedTaskRoutes.current.add(task.id);
+      router.prefetch(`/task/${task.id}`);
+    }
+    for (const task of archivedTasks) {
+      if (prefetchedTaskRoutes.current.has(task.id)) continue;
+      prefetchedTaskRoutes.current.add(task.id);
+      router.prefetch(`/task/${task.id}`);
+    }
+  }, [router, tasks, archivedTasks]);
+
   /**
    * Mirror the current sidebar geometry to the DB. Called from every mutation
    * site (toggle/resize/reset) with the freshly-computed values so the server

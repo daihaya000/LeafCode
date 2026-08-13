@@ -29,7 +29,7 @@ const { usePathname } = vi.hoisted(() => ({ usePathname: vi.fn(() => "/") }));
 
 vi.mock("next/navigation", () => ({
   usePathname,
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }),
 }));
 
 vi.mock("next-themes", () => ({
