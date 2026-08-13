@@ -11,19 +11,16 @@ import path from "node:path";
 import { readLinkState } from "./link";
 import { globalConfigLinkPath } from "./paths";
 import { stripJsonc } from "./jsonc";
+import {
+  filterEnv,
+  opencodeMcpToClaude,
+  opencodeMcpToCodex,
+  replaceCodexMcpTables,
+  type ClaudeMcpEntry,
+  type McpDefinition,
+} from "../../../../scripts/lib/sync-utils.mjs";
 
 const HOME = homedir();
-
-type EnvMap = Record<string, string>;
-
-type McpDefinition = {
-  type?: "local" | "remote";
-  command?: string[];
-  url?: string;
-  headers?: EnvMap;
-  environment?: EnvMap;
-  enabled?: boolean;
-};
 
 type OpendcodeConfig = {
   mcp?: Record<string, McpDefinition>;
@@ -111,108 +108,7 @@ export function parseJsonSettings(text: string): { mcpServers?: unknown } {
   return JSON.parse(text) as { mcpServers?: unknown };
 }
 
-function tomlString(v: string): string {
-  const single = v.indexOf("'") === -1 && v.indexOf("\n") === -1;
-  if (single) return `'${v}'`;
-  const esc = v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  return `"${esc}"`;
-}
-
-function tomlArray(arr: string[]): string {
-  if (arr.length === 0) return "[]";
-  return "[" + arr.map((x) => tomlString(String(x))).join(", ") + "]";
-}
-
-function isEnvRef(v: string): boolean {
-  return /^\{env:[A-Z0-9_]+\}$/i.test(v);
-}
-
-function envValueToCodex(v: string): string {
-  return tomlString(String(v));
-}
-
-function envValueToClaude(v: string): string {
-  return String(v);
-}
-
-function filterEnv(env: EnvMap | undefined): EnvMap {
-  if (!env) return {};
-  const out: EnvMap = {};
-  for (const [k, v] of Object.entries(env)) {
-    if (isEnvRef(v)) continue;
-    out[k] = v;
-  }
-  return out;
-}
-
-function opencodeMcpToCodex(name: string, def: McpDefinition): string | null {
-  if (def.enabled === false) return null;
-  const lines: string[] = [];
-  lines.push(`[mcp_servers.${name}]`);
-  if (def.type === "remote") {
-    if (def.url) lines.push(`url = ${tomlString(def.url)}`);
-    const headers = filterEnv(def.headers);
-    if (Object.keys(headers).length) {
-      lines.push("");
-      lines.push(`[mcp_servers.${name}.headers]`);
-      for (const [k, v] of Object.entries(headers)) {
-        lines.push(`${k} = ${envValueToCodex(v)}`);
-      }
-    }
-    return lines.join("\n");
-  }
-  const cmd = def.command || [];
-  if (cmd[0]) lines.push(`command = ${tomlString(cmd[0])}`);
-  if (cmd.length > 1) lines.push(`args = ${tomlArray(cmd.slice(1))}`);
-  const env = filterEnv(def.environment);
-  if (Object.keys(env).length) {
-    lines.push("");
-    lines.push(`[mcp_servers.${name}.env]`);
-    for (const [k, v] of Object.entries(env)) {
-      lines.push(`${k} = ${envValueToCodex(v)}`);
-    }
-  }
-  return lines.join("\n");
-}
-
-type ClaudeMcpEntry = {
-  type?: string;
-  url?: string;
-  headers?: EnvMap;
-  command?: string;
-  args?: string[];
-  env?: EnvMap;
-};
-
 type CursorMcpEntry = Omit<ClaudeMcpEntry, "type">;
-
-function opencodeMcpToClaude(name: string, def: McpDefinition): ClaudeMcpEntry | null {
-  if (def.enabled === false) return null;
-  const entry: ClaudeMcpEntry = {};
-  if (def.type === "remote") {
-    entry.type = "sse";
-    if (def.url) entry.url = def.url;
-    const headers = filterEnv(def.headers);
-    if (Object.keys(headers).length) {
-      entry.headers = {};
-      for (const [k, v] of Object.entries(headers)) {
-        entry.headers[k] = envValueToClaude(v);
-      }
-    }
-    return entry;
-  }
-  const cmd = def.command || [];
-  if (cmd[0]) entry.command = cmd[0];
-  if (cmd.length > 1) entry.args = cmd.slice(1);
-  const env = filterEnv(def.environment);
-  if (Object.keys(env).length) {
-    entry.env = {};
-    for (const [k, v] of Object.entries(env)) {
-      entry.env[k] = envValueToClaude(v);
-    }
-  }
-  return entry;
-}
 
 function opencodeMcpToCursor(name: string, def: McpDefinition): CursorMcpEntry | null {
   const entry: CursorMcpEntry = {};
@@ -228,34 +124,6 @@ function opencodeMcpToCursor(name: string, def: McpDefinition): CursorMcpEntry |
   const env = filterEnv(def.environment);
   if (Object.keys(env).length) entry.env = env;
   return entry;
-}
-
-function replaceCodexMcpTables(tomlText: string, newBlocks: string[]): string {
-  const lines = tomlText.split(/\r?\n/);
-  const out: string[] = [];
-  let skip = false;
-  for (const line of lines) {
-    const head = line.trim().match(/^\[mcp_servers\.([^\]]+)\]/);
-    if (head) {
-      skip = true;
-      continue;
-    }
-    if (skip) {
-      if (/^\[[^\]]+\]/.test(line.trim()) && !line.trim().startsWith("[mcp_servers.")) {
-        skip = false;
-        out.push(line);
-      }
-      continue;
-    }
-    out.push(line);
-  }
-  let cleaned = out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
-  if (newBlocks.length) {
-    cleaned = cleaned + "\n\n" + newBlocks.join("\n\n") + "\n";
-  } else {
-    cleaned = cleaned + "\n";
-  }
-  return cleaned;
 }
 
 function buildTargets(mcp: Record<string, McpDefinition>) {
