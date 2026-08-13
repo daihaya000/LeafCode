@@ -117,6 +117,7 @@ import {
 } from "@/lib/side-panel-state";
 import { getJson, ocJson, sendJson, timedFetch } from "@/lib/client";
 import { SIDE_DEFAULT, useTaskPanels } from "./use-task-panels";
+import { useSessionPermissions } from "./use-session-permissions";
 import { prepareAttachedImage } from "@/lib/prepare-attached-image";
 import {
   AUTO_MODEL_OPTION,
@@ -576,6 +577,24 @@ export function TaskView({
     filteredFilesCount,
     setFilteredFilesCount,
   } = useTaskPanels();
+  const {
+    accessMode,
+    setAccessMode,
+    accessModeSaving,
+    setAccessModeSaving,
+    subagentPermission,
+    setSubagentPermission,
+    subagentPermissionSaving,
+    setSubagentPermissionSaving,
+    skillPermission,
+    setSkillPermission,
+    skillPermissionSaving,
+    setSkillPermissionSaving,
+    accessEnsureRetry,
+    setAccessEnsureRetry,
+    permissionTick,
+    setPermissionTick,
+  } = useSessionPermissions();
   const router = useRouter();
   const { setExtras } = useShellExtras();
   const setActiveScope = useShellSetActiveScope();
@@ -703,16 +722,6 @@ export function TaskView({
   const [providerModelsMap, setProviderModelsMap] = useState<
     Record<string, ProviderModelMeta>
   >({});
-  const [accessMode, setAccessMode] = useState<AccessMode>(() => readAccessMode());
-  const [accessModeSaving, setAccessModeSaving] = useState(false);
-  const [subagentPermission, setSubagentPermission] =
-    useState<SubagentPermission>(() => readSubagentPermission());
-  const [subagentPermissionSaving, setSubagentPermissionSaving] =
-    useState(false);
-  const [skillPermission, setSkillPermission] = useState<SkillPermission>(
-    () => readSkillPermission(),
-  );
-  const [skillPermissionSaving, setSkillPermissionSaving] = useState(false);
   const [autoRecord, setAutoRecord] = useState<AutoTaskRecord | null>(null);
   const [autoRetryNotice, setAutoRetryNotice] = useState<string | null>(null);
   /** Transient chip for a follow-up Auto resolution (addendum spec §6). */
@@ -1151,7 +1160,7 @@ export function TaskView({
       window.removeEventListener(ACCESS_MODE_EVENT, onMode);
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [setAccessMode]);
 
   useEffect(() => {
     const onSubagent = (e: Event) => {
@@ -1171,7 +1180,7 @@ export function TaskView({
       window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [setSubagentPermission]);
 
   useEffect(() => {
     const onSkill = (e: Event) => {
@@ -1191,7 +1200,7 @@ export function TaskView({
       window.removeEventListener(SKILL_PERMISSION_EVENT, onSkill);
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [setSkillPermission]);
 
   // DB → localStorage migration so the default model set on another
   // browser/origin is restored here. Non-fatal: when the server is
@@ -1277,7 +1286,6 @@ export function TaskView({
   const descendantAccessSync = stream.descendantAccessSync;
   const pendingDescendantSessionIds = stream.pendingDescendantSessionIds;
   const clearPendingDescendants = stream.clearPendingDescendants;
-  const [accessEnsureRetry, setAccessEnsureRetry] = useState(0);
   useEffect(() => {
     if (!task?.id || !task.sessionId) return;
     if (task.executionMode === "workflow") return;
@@ -1333,11 +1341,11 @@ export function TaskView({
     pendingDescendantSessionIds,
     clearPendingDescendants,
     accessEnsureRetry,
-  ]);
+, setAccessEnsureRetry]);
 
   useEffect(() => {
     setAccessEnsureRetry(0);
-  }, [task?.id, task?.sessionId]);
+  }, [task?.id, task?.sessionId, setAccessEnsureRetry]);
 
   // Sync default model when changed in Settings while a task is open and the
   // user has not manually picked a different model in this composer.
@@ -1398,7 +1406,7 @@ export function TaskView({
         setAccessModeSaving(false);
       }
     },
-    [accessMode, accessModeSaving, task?.executionMode, task?.id, task?.sessionId],
+    [accessMode, accessModeSaving, task?.executionMode, task?.id, task?.sessionId, setAccessMode, setAccessModeSaving],
   );
 
   const changeSubagentPermission = useCallback(
@@ -1426,7 +1434,7 @@ export function TaskView({
         setSubagentPermissionSaving(false);
       }
     },
-    [subagentPermission, subagentPermissionSaving, task?.id, task?.sessionId],
+    [subagentPermission, subagentPermissionSaving, task?.id, task?.sessionId, setSubagentPermission, setSubagentPermissionSaving],
   );
 
   const changeSkillPermission = useCallback(
@@ -1454,7 +1462,7 @@ export function TaskView({
         setSkillPermissionSaving(false);
       }
     },
-    [skillPermission, skillPermissionSaving, task?.id, task?.sessionId],
+    [skillPermission, skillPermissionSaving, task?.id, task?.sessionId, setSkillPermission, setSkillPermissionSaving],
   );
 
   // Persist right-panel display state so it survives task/session switches.
@@ -3589,7 +3597,6 @@ export function TaskView({
   // `Notification.permission` isn't a React dependency, a rising edge that
   // arrived while still "default" would never be re-checked once the user
   // answers the (async) browser prompt.
-  const [permissionTick, setPermissionTick] = useState(0);
   // Guards against a tight request/resolve/re-render loop: without it, each
   // resolved requestPermission() bumps permissionTick, which re-runs this
   // effect, which — while permission is still "default" — would call
@@ -3648,7 +3655,7 @@ export function TaskView({
     task?.id,
     documentHidden,
     permissionTick,
-  ]);
+, setPermissionTick]);
 
   const restoreToComposer = useCallback(
     (text: string, attachments: Attachment[] = []) => {
