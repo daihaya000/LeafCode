@@ -602,6 +602,13 @@ web 側（TS）から参照できる形にする（TS が `.mjs` を import で�
 実ブラウザ結合テストが無い。Playwright 拡張テスト（`web/e2e/` 枠）で、
 content script のインジェクションと snapshot 送信を 1 シナリオ検証できると良い。
 
+> **2026-08-13 確認（Phase 7）**: content script ロジックはユニット/統合テストでカバー済み
+> （`browser-bridge/test/` 全 91 本パス。`snapshot.test.mjs` 5 本が collectSnapshot の収集・
+> 秘匿制御・truncation、`extension-background.test.mjs` 11 本が注入後の runtime ハンドラを検証）。
+> 実ブラウザ結合テスト（拡張ロード + 注入 + Broker 送信）は、拡張のペアリング（Broker URL/トークン）
+> と host 稼働が必要で自動テストとして不安定なため**追加保留**。テスト対象の明確化は
+> 上記 2 ファイルで達成済み。
+
 ### 5-3. 【低】Broker 系の層分け（良い実例として記録）
 
 `browser-bridge/broker/` は 4 モジュールに分割され、構造は健全（2026-08-13 確認）:
