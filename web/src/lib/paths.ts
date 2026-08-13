@@ -1,14 +1,8 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { dataDir } from "../../../scripts/lib/data-dir.mjs";
 
-export function dataDir(): string {
-  if (process.platform === "win32") {
-    const base = process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
-    return path.join(base, "opencode-webui");
-  }
-  return path.join(os.homedir(), ".opencode-webui");
-}
+export { dataDir };
 
 export function dbPath(): string {
   return path.join(dataDir(), "webui.db");

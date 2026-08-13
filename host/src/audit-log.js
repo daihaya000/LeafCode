@@ -1,3 +1,4 @@
+import { dataDir } from '../../scripts/lib/data-dir.mjs';
 import { appendFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'fs';
 import { dirname, join } from 'path';
 import { restrictToCurrentUser } from './secure-file.js';
@@ -28,12 +29,6 @@ const DEFAULT_MAX_FILES = 5;
 /** Cap a single field so a hostile username cannot bloat the file. */
 const MAX_FIELD_CHARS = 200;
 
-function dataDir() {
-  const base =
-    process.env.APPDATA ||
-    join(process.env.USERPROFILE || process.env.HOME || '.', 'AppData', 'Roaming');
-  return join(base, 'opencode-webui');
-}
 
 export function auditLogPath() {
   return join(dataDir(), LOG_FILENAME);

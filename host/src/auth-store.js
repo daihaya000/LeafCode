@@ -1,3 +1,4 @@
+import { dataDir } from '../../scripts/lib/data-dir.mjs';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -16,10 +17,6 @@ const ALGORITHM = 'sha256';
 const SALT_BYTES = 16;
 const HASH_BYTES = 32;
 
-function dataDir() {
-  const base = process.env.APPDATA || join(process.env.USERPROFILE || process.env.HOME || '.', 'AppData', 'Roaming');
-  return join(base, 'opencode-webui');
-}
 
 function usersFile() {
   return join(dataDir(), 'users.json');

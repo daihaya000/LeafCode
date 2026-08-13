@@ -1,3 +1,4 @@
+import { dataDir } from '../../scripts/lib/data-dir.mjs';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { writeSecretFile } from './secure-file.js';
@@ -14,12 +15,6 @@ import { writeSecretFile } from './secure-file.js';
 
 const DEFAULTS = { windowsAuth: false };
 
-function dataDir() {
-  const base =
-    process.env.APPDATA ||
-    join(process.env.USERPROFILE || process.env.HOME || '.', 'AppData', 'Roaming');
-  return join(base, 'opencode-webui');
-}
 
 function configFile() {
   return join(dataDir(), 'auth-config.json');
