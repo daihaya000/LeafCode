@@ -94,6 +94,7 @@ cd OpenCodeWebUI
 | `OPENCODE_WEBUI_HEADLESS` | 未設定 | `1` でトレイを使わずコンソールのみで起動 |
 | `OPENCODE_WEBUI_NO_BROWSER` | 未設定 | `1` で起動時のブラウザ自動起動を抑止 |
 | `OPENCODE_WEBUI_NONINTERACTIVE` | 未設定 | `1` でセットアップ失敗時の待機を省略 |
+| `OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE` | `1` | 起動時に `opencode upgrade` を実行して CLI を自動アップデート。`0` で無効化（失敗時は既存バイナリで起動継続） |
 | `OPENCODE_WEBUI_CADDY` | 未設定 | `1` で Caddy 逆プロキシを連動起動。`0` で自動導入も行わない |
 | `OPENCODE_WEBUI_CADDYFILE` | `deploy/Caddyfile` | Caddyfile のパス |
 | `OPENCODE_WEBUI_BUILD_DIR` | `%LOCALAPPDATA%\opencode-webui\build\...` | production build のミラー先 |

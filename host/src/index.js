@@ -70,7 +70,11 @@ import {
   createThrottleStore,
   verifyWindowsCredentials,
 } from './windows-auth.js';
-import { pickOpencodePath } from './opencode-path.js';
+import {
+  isWindowsPeExecutable,
+  npmOpencodeSiblingExe,
+  pickOpencodePath,
+} from './opencode-path.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -934,6 +938,173 @@ function findOpencode() {
   });
   if (picked) return picked;
   throw new Error('opencode not found on PATH. Install OpenCode CLI first.');
+}
+
+/** Auto-update OpenCode CLI once per host start, before `serve` spawns.
+ *  Disable with OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE=0 (or =false). */
+const OPENCODE_AUTO_UPDATE = !['0', 'false'].includes(
+  String(process.env.OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE ?? '').toLowerCase(),
+);
+/** Bounded so a slow/unreachable update channel never blocks startup long. */
+const OPENCODE_UPGRADE_TIMEOUT_MS = 180_000;
+
+/**
+ * Run `opencode upgrade` non-interactively (no TTY). Resolves without
+ * throwing; the caller logs the outcome and continues with the existing
+ * binary on any failure. Output is teed into the disk log / ring buffer like
+ * the `serve` process, so the WebUI host log shows what happened.
+ * @param {string} opencodePath
+ * @param {number} [timeoutMs]
+ * @returns {Promise<{ ok: boolean, message?: string, code?: number | null }>}
+ */
+function runOpencodeUpgrade(opencodePath, timeoutMs = OPENCODE_UPGRADE_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    const useShell = /\.(cmd|bat)$/i.test(opencodePath);
+    const child = spawn(opencodePath, ['upgrade'], {
+      cwd: REPO_ROOT,
+      shell: useShell,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      env: { ...process.env },
+    });
+    child.stdout?.on('data', (chunk) => {
+      process.stdout.write(`[opencode-upgrade] ${chunk}`);
+      recordLog('opencode', 'log', chunk.toString());
+    });
+    child.stderr?.on('data', (chunk) => {
+      process.stderr.write(`[opencode-upgrade] ${chunk}`);
+      recordLog('opencode', 'error', chunk.toString());
+    });
+    const timer = setTimeout(() => {
+      log(
+        `OpenCode CLI upgrade timed out after ${Math.round(timeoutMs / 1000)}s — continuing with the existing binary`,
+      );
+      try {
+        hardKillTree(child.pid);
+      } catch {
+        /* already gone */
+      }
+    }, timeoutMs);
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, message: err.message });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve({ ok: true, code });
+      else resolve({ ok: false, code, message: `exit code ${code}` });
+    });
+  });
+}
+
+/**
+ * Repair an npm `opencode-ai` install whose postinstall was skipped (package
+ * manager upgrades can ship with `--ignore-scripts`, leaving a shell stub
+ * that Windows refuses to run — the same failure `opencode-path.js`
+ * documents). Runs the package's own `postinstall.mjs`, which replaces the
+ * stub with the real PE binary. Returns the repaired exe path, or null when
+ * nothing needed fixing or the repair failed.
+ * @param {string} opencodePath Resolved CLI path (shim or exe).
+ * @param {{
+ *   existsSync?: typeof existsSync,
+ *   isPe?: (path: string) => boolean,
+ *   runPostinstall?: (pkgDir: string) => void,
+ * }} [io] Injectable IO for tests.
+ * @returns {string | null}
+ */
+export function repairNpmOpencodeStub(opencodePath, io = {}) {
+  const exists = io.existsSync ?? existsSync;
+  const isPe = io.isPe ?? ((p) => isWindowsPeExecutable(p, { existsSync: exists }));
+  const runPostinstall =
+    io.runPostinstall ??
+    ((pkgDir) =>
+      execFileSync(process.execPath, [join(pkgDir, 'postinstall.mjs')], {
+        cwd: pkgDir,
+        timeout: 120_000,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }));
+  const exe = /\.exe$/i.test(opencodePath)
+    ? opencodePath
+    : npmOpencodeSiblingExe(opencodePath);
+  if (!exe || isPe(exe)) return null;
+  const pkgDir = dirname(dirname(exe));
+  if (!exists(join(pkgDir, 'postinstall.mjs'))) return null;
+  try {
+    runPostinstall(pkgDir);
+    return isPe(exe) ? exe : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort `opencode --version` for the resolved CLI. Returns null when
+ * the path is a shell shim or the call fails (never throws).
+ * @param {string} opencodePath
+ * @returns {string | null}
+ */
+function readOpencodeVersion(opencodePath) {
+  if (!opencodePath || /\.(cmd|bat)$/i.test(opencodePath)) return null;
+  try {
+    return (
+      execFileSync(opencodePath, ['--version'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 15_000,
+      }).trim() || null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Auto-update the OpenCode CLI before `serve` spawns (runs at every host
+ * start; `opencode upgrade` is a no-op when already current). Never throws:
+ * failures are logged and startup continues with the existing binary. After a
+ * successful package-manager upgrade, a skipped-postinstall stub is repaired
+ * so the freshly installed binary is actually runnable.
+ * @returns {Promise<{ upgraded: boolean, version: string | null }>}
+ */
+async function upgradeOpencodeCli() {
+  if (!OPENCODE_AUTO_UPDATE) {
+    log(
+      'OpenCode CLI auto-update is disabled (OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE=0)',
+    );
+    return { upgraded: false, version: null };
+  }
+  let opencodePath;
+  try {
+    opencodePath = findOpencode();
+  } catch (err) {
+    error(
+      `OpenCode CLI auto-update skipped: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { upgraded: false, version: null };
+  }
+  log(`Upgrading OpenCode CLI: ${opencodePath} upgrade`);
+  const result = await runOpencodeUpgrade(opencodePath);
+  if (!result.ok) {
+    error(
+      `OpenCode CLI upgrade failed (${result.message ?? 'unknown'}) — continuing with the existing binary`,
+    );
+    return { upgraded: false, version: null };
+  }
+  const repaired = repairNpmOpencodeStub(opencodePath);
+  if (repaired) {
+    log(
+      `Repaired OpenCode npm install (postinstall stub replaced by real binary at ${repaired})`,
+    );
+  }
+  const version = readOpencodeVersion(findOpencode());
+  log(
+    version
+      ? `OpenCode CLI upgrade completed — now ${version}`
+      : 'OpenCode CLI upgrade completed',
+  );
+  return { upgraded: true, version };
 }
 
 /**
@@ -2058,9 +2229,14 @@ async function startChildren() {
   // netstat (~150 ms) does not depend on the pull and the pull cannot change
   // which ports are listening, so overlap them instead of paying for both.
   const netstatPromise = captureNetstatAsync();
+  // The CLI upgrade is unrelated to the port plan and can take up to 3 min on
+  // a slow channel, so it runs concurrently with the git pull and is only
+  // awaited when a fresh `serve` is about to spawn.
+  const opencodeUpgradePromise = upgradeOpencodeCli();
   await pullLatestWebSource();
   const plan = await resolvePortPlan(await netstatPromise);
   if (plan.startOpencode) {
+    await opencodeUpgradePromise;
     const opencodePath = findOpencode();
     log(`Starting OpenCode: ${opencodePath}`);
     spawnOpencode(opencodePath);

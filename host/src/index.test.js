@@ -371,3 +371,43 @@ test('parseCommandLineJson skips rows with invalid PID or missing command line',
   );
   assert.deepEqual(map, new Map([[666, 'next start']]));
 });
+
+
+test('repairNpmOpencodeStub does nothing for a real PE binary', () => {
+  assert.equal(
+    host.repairNpmOpencodeStub('C:\\bin\\opencode.exe', { isPe: () => true }),
+    null,
+  );
+});
+
+test('repairNpmOpencodeStub does nothing when the shim has no npm sibling', () => {
+  const io = { existsSync: () => false, isPe: () => false };
+  assert.equal(host.repairNpmOpencodeStub('C:\\tools\\opencode.cmd', io), null);
+});
+
+test('repairNpmOpencodeStub runs postinstall when the sibling exe is a stub', () => {
+  let ran = false;
+  let stub = true;
+  const io = {
+    existsSync: (p) => p.endsWith('postinstall.mjs'),
+    isPe: () => !stub,
+    runPostinstall: () => { ran = true; stub = false; },
+  };
+  const repaired = host.repairNpmOpencodeStub('C:\\npm\\opencode.cmd', io);
+  assert.equal(ran, true);
+  assert.match(repaired, /opencode-ai\\bin\\opencode\.exe$/);
+});
+
+test('repairNpmOpencodeStub returns null when postinstall leaves a stub', () => {
+  const io = { existsSync: () => true, isPe: () => false, runPostinstall: () => {} };
+  assert.equal(host.repairNpmOpencodeStub('C:\\npm\\opencode.cmd', io), null);
+});
+
+test('repairNpmOpencodeStub returns null when postinstall throws', () => {
+  const io = {
+    existsSync: () => true,
+    isPe: () => false,
+    runPostinstall: () => { throw new Error('boom'); },
+  };
+  assert.equal(host.repairNpmOpencodeStub('C:\\npm\\opencode.cmd', io), null);
+});
