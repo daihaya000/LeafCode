@@ -284,6 +284,17 @@ async function resolveBrowserUrl() {
   });
 }
 
+/**
+ * Start resolving the startup URL without blocking. resolveBrowserUrl() waits
+ * up to 6 s for Caddy's TLS listener, which is unrelated to WebUI / OpenCode
+ * readiness, so it runs alongside those waits instead of after them.
+ * @returns {Promise<string> | null} null when no browser should be opened.
+ */
+function startResolvingBrowserUrl() {
+  if (!shouldOpenBrowser()) return null;
+  return resolveBrowserUrl().catch(() => WEBUI_URL);
+}
+
 const iconData = JSON.parse(readFileSync(join(__dirname, 'icon.json'), 'utf8'));
 const TRAY_ICON = iconData.base64;
 
@@ -613,15 +624,61 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getListeningPids(port) {
+/**
+ * One `netstat -ano` run (~150 ms) dumps the whole TCP table, so several port
+ * probes taken at the same instant can share it. Returns null when netstat
+ * fails; callers then fall back to their own (also failing) lookup and treat
+ * the port as free, which is the pre-existing behaviour.
+ * @returns {{ output: string } | null}
+ */
+function captureNetstat() {
+  const output = runNetstat();
+  return output == null ? null : { output };
+}
+
+/**
+ * Same snapshot, taken without blocking the event loop, so it can overlap with
+ * an unrelated await (see startChildren: the git pull runs concurrently).
+ * @returns {Promise<{ output: string } | null>}
+ */
+async function captureNetstatAsync() {
   try {
-    const output = execSync('netstat -ano', {
+    const { stdout } = await execFileAsync('netstat.exe', ['-ano'], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 5000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return { output: String(stdout) };
+  } catch {
+    return null;
+  }
+}
+
+function runNetstat() {
+  try {
+    return execSync('netstat -ano', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       // Bounded so a degraded network stack cannot hang the caller (this is
       // also used from the synchronous 'exit' handler).
       timeout: 5000,
     });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {number} port
+ * @param {{ output: string } | null} [snapshot] Point-in-time netstat output.
+ *   Only pass one when no process has been started or killed since it was
+ *   taken — anything that waits for a port to change state must re-run netstat.
+ */
+function getListeningPids(port, snapshot) {
+  const output = snapshot?.output ?? runNetstat();
+  if (output == null) return [];
+  try {
     return parseListeningPids(output, port);
   } catch {
     return [];
@@ -707,13 +764,19 @@ function makeOwnedWebListenerPredicate(listenerPids) {
   };
 }
 
-function isPortInUse(port) {
-  return getListeningPids(port).length > 0;
+function isPortInUse(port, snapshot) {
+  return getListeningPids(port, snapshot).length > 0;
 }
 
+/**
+ * Scans the candidate range against a single netstat snapshot: the answer is a
+ * point-in-time decision anyway, and re-running netstat per candidate cost up
+ * to 20 x ~150 ms on the fallback path.
+ */
 function findFreePort(startPort, maxAttempts = 20) {
+  const snapshot = captureNetstat();
   for (let port = startPort; port < startPort + maxAttempts; port += 1) {
-    if (!isPortInUse(port)) return port;
+    if (!isPortInUse(port, snapshot)) return port;
   }
   return null;
 }
@@ -724,8 +787,10 @@ function findFreePort(startPort, maxAttempts = 20) {
  * If occupied by a live but unhealthy process → kill and reuse the port.
  * If occupied by a ghost/dead PID (Windows TCP leak) → fall back to the next free port.
  */
-async function resolveOccupiedPort(port, healthUrl, label) {
-  if (!isPortInUse(port)) {
+async function resolveOccupiedPort(port, healthUrl, label, snapshot) {
+  // `snapshot` is only safe for this first probe: everything below either
+  // kills a process or waits for the port to change, so it re-runs netstat.
+  if (!isPortInUse(port, snapshot)) {
     return { port, reuse: false };
   }
 
@@ -762,7 +827,7 @@ async function resolveOccupiedPort(port, healthUrl, label) {
     for (let i = 0; i < 40; i += 1) {
       await sleep(250);
       if (!isPortInUse(port)) {
-        return { port, reuse: false };
+        return { port, reuse: false, mutated: true };
       }
     }
   }
@@ -778,7 +843,7 @@ async function resolveOccupiedPort(port, healthUrl, label) {
   log(
     `Port ${port} is stuck (ghost/unresponsive ${label}). Falling back to :${fallback}`,
   );
-  return { port: fallback, reuse: false, fallbackFrom: port };
+  return { port: fallback, reuse: false, fallbackFrom: port, mutated: true };
 }
 
 function killProcessTree(pid) {
@@ -1624,13 +1689,54 @@ function readLockPid() {
   return readLock()?.pid ?? null;
 }
 
+/**
+ * Claim the single-instance lock.
+ *
+ * The Win32_Process CreationDate query costs ~850 ms (PowerShell + CIM boot)
+ * and used to sit on the critical startup path for no reason: the exclusive
+ * 'wx' write is what enforces single-instance, while `created` only guards
+ * against PID reuse observed by a *later* instance. So take the lock now and
+ * backfill the field in the background. `createdPending` marks a new-format
+ * lock whose creation time is still being resolved, so a competing instance
+ * keeps using the strict command-line check rather than the looser heuristic
+ * reserved for genuinely legacy locks.
+ */
 function writeLock() {
-  const created = getProcessCreationTime(process.pid);
   writeFileSync(
     LOCK_FILE,
-    JSON.stringify({ pid: process.pid, created }),
+    JSON.stringify({ pid: process.pid, created: null, createdPending: true }),
     { encoding: 'utf8', flag: 'wx' },
   );
+  backfillLockCreationTime();
+}
+
+function backfillLockCreationTime() {
+  execFileAsync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `(Get-CimInstance Win32_Process -Filter 'ProcessId=${process.pid}').CreationDate.ToFileTime()`,
+    ],
+    { encoding: 'utf8', windowsHide: true, timeout: 8000 },
+  )
+    .then(({ stdout }) => {
+      const created = String(stdout).trim();
+      if (!/^\d+$/.test(created)) return;
+      // readLock() returns null once removeLock() ran, so a shutdown that beat
+      // the query can never resurrect the lock file here.
+      if (readLock()?.pid !== process.pid) return;
+      writeFileSync(
+        LOCK_FILE,
+        JSON.stringify({ pid: process.pid, created }),
+        'utf8',
+      );
+    })
+    .catch(() => {
+      // Leave the pending lock as is; identity checks fall back to the
+      // command line, exactly as they do when CIM is unavailable.
+    });
 }
 
 function removeLock() {
@@ -1687,6 +1793,21 @@ async function handleExistingInstance() {
   // Verify identity: exact creation-time match when the lock records it,
   // otherwise (legacy lock) a conservative command-line heuristic.
   let hostIdentityVerified = false;
+
+  // Stricter fallback used whenever CreationDate cannot be compared: requires
+  // the command line to name the host directory or product, so an unrelated
+  // node process is never misidentified (and taskkilled).
+  const verifyStrictlyByCommandLine = () => {
+    const cmdline = getProcessCommandLine(lockPid);
+    if (cmdline && !stronglyLooksLikeHostCommandLine(cmdline)) {
+      removeStaleLock(`PID reused by another process (${cmdline})`);
+      return 'reused';
+    }
+    if (cmdline) return 'verified';
+    log(`Could not verify identity of live lock PID ${lockPid}; preserving it`);
+    return 'unknown';
+  };
+
   if (lock.created) {
     const created = getProcessCreationTime(lockPid);
     if (created && created !== lock.created) {
@@ -1696,20 +1817,15 @@ async function handleExistingInstance() {
     if (created === lock.created) {
       hostIdentityVerified = true;
     } else {
-      // CreationDate unavailable — fall back to a stricter cmdline check to
-      // avoid misidentifying an unrelated node process and taskkilling it.
-      const cmdline = getProcessCommandLine(lockPid);
-      if (cmdline && !stronglyLooksLikeHostCommandLine(cmdline)) {
-        removeStaleLock(`PID reused by another process (${cmdline})`);
-        return false;
-      }
-      if (cmdline && stronglyLooksLikeHostCommandLine(cmdline)) {
-        hostIdentityVerified = true;
-      }
-      if (!cmdline || !stronglyLooksLikeHostCommandLine(cmdline)) {
-        log(`Could not verify identity of live lock PID ${lockPid}; preserving it`);
-      }
+      const outcome = verifyStrictlyByCommandLine();
+      if (outcome === 'reused') return false;
+      hostIdentityVerified = outcome === 'verified';
     }
+  } else if (lock.createdPending) {
+    // The owner is still resolving its creation time (see writeLock).
+    const outcome = verifyStrictlyByCommandLine();
+    if (outcome === 'reused') return false;
+    hostIdentityVerified = outcome === 'verified';
   } else {
     const cmdline = getProcessCommandLine(lockPid);
     if (cmdline && !looksLikeHostCommandLine(cmdline)) {
@@ -1812,13 +1928,24 @@ async function pullLatestWebSource() {
   }
 }
 
-async function resolvePortPlan() {
+/**
+ * @param {{ output: string } | null} [preCaptured] netstat snapshot taken by
+ *   the caller (startChildren overlaps it with the git pull). Ports cannot
+ *   change as a result of the pull, so an earlier snapshot stays valid.
+ */
+async function resolvePortPlan(preCaptured) {
   const plan = { startOpencode: true, startWeb: true };
+
+  // Both port probes happen before anything is started, so they can share one
+  // netstat run — unless resolving OpenCode killed a process, in which case the
+  // snapshot is dropped and the WebUI probe re-runs netstat.
+  const netstat = preCaptured ?? captureNetstat();
 
   const opencode = await resolveOccupiedPort(
     OPENCODE_PORT,
     `${OPENCODE_URL}/global/health`,
     'OpenCode',
+    netstat,
   );
   if (opencode.port !== OPENCODE_PORT) {
     setOpencodePort(opencode.port);
@@ -1830,7 +1957,12 @@ async function resolvePortPlan() {
     plan.startOpencode = false;
   }
 
-  const webui = await resolveOccupiedPort(WEBUI_PORT, WEBUI_URL, 'WebUI');
+  const webui = await resolveOccupiedPort(
+    WEBUI_PORT,
+    WEBUI_URL,
+    'WebUI',
+    opencode.mutated ? null : netstat,
+  );
   if (webui.port !== WEBUI_PORT) {
     setWebuiPort(webui.port);
     process.env.OPENCODE_WEBUI_PORT = String(WEBUI_PORT);
@@ -1892,8 +2024,17 @@ async function waitForHttpUp(url, attempts = 1, delayMs = 1000) {
   return false;
 }
 
-async function waitUntilReady(url, label, attempts = 60, { proc } = {}) {
-  for (let i = 0; i < attempts; i += 1) {
+/** Poll interval while waiting for a child service to answer HTTP. */
+const READY_POLL_MS = 250;
+
+/**
+ * @param {number} attempts Timeout in seconds. The name is historical: the loop
+ *   used to probe once per second. Probing every 250 ms instead returns up to
+ *   ~750 ms sooner on a normal start while keeping the same overall timeout.
+ */
+async function waitUntilReady(url, label, attempts = 60, { proc, pollMs = READY_POLL_MS } = {}) {
+  const iterations = Math.max(1, Math.ceil((attempts * 1000) / pollMs));
+  for (let i = 0; i < iterations; i += 1) {
     if (await isHttpUp(url)) {
       log(`${label} is ready`);
       return true;
@@ -1903,7 +2044,7 @@ async function waitUntilReady(url, label, attempts = 60, { proc } = {}) {
       error(`${label} exited before becoming ready (${url})`);
       return false;
     }
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(pollMs);
   }
   error(`${label} did not become ready in time (${url})`);
   return false;
@@ -1914,8 +2055,11 @@ function procRunning(proc) {
 }
 
 async function startChildren() {
+  // netstat (~150 ms) does not depend on the pull and the pull cannot change
+  // which ports are listening, so overlap them instead of paying for both.
+  const netstatPromise = captureNetstatAsync();
   await pullLatestWebSource();
-  const plan = await resolvePortPlan();
+  const plan = await resolvePortPlan(await netstatPromise);
   if (plan.startOpencode) {
     const opencodePath = findOpencode();
     log(`Starting OpenCode: ${opencodePath}`);
@@ -2703,14 +2847,15 @@ async function main() {
     setInterval(() => {
       refreshStatusMenu().catch(() => {});
     }, 5000);
+    const browserUrl = startResolvingBrowserUrl();
     const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
       proc: () => webProc,
     });
     await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
       proc: () => opencodeProc,
     });
-    if (webReady && shouldOpenBrowser()) {
-      openBrowser(await resolveBrowserUrl());
+    if (webReady && browserUrl) {
+      openBrowser(await browserUrl);
     }
     return;
   }
@@ -2728,15 +2873,16 @@ async function main() {
     refreshStatusMenu().catch(() => {});
   }, 5000);
   await refreshStatusMenu();
+  const browserUrl = startResolvingBrowserUrl();
   const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
     proc: () => webProc,
   });
-await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
-      proc: () => opencodeProc,
-    });
-    if (webReady && shouldOpenBrowser()) {
-      openBrowser(await resolveBrowserUrl());
-    }
+  await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
+    proc: () => opencodeProc,
+  });
+  if (webReady && browserUrl) {
+    openBrowser(await browserUrl);
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
