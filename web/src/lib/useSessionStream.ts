@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { unwrapOcData } from "./oc-server";
 import { apiUrl, ApiError, ocJson, IMAGE_ANALYSIS_SEND_TIMEOUT_MS } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
@@ -1036,17 +1037,6 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         patterns?: string[];
         resources?: string[];
       };
-      const normalizeList = (pending: unknown): PermRow[] => {
-        if (Array.isArray(pending)) return pending as PermRow[];
-        if (
-          pending &&
-          typeof pending === "object" &&
-          Array.isArray((pending as { data?: unknown }).data)
-        ) {
-          return (pending as { data: PermRow[] }).data;
-        }
-        return [];
-      };
       const toRequest = (
         p: PermRow,
         version: "v1" | "v2",
@@ -1079,12 +1069,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       }
       if (stale()) return;
       const byId = new Map<string, PermissionRequest>();
-      for (const p of normalizeList(v1raw)) {
+      for (const p of unwrapOcData<PermRow>(v1raw)) {
         const req = toRequest(p, "v1");
         if (req) byId.set(req.id, req);
       }
       if (v2ok) {
-        for (const p of normalizeList(v2raw)) {
+        for (const p of unwrapOcData<PermRow>(v2raw)) {
           const req = toRequest(p, "v2");
           if (req) byId.set(req.id, req);
         }
@@ -1105,17 +1095,6 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         id?: string;
         sessionID?: string;
         questions?: QuestionInfo[];
-      };
-      const normalizeList = (pending: unknown): QRow[] => {
-        if (Array.isArray(pending)) return pending as QRow[];
-        if (
-          pending &&
-          typeof pending === "object" &&
-          Array.isArray((pending as { data?: unknown }).data)
-        ) {
-          return (pending as { data: QRow[] }).data;
-        }
-        return [];
       };
       const toRequest = (
         q: QRow,
@@ -1148,12 +1127,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       }
       if (stale()) return;
       const byId = new Map<string, QuestionRequest>();
-      for (const q of normalizeList(v1raw)) {
+      for (const q of unwrapOcData<QRow>(v1raw)) {
         const req = toRequest(q, "v1");
         if (req) byId.set(req.id, req);
       }
       if (v2ok) {
-        for (const q of normalizeList(v2raw)) {
+        for (const q of unwrapOcData<QRow>(v2raw)) {
           const req = toRequest(q, "v2");
           if (req) byId.set(req.id, req);
         }
