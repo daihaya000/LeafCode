@@ -130,6 +130,19 @@
 > 送信コマンド群。ここを `lib/session-sse.ts`（イベント→アクション変換）と
 > `lib/session-actions.ts`（送信・abort・compact）に分離し、hook は配線のみにするのが有効。
 
+> **2026-08-13 調査（分割計画の確定）**:
+> hook 本体（798–2301 行）の内部構造を調査した結果、**状態（reducer + 20 個超の ref）と
+> ロジックが密結合**で、関数の「移動のみ」による切り出しは不可能と判明:
+> - SSE 購読（`connect` 1776 行 / `handleEvent` 1259 行・約 500 行 / `runReconcile` 1859 行）は
+>   dispatch + 多数の ref（`pendingMutationRef` / `idleStreakRef` / `sessionActivityAtRef` 等）に依存
+> - 送信コマンド（`sendPrompt` 1925 / `sendCommand` 2012 / `abort` 2118 / `replyPermission` 2168 等）も
+>   同一の ref 群と `resync` / `abortRef` に依存
+> → 分割には **`useSessionSse` / `useSessionActions` の 2 フック化**（共通の ref コンテキストを
+> 親フックが生成し子フックへ渡す）が必要で、作業量は大きい。実施は 1-1（TaskView 分割）より後。
+> テスト 65 件が保護網として存在するため、着手時は「移動のみ」の段階から進められる。
+> 2026-08-13 実施済み: hook 内の `normalizeList` 重複（×2）を `unwrapOcData` に統一
+> （コミット `8a2daf1`）。
+
 ### 1-3. 【中】OAuth / CLI プロキシ認証コンポーネントの重複
 
 | ファイル | 行数 | 内容 |
