@@ -16,7 +16,6 @@ import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import SysTrayImport from 'systray2';
 import { WebSocketServer } from 'ws';
-import { createBrowserBridgeBroker } from '../../browser-bridge/broker/server.mjs';
 import { formatServiceStatus } from './service-status.js';
 import {
   getWebLaunchPlan,
@@ -366,6 +365,13 @@ const browserBridgeManager = createBrowserBridgeManager({
   log,
   error,
   WebSocketServer,
+});
+const httpWaiter = createHttpWaiter({ log, error, sleep, isPortInUse });
+const opencodeUpgrader = createOpencodeUpgrader({
+  log,
+  error,
+  recordLog,
+  repoRoot: REPO_ROOT,
 });
 let quitting = false;
 let restartingServices = false;

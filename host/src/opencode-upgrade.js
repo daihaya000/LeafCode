@@ -2,7 +2,7 @@
  * OpenCode CLI discovery and auto-update for the host process
  * (REFACTORING_PLAN P6-a / IMPROVEMENT 4-1: OpenCode start group).
  */
-import { execFileSync, spawn } from 'child_process';
+import { execFileSync, execSync, spawn } from 'child_process';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
 import {

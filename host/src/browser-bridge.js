@@ -14,6 +14,7 @@ import { createBrowserBridgeBroker } from '../../browser-bridge/broker/server.mj
  *   log?: (message: string) => void,
  *   error?: (message: string) => void,
  *   WebSocketServer: typeof import('ws').WebSocketServer,
+ *   createBroker?: typeof createBrowserBridgeBroker,
  * }} deps
  */
 export function createBrowserBridgeManager(deps) {
@@ -23,64 +24,85 @@ export function createBrowserBridgeManager(deps) {
   const log = deps.log ?? (() => {});
   const error = deps.error ?? (() => {});
   const { WebSocketServer } = deps;
+  const createBroker = deps.createBroker ?? createBrowserBridgeBroker;
 
   /** @type {import('../../browser-bridge/broker/server.mjs').BrowserBridgeBroker | null} */
   let broker = null;
 
   const environment = () => {
-  if (!broker) return {};
-  return {
-    OPENCODE_WEBUI_BROWSER_BROKER: broker.url,
-    OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: broker.internalToken,
+    if (!broker) return {};
+    return {
+      OPENCODE_WEBUI_BROWSER_BROKER: broker.url,
+      OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: broker.internalToken,
+    };
   };
-}
 
   const loadPairing = () => {
-  if (!existsSync(pairingFile)) return null;
-  try {
-    const value = JSON.parse(readFileSync(pairingFile, 'utf8'));
-    if (value && typeof value === 'object' && !Array.isArray(value)
-      && typeof value.origin === 'string' && /^chrome-extension:\/\/[a-z]{16,64}$/.test(value.origin)
-      && typeof value.deviceKey === 'string' && /^[A-Za-z0-9_-]{20,}$/.test(value.deviceKey)) {
-      return { origin: value.origin, deviceKey: value.deviceKey };
+    if (!existsSync(pairingFile)) return null;
+    try {
+      const value = JSON.parse(readFileSync(pairingFile, 'utf8'));
+      if (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        typeof value.origin === 'string' &&
+        /^chrome-extension:\/\/[a-z]{16,64}$/.test(value.origin) &&
+        typeof value.deviceKey === 'string' &&
+        /^[A-Za-z0-9_-]{20,}$/.test(value.deviceKey)
+      ) {
+        return { origin: value.origin, deviceKey: value.deviceKey };
+      }
+    } catch {
+      // Invalid pairing file — drop it below.
     }
-  } catch {}
-  try { unlinkSync(pairingFile); } catch {}
-  return null;
-}
+    try {
+      unlinkSync(pairingFile);
+    } catch {
+      // best effort
+    }
+    return null;
+  };
 
   const savePairing = (value) => {
-  ensureDataDir();
-  if (!value) {
-    try { unlinkSync(pairingFile); } catch {}
-    return;
-  }
-  writeFileSync(pairingFile, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
-}
+    ensureDataDir();
+    if (!value) {
+      try {
+        unlinkSync(pairingFile);
+      } catch {
+        // best effort
+      }
+      return;
+    }
+    writeFileSync(pairingFile, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
+  };
 
   const start = async () => {
-  if (broker) return;
-  const broker = createBrowserBridgeBroker({
-    internalToken: randomBytes(32).toString('base64url'),
-    WebSocketServer,
-    persistedPairing: loadBrowserBridgePairing(),
-    onPairingChanged: (value) => {
-      try { saveBrowserBridgePairing(value); } catch (err) {
-        error(`Browser Bridge pairing state was not saved: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-  });
-  await broker.listen(port);
-  broker = broker;
-  log(`Browser Bridge Broker listening on ${broker.url}`);
-}
+    if (broker) return;
+    const next = createBroker({
+      internalToken: randomBytes(32).toString('base64url'),
+      WebSocketServer,
+      persistedPairing: loadPairing(),
+      onPairingChanged: (value) => {
+        try {
+          savePairing(value);
+        } catch (err) {
+          error(
+            `Browser Bridge pairing state was not saved: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      },
+    });
+    await next.listen(port);
+    broker = next;
+    log(`Browser Bridge Broker listening on ${broker.url}`);
+  };
 
   const close = async () => {
-  if (!broker) return;
-  const broker = broker;
-  broker = null;
-  await broker.close();
-}
+    if (!broker) return;
+    const current = broker;
+    broker = null;
+    await current.close();
+  };
 
   return { environment, loadPairing, savePairing, start, close };
 }

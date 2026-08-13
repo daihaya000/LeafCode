@@ -432,3 +432,19 @@ test('index.js imports process-stop helpers that cold start still calls', () => 
     );
   }
 });
+
+test('index.js constructs factories that cold start calls as instances', () => {
+  const src = readFileSync(fileURLToPath(new URL('./index.js', import.meta.url)), 'utf8');
+  for (const [factory, instance] of [
+    ['createHttpWaiter', 'httpWaiter'],
+    ['createOpencodeUpgrader', 'opencodeUpgrader'],
+    ['createBrowserBridgeManager', 'browserBridgeManager'],
+  ]) {
+    assert.match(
+      src,
+      new RegExp(`${instance}\\s*=\\s*${factory}\\(`),
+      `${instance} must be created with ${factory}(...) or EXE startup throws ReferenceError`,
+    );
+    assert.match(src, new RegExp(`\\b${instance}\\.\\w+`), `${instance} is still called`);
+  }
+});
