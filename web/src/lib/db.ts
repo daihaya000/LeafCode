@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { copyFileSync, existsSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
 import { isSafeOpenCodeSessionId } from "./opencode-id";
 import { normalizeMemoryKey } from "./memory-key";
@@ -7,6 +8,24 @@ import type { TaskExecutionMode } from "./types";
 import path from "node:path";
 
 let db: Database.Database | null = null;
+
+/**
+ * Pre-upgrade backup (REFACTORING_PLAN P2-c / IMPROVEMENT 3-2, decision D4):
+ * keep a copy of the database file from before this run's migrations, so a
+ * schema-migration failure can be recovered by restoring `webui.db.bak`.
+ * A failed copy never blocks startup: the schema-consistency tests are the
+ * primary safety net.
+ */
+function backupDbFile(dbFile: string): void {
+  try {
+    if (existsSync(dbFile)) {
+      copyFileSync(dbFile, `${dbFile}.bak`);
+    }
+  } catch {
+    // Non-fatal: backup is best-effort recovery support.
+  }
+}
+
 
 export type ProjectRow = {
   id: string;
@@ -120,6 +139,7 @@ export function getDb(): Database.Database {
   if (db?.open) return db;
   db = null;
   ensureDataDir();
+  backupDbFile(dbPath());
   db = new Database(dbPath());
   db.pragma("journal_mode = WAL");
   // Enforce foreign keys so ON DELETE CASCADE (workspaces/goal_loops/session_bindings

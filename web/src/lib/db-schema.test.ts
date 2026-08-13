@@ -206,3 +206,22 @@ test("legacy database upgraded by getDb() has the same shape as a fresh one", as
   const upgraded = await openUpgradedLegacyDb();
   expect(upgraded).toEqual(fresh);
 });
+
+test("getDb() keeps a pre-upgrade backup of an existing database", async () => {
+  resetDataDir();
+  const dataDir = path.join(testDataDir, "opencode-webui");
+  mkdirSync(dataDir, { recursive: true });
+  const legacy = new Database(path.join(dataDir, "webui.db"));
+  legacy.exec(
+    "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
+      "INSERT INTO settings VALUES ('k', 'v');",
+  );
+  legacy.close();
+  vi.resetModules();
+  const { getDb } = await import("./db");
+  getDb().close();
+  const bak = new Database(path.join(dataDir, "webui.db.bak"));
+  const row = bak.prepare("SELECT value FROM settings WHERE key = 'k'").get();
+  bak.close();
+  expect(row).toEqual({ value: "v" });
+});
