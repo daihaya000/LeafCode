@@ -1,222 +1,184 @@
-<div align="center">
-  <img src="web/public/icon-512.png" alt="OpenCode WebUI" width="120" />
+# OpenCode WebUI
 
-  # OpenCode WebUI
+CLI エージェント [OpenCode](https://opencode.ai) をブラウザから操作するための、Windows 向けローカル Web アプリケーションです。OpenCode 本体はフォークせず、`opencode serve` を別プロセスとして起動し、その HTTP API を利用します。
 
-  **ターミナルの AI エージェント [OpenCode](https://opencode.ai) を、ブラウザで動かすワークスペースマネージャ**
+リポジトリは 3 つの実行単位で構成されています。
 
-  ダブルクリックするだけ。セットアップは全自動。<br />
-  タスクの指示 → リアルタイム進行 → Diff レビュー → コミットまで、ぜんぶここで。
+- `web/` — Next.js の UI と BFF。ブラウザからの要求を OpenCode API・Git・ファイルシステムへ中継します。
+- `host/` — Windows のトレイに常駐する Node プロセス。OpenCode と Next.js の起動・監視・再起動、認証セッション、ログ収集、Caddy の連動管理を行います。
+- `browser-bridge/` — 開いているブラウザタブをエージェントへ共有する MCP サーバーとブラウザ拡張。
 
-  [![platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078D6?logo=windows&logoColor=white)](#動作条件)
-  [![engine](https://img.shields.io/badge/engine-OpenCode%20CLI-F97316)](https://opencode.ai)
-  [![frontend](https://img.shields.io/badge/frontend-Next.js-000000?logo=next.js&logoColor=white)](https://nextjs.org)
-  [![node](https://img.shields.io/badge/Node.js-20%2B-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org)
-  [![license](https://img.shields.io/badge/license-MIT-94A3B8)](./LICENSE)
-</div>
+WebUI と OpenCode は既定で `127.0.0.1` のみを待ち受けます。LAN や VPN への公開は、後述の設定を明示的に行った場合にだけ有効になります。
 
----
+## 動作条件
 
-## これは何？
+| 項目 | 要件 |
+| --- | --- |
+| OS | Windows 10（1809 以降）または Windows 11、x64 |
+| Node.js | 20 以上（未導入の場合は初回起動時に winget で導入） |
+| winget | 無い場合は Microsoft Store の「アプリ インストーラー」を先に導入 |
+| ネットワーク | 初回起動時に必要（Node.js / OpenCode CLI / 依存関係の取得） |
 
-**OpenCode WebUI** は、CLI ツールである [OpenCode](https://opencode.ai)（`opencode serve`）を実行エンジンにした、ローカル動作のブラウザアプリです。OpenCode 本体はフォークせず、そのまま裏側で動かします。
-
-- ホームの **composer** に「〇〇を実装して」と書くだけでタスクが開始
-- タスクごとの **タイムライン** が SSE でリアルタイム更新。進行状況が見える
-- エージェントからの権限要求は **インラインカード** でその場で承認
-- 完了したら **ファイル別 Diff ペイン** でレビューし、**Commit / Merge / PR** まで一気通貫
-
-既定では `127.0.0.1`（自分の PC 内）でのみ待ち受けるので、そのまま使ってもネットワークには公開されません。
-
-## できること
-
-| | 機能 | 内容 |
-| --- | --- | --- |
-| **タスク管理** | composer-first ホーム / タスクカード / SSE 増分タイムライン | チャットのようにタスクを投げ、進行を実況表示 |
-| **権限承認** | インライン承認カード / allowlist | ファイル操作・コマンド実行をその場で許可・拒否 |
-| **Git 連携** | ファイル別 Diff ペイン / Commit / Merge / PR | `gh` があれば PR 作成まで UI から（任意） |
-| **ワークスペース分離** | git worktree / orphan / SessionBinding | タスクごとに独立した作業領域で並行作業 |
-| **トレイ常駐** | 自動セットアップ / 自動ビルド / 再起動連携 | 閉じてもバックグラウンドで待機 |
-| **リモートアクセス** | Caddy 逆プロキシ / ローカル HTTPS | オプトインでスマホ・別 PC から安全に接続 |
-| **UI** | light / dark テーマ / モバイル対応 / ⌘K パレット | Codex 風の composer-first デザイン |
-
-## Workflow Graphの段階公開
-
-Workflow Graphは既定でread-only表示が有効です。semantic編集は安全確認済み環境でのみ明示的に有効化してください。
-
-| 環境変数 | 既定値 | 内容 |
-| --- | --- | --- |
-| `OPENCODE_WEBUI_WORKFLOW_MODE` | `true`（EXE） | Workflow機能全体。`false`で旧Workflow UIへrollback |
-| `OPENCODE_WEBUI_WORKFLOW_GRAPH` | `true`（EXE） | Graph read-only表示。親Workflowが無効なら強制無効 |
-| `OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT` | `false` | Node／Edgeのsemantic編集。Graph flagが無効なら強制無効 |
-
-Graph DraftはRun開始時にExecution Snapshot v2へコピーされ、実行中RunはDraft変更の影響を受けません。問題がある場合は`OPENCODE_WEBUI_WORKFLOW_GRAPH=false`でread-only Graphから旧UIへ戻せます。
-
----
-
-## クイックスタート
-
-### 1. リポジトリを取得
+## 導入と起動
 
 ```bat
 git clone https://github.com/daihaya000/OpenCodeWebUI.git
 cd OpenCodeWebUI
 ```
 
-### 2. `OpenCodeWebUI.exe` をダブルクリック
+リポジトリ直下の `OpenCodeWebUI.exe` を実行します。初回起動時に winget → Node.js → OpenCode CLI → Caddy（リモートアクセス用・任意）→ 依存関係 → production build の順に確認と導入を行います。2 回目以降は完了済みの手順を飛ばして起動します。
 
-初回起動時に **winget → Node.js 20+ → OpenCode CLI → Caddy（リモートアクセス用、任意）→ 依存関係 → production build** を自動で確認・導入します（**インターネット接続が必要**）。2 回目以降は導入済みのステップをスキップしてすぐ起動します。
+起動後、トレイにアイコンが常駐したら `http://127.0.0.1:3000` を開きます。トレイメニューからブラウザの起動、稼働状況の確認、WebUI / OpenCode の再起動、終了ができます。
 
-> [!IMPORTANT]
-> `OpenCodeWebUI.exe` は、同じフォルダの `scripts\start-webui.bat` を実行するだけの薄いランチャーです。
-> **exe 単体だけを USB メモリや別 PC にコピーしないでください。** `scripts/` `host/` `web/` を含むリポジトリフォルダごと置いて実行する必要があります（単体コピーは `scripts\start-webui.bat not found` で停止します）。
+`OpenCodeWebUI.exe` は同じフォルダーの `scripts\start-webui.bat` を実行する薄いランチャー（`scripts/launcher/Launcher.cs`）です。exe 単体を別の場所へコピーしても動作しません。`scripts/` `host/` `web/` を含むリポジトリごと配置してください。exe には署名がないため、SmartScreen の警告が出た場合は「詳細情報」→「実行」で続行します。`Launcher.cs` やアイコンを更新した場合は起動時に自動で再ビルドされます（手動で行う場合は `scripts\build-launcher.bat`）。
 
-> [!WARNING]
-> 未署名の exe のため、Windows SmartScreen の警告が出ることがあります。
-> **「詳細情報」→「実行」** を選択すると先へ進めます。
+セットアップが失敗した場合、ウィンドウは自動で閉じずにエラー行（`[OpenCode WebUI] ERROR <コード>: ...`）と日本語の復旧案内を表示して待機します。`OPENCODE_WEBUI_NONINTERACTIVE=1` を設定すると待機しません。
 
-> [!TIP]
-> セットアップ中に失敗すると、ウィンドウは自動で閉じず **「Press Enter to close this window...」** と表示して待機します。表示されたエラーメッセージ（`[OpenCode WebUI] ERROR <コード>: ...`）を確認してから閉じてください。環境変数 `OPENCODE_WEBUI_NONINTERACTIVE=1` を設定すると待機をスキップします。
+### タスクバーへのピン留め
 
-### 3. ブラウザで `http://127.0.0.1:3000` を開く
+`scripts\create-shortcut.bat` を実行するとデスクトップに `OpenCode WebUI.lnk` が作成されます。ショートカットを右クリックして「タスクバーにピン留めする」を選択してください。Windows 10 1809 以降は自動ピン留めの API が提供されていないため、最後の手順のみ手動です。
 
-トレイにアイコンが常駐したら起動完了です。
+## 基本操作
 
----
+1. プロジェクト（作業対象のリポジトリ）を追加する。
+2. ホーム画面の composer にタスク内容を入力し、プロジェクトと分離方式を選んで送信する。
+3. タスク画面のタイムラインで進行を確認する。権限要求はインラインのカードで承認・拒否する。
+4. 差分ペインで変更内容をレビューし、コミット、マージ、または PR を作成する。
 
-## 動作条件
+タスクごとの作業領域は次のいずれかで分離します。`current_folder` はプロジェクトのフォルダーをそのまま使い、`git_worktree` は git worktree を作成、`temporary_copy` はローカルデータディレクトリへ複製します。`devcontainer` は設定を検知した場合にホスト実行へフォールバックします（コンテナ内での実行は未実装）。
 
-| 項目 | 要件 |
-| --- | --- |
-| OS | Windows 10（1809 以降）/ Windows 11、x64 |
-| ネットワーク | 初回実行のみ必須（winget / npm / OpenCode CLI のダウンロード） |
-| winget | 無い場合は Microsoft Store から「アプリ インストーラー」を先に導入 |
-| 配置場所 | exe をリポジトリフォルダ直下に置いたまま実行（単体コピー不可） |
+## 機能
 
-> [!NOTE]
-> Node.js または OpenCode を導入した直後に「見つからない」と言われる場合は、**再ログインまたは PC 再起動** してから再実行してください（PATH の反映に必要です）。
+**タスク実行**
 
----
+- composer からのタスク作成、タスク一覧、アーカイブ、SSE による増分タイムライン更新
+- 権限要求・質問のインラインカード、サブエージェントの入れ子表示、ツール呼び出しの要約
+- モデル・エージェント・スキルの選択、自動モデル選定、トークン量とコストの表示
+- ループ（完走モード）: ゴールを与えて達成判定まで自動でターンを繰り返す
+- ワークフロー: ノードグラフによる多段実行。既定では読み取り専用表示
+- PTY パネルによる対話的なターミナル操作
+- ハング検知とタイムアウトのサーバー側監視
 
-## 基本的な使い方
+**Git 連携**
 
-1. **プロジェクトを追加**（初回のみ）— 作業したいリポジトリを登録します
-2. **composer にタスクを入力** — 例: 「ダークモードのトグルを追加して」
-3. **Project / Isolation を選んで送信** — タスク詳細へ自動で移動します
-4. **タイムラインで進行を確認** — 権限要求が来たらインラインで承認（必要なら停止）
-5. **Diff ペインで変更をレビュー** — Commit → Merge（または PR 作成）
+- ファイル別の差分表示、ファイルツリー、任意コミットの参照
+- コミットメッセージの生成、commit / push / merge、`gh` があれば PR 作成
 
-## タスクバーにピン留めする
+**設定と拡張**
 
-1. `scripts\create-shortcut.bat` を実行すると、デスクトップに固有アイコン付きの `OpenCode WebUI.lnk` ができます
-2. ショートカットを右クリック → **「タスクバーにピン留めする」**
+- エージェント、スキル、MCP サーバー、プラグイン、プロバイダー・モデルの一覧と編集
+- OpenCode 設定プロファイルの切り替えと、`AGENTS.md` の同期
+- メモリ層: プロジェクト単位の永続記憶。セッション終了時の自動抽出、承認、セッション冒頭への注入を MCP 経由で行う
+- 画像解析: 画像非対応モデルの利用時に、OpenCode に登録済みの画像対応モデルで事前解析する
+- Browser Bridge: 承認したブラウザタブをエージェントへ共有する MCP 連携
+- WebUI / OpenCode / Next.js の更新確認と適用、ホストログの閲覧、ファイアウォール開放の実行
 
-> [!NOTE]
-> Windows 10 1809 以降はスクリプトからの自動ピン留めが提供されていないため、最後の手順だけ手動です。
-> 起動中のコンソールウィンドウは `title` コマンドで **"OpenCode WebUI"** というタイトルになるため、Alt-Tab やタスクバーでも「コマンド プロンプト」と混同しません。
+**認証とアクセス**
 
-<details>
-<summary><b>ランチャーの詳細（exe のしくみ・再ビルド）</b></summary>
+- ユーザー登録によるログイン、および Windows アカウント認証
+- セッションは host プロセスの秘密鍵で HMAC 署名した cookie で検証する。信頼済みデバイスと監査ログに対応
+- host 限定 API は loopback または検証済みセッションのみ通す
 
-- `OpenCodeWebUI.exe` は `scripts/launcher/Launcher.cs` を .NET Framework 同梱の `csc.exe` でコンパイルしたアイコン埋め込み済みのネイティブ exe で、コンソールタイトルを設定したうえで `scripts/start-webui.bat`（セットアップ＋トレイ host 起動）を同じコンソールで実行する薄いラッパーです。ショートカットの対象を `.bat` ではなく実在の `.exe` にすることで、Explorer の「タスクバーにピン留めする」がより確実に提供されます。
-- `scripts/build-launcher.bat` で exe を再生成できます。出力先はリポジトリ直下で、実行中の exe は上書きできないため rename-swap（旧 exe を `.old` に退避してから新 exe を書き、成功後に破棄）で再ビルドします。通常は不要ですが、`Launcher.cs` やアイコンを編集した後に `scripts/start-webui.bat` が起動時に新しさを検知して自動で `/quiet` 再ビルドするため、次回起動から反映されます。
+**UI**
 
-</details>
+- light / dark / システム追従のテーマ、モバイル対応、PWA、コマンドパレット、音声入力
 
----
+## 設定（環境変数）
 
-## スマホ・別 PC からアクセスする（任意）
-
-既定では WebUI（Next.js BFF）も OpenCode 本体も `127.0.0.1` のみで待ち受け、LAN/VPN への公開は **明示的なオプトイン** です。
-
-| 方法 | 環境変数 | 用途 |
+| 変数 | 既定値 | 内容 |
 | --- | --- | --- |
-| **Caddy 逆プロキシ（推奨）** | `OPENCODE_WEBUI_CADDY=1` | HTTPS で安全に公開。トレイ host が Caddy を連動管理 |
-| 直接バインド | `OPENCODE_WEBUI_HOST=0.0.0.0` | 全インターフェースで待ち受け。**VPN と認証なしで公開しないでください** |
-| 画像事前解析 | `OPENCODE_WEBUI_QWEN_NATIVE=1` | 画像非対応モデル使用時に、OpenCode登録済みの画像対応モデルで事前解析。解析モデルは `OPENCODE_WEBUI_QWEN_MODEL=providerID::modelID` で上書き可。通常は設定画面の「画像解析」タブで選択 |
+| `OPENCODE_WEBUI_PORT` | `3000` | WebUI のポート |
+| `OPENCODE_WEBUI_HOST` | `127.0.0.1` | WebUI の待ち受けアドレス |
+| `OPENCODE_PORT` | `4096` | `opencode serve` のポート |
+| `OPENCODE_WEBUI_MODE` | 自動判定 | `prod` / `dev` の起動モード |
+| `OPENCODE_WEBUI_HEADLESS` | 未設定 | `1` でトレイを使わずコンソールのみで起動 |
+| `OPENCODE_WEBUI_NO_BROWSER` | 未設定 | `1` で起動時のブラウザ自動起動を抑止 |
+| `OPENCODE_WEBUI_NONINTERACTIVE` | 未設定 | `1` でセットアップ失敗時の待機を省略 |
+| `OPENCODE_WEBUI_CADDY` | 未設定 | `1` で Caddy 逆プロキシを連動起動。`0` で自動導入も行わない |
+| `OPENCODE_WEBUI_CADDYFILE` | `deploy/Caddyfile` | Caddyfile のパス |
+| `OPENCODE_WEBUI_BUILD_DIR` | `%LOCALAPPDATA%\opencode-webui\build\...` | production build のミラー先 |
+| `OPENCODE_WEBUI_QWEN_NATIVE` | 未設定 | `1` で画像事前解析を有効化（設定画面からも切り替え可能） |
+| `OPENCODE_WEBUI_QWEN_MODEL` | 未設定 | 事前解析に使うモデルを `providerID::modelID` で指定 |
+| `OPENCODE_WEBUI_WORKFLOW_MODE` | `true` | ワークフロー機能全体。`false` で旧 UI へ戻す |
+| `OPENCODE_WEBUI_WORKFLOW_GRAPH` | `true` | グラフ表示。親フラグが無効なら強制無効 |
+| `OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT` | ランチャー経由は `true`、host 直起動は `false` | ノード / エッジの編集。グラフ表示が無効なら強制無効 |
 
-事前解析に使うモデルは**OpenCode登録モデルへ一本化**しています。設定画面の「画像解析」タブで、OpenCodeに接続済みのプロバイダーが持つ画像入力対応モデルだけを選択できます。認証情報はOpenCode側の登録をそのまま使用し、WebUIの設定ファイルへAPIキーを複製しません。解析時はツールを無効化した一時セッションを作成し、応答取得後に削除します。画像対応モデルでは従来どおり選択モデルへ画像を直接送信し、事前解析は行いません。
+ワークフローのグラフ Draft は Run 開始時に実行スナップショットへ複製されるため、実行中の Run は Draft の変更を受けません。
 
-ローカルOllamaも同じ仕組みで使います。「画像解析」タブの **「Ollamaをセットアップ」** ボタンが、Ollama本体のインストール（winget）→ モデル取得（既定 `qwen2.5vl:7b`）→ `opencode.jsonc` へのプロバイダー登録 までを一括で行います。起動時の自動インストール／自動Pullは行いません。登録したモデルはOpenCode再起動後に解析へ利用できます。
+### 画像事前解析
+
+事前解析に使うモデルは OpenCode に登録済みのものへ一本化しています。設定画面の「画像解析」タブで、接続済みプロバイダーが持つ画像入力対応モデルだけを選択できます。認証情報は OpenCode 側の登録をそのまま使い、WebUI の設定ファイルへ API キーを複製しません。解析時はツールを無効化した一時セッションを作成し、応答を取得後に削除します。選択モデルが画像に対応している場合は事前解析を行わず、画像を直接送信します。
+
+ローカルの Ollama も同じ経路で利用します。「画像解析」タブの「Ollama をセットアップ」を実行すると、Ollama の導入（winget）、モデルの取得（既定 `qwen2.5vl:7b`）、`opencode.jsonc` へのプロバイダー登録までを行います。起動時の自動インストールや自動 pull は行いません。登録したモデルは OpenCode の再起動後に利用できます。
+
+## LAN / VPN からのアクセス
+
+既定では WebUI も OpenCode も loopback のみで待ち受けます。外部からアクセスする場合は Caddy 逆プロキシの利用を推奨します。
 
 ```bat
 set OPENCODE_WEBUI_CADDY=1
-rem optional: override Caddyfile path
-set OPENCODE_WEBUI_CADDYFILE=C:\path\to\Caddyfile
 OpenCodeWebUI.exe
 ```
 
-- Caddy 本体は `OpenCodeWebUI.exe` の初回起動時に winget（`CaddyServer.Caddy`）で自動導入されます。手動インストールは不要です
-- 初回起動時に [`deploy/Caddyfile.example`](./deploy/Caddyfile.example) から `deploy/Caddyfile` を生成します（ドメイン / Basic 認証を編集してください）
-- ホストが Caddy の起動 / 停止 / 再起動を OpenCode・WebUI と連動管理し、トレイの「Status」に `Caddy: running` を表示します
-- winget が無い / オフライン等で Caddy の自動導入に失敗した場合でも WebUI 本体は `http://127.0.0.1:3000` で通常どおり起動します（Caddy 連携だけがスキップされます）。手動で導入する場合は `winget install --id CaddyServer.Caddy` を実行し、再起動してください
-- `OPENCODE_WEBUI_CADDY=0` を明示的に設定すると、Caddy の自動導入自体もスキップされます
+- Caddy は初回起動時に winget（`CaddyServer.Caddy`）で導入されます。手動導入は不要です。
+- 初回起動時に [`deploy/Caddyfile.example`](./deploy/Caddyfile.example) から `deploy/Caddyfile` を生成します。ドメインと Basic 認証を編集してください。
+- host が Caddy の起動・停止・再起動を WebUI と連動管理し、トレイの Status に `Caddy: running` を表示します。
+- winget が使えない等で導入に失敗した場合も、WebUI 自体は `http://127.0.0.1:3000` で起動します（Caddy 連携のみ無効）。
 
-### HTTPS（既定: `:8443` ローカル TLS）
+`OPENCODE_WEBUI_HOST=0.0.0.0` で直接すべてのインターフェースへバインドすることもできますが、認証と VPN のない状態で公開しないでください。
 
-`deploy/Caddyfile` は既定で **HTTPS(:8443)** を `tls internal`（Caddy のローカル CA・自己署名）で配信します。起動時に UAC が出ないよう `skip_install_trust` を付けているため、証明書の信頼登録は下記スクリプトで **手動 1 回だけ** 行います。
+### HTTPS（既定 `:8443`）
 
-1) CA を Windows の信頼ストアへ登録（管理者で実行 / 1 回だけ）
-2) スマホ / LAN からアクセスするならファイアウォールを開放（管理者）
+`deploy/Caddyfile` は既定で `:8443` を `tls internal`（Caddy のローカル CA による自己署名）で配信します。起動時に UAC が出ないよう `skip_install_trust` を指定しているため、CA の信頼登録は手動で 1 回だけ行います。
 
 ```bat
 scripts\caddy-trust.bat
 scripts\allow-firewall-8443.bat
 ```
 
-- アクセス URL: `https://localhost:8443` / `https://<LAN もしくは VPN の IP>:8443`
-- **アクセスする名前/IP は `deploy/Caddyfile` の site 行に列挙** してください（列挙した名前にだけ証明書が発行されます）。既定は `localhost, 127.0.0.1` に加えて、ご自身の環境の LAN IP（例: `192.168.1.100`）を追記します。LAN IP が変わる場合は DHCP 予約推奨
-- `this endpoint is only available from the host machine` がホスト PC 上の Caddy 経由アクセスで出る場合は、既存の `deploy/Caddyfile` の host-only API `handle` に `deploy/Caddyfile.example` と同じ `/api/host/logs*` と `/api/updates/*` を追加して Caddy を再起動してください
-- 公開ドメインがある場合は Caddyfile の Let's Encrypt ブロック（コメント）を使うと、CA 導入不要で全端末が警告なしの正規 TLS になります（80/443 到達性 + DNS 必須）
-- HTTP で WebUI 自体を配信したい場合は Caddyfile の `:8080` ブロックの `handle`（リダイレクト）を、コメントで示した `reverse_proxy` 版に差し替えてください
+アクセス先は `https://localhost:8443` または `https://<LAN もしくは VPN の IP>:8443` です。証明書は `deploy/Caddyfile` の site 行に列挙した名前にだけ発行されるため、使用する IP やホスト名を追記してください。LAN IP が変動する環境では DHCP 予約を推奨します。公開ドメインがある場合は Caddyfile 内の Let's Encrypt ブロック（コメント）を使うと、CA の導入なしで正規の TLS になります（80/443 の到達性と DNS が必要）。
 
-<details>
-<summary><b>別端末で「保護されていない通信」になる場合（ルート CA の配布）</b></summary>
+ホスト PC 上の Caddy 経由アクセスで `this endpoint is only available from the host machine` が出る場合は、既存の `deploy/Caddyfile` の host 限定 API の `handle` に、`deploy/Caddyfile.example` と同じ `/api/host/logs*` と `/api/updates/*` を追加して Caddy を再起動してください。
 
-`tls internal` は **Caddy 自身のローカル CA** で署名するため、その CA を知らない端末では必ず証明書警告になります（設定ミスではありません）。端末側にルート CA を入れると解消します。Caddyfile の `:8080` ブロックがルート CA を配布します（公開鍵証明書のみ。秘密鍵 `root.key` は同じフォルダにありますが配信されません）。
+### 他の端末でルート CA を信頼させる
 
-配布用ポートを開放（管理者 / 1 回だけ）:
+`tls internal` は Caddy のローカル CA で署名するため、その CA を知らない端末では証明書警告になります。Caddyfile の `:8080` ブロックがルート CA の公開鍵証明書を配布します（秘密鍵は配信されません）。
 
 ```bat
 scripts\allow-firewall-8080.bat
 ```
 
-端末のブラウザで `http://<LAN もしくは VPN の IP>:8080/caddy-root.crt` を開いてダウンロードし、下記の手順で導入します。
+端末のブラウザで `http://<LAN もしくは VPN の IP>:8080/caddy-root.crt` を開いて取得し、以下の手順で導入します。
 
-| 端末 | 導入手順 |
+| 端末 | 手順 |
 | --- | --- |
-| Android | 設定 → セキュリティ → 暗号化と認証情報 → 証明書をインストール → **CA 証明書** を選び、ダウンロードした `caddy-root.crt` を指定。以後 Chrome も信頼します（「ネットワークが監視される可能性」の通知は仕様） |
-| iOS / iPadOS | Safari で開き「プロファイルを許可」→ 設定 → 一般 → VPN とデバイス管理 からインストール → **設定 → 一般 → 情報 → 証明書信頼設定で当該 CA を ON**（この最後の操作を忘れると信頼されません） |
-| 別の Windows PC | `certutil -addstore -f Root caddy-root.crt` を管理者で実行（または .crt をダブルクリック →「ローカル コンピューター」→「信頼されたルート証明機関」） |
+| Android | 設定 → セキュリティ → 暗号化と認証情報 → 証明書をインストール → CA 証明書 を選び `caddy-root.crt` を指定 |
+| iOS / iPadOS | Safari で開いてプロファイルを許可 → 設定 → 一般 → VPN とデバイス管理 からインストール → 設定 → 一般 → 情報 → 証明書信頼設定で当該 CA を有効化 |
+| Windows | 管理者で `certutil -addstore -f Root caddy-root.crt` を実行 |
 | macOS | キーチェーンアクセスの「システム」に追加し、当該 CA を「常に信頼」に変更 |
 
-- ルート CA を入れずに「警告を無視して続行」でも閲覧はできますが、**PWA / Service Worker / クリップボード / 通知は信頼済み証明書でないと動きません**
-- ルート CA は 10 年有効で、Caddy の再インストールや `%APPDATA%\Caddy\pki` の削除で再生成されると端末側の再導入が必要になります
-- 配布 URL が 404 になる場合は Caddy が `APPDATA` 環境変数を引き継いでいません。`deploy/Caddyfile` の `root *` をルート CA の絶対パスに書き換えてください
+警告を無視して閲覧するだけなら CA の導入は不要ですが、PWA・Service Worker・クリップボード・通知は信頼済み証明書でないと動作しません。ルート CA は 10 年有効で、Caddy の再インストールや `%APPDATA%\Caddy\pki` の削除で再生成された場合は端末側の再導入が必要です。配布 URL が 404 になる場合は Caddy が `APPDATA` を引き継いでいないため、`deploy/Caddyfile` の `root *` をルート CA の絶対パスへ変更してください。
 
-</details>
-
-> [!NOTE]
-> Remote Workspace API はスタブ（`/api/remote` → 501）です。当面は VPN + ローカルパスを開く運用になります。
-
----
+なお、リモートワークスペースの接続 API（`/api/remote`）は未実装のプレースホルダーです。現時点では VPN 経由でローカルパスを開く運用になります。
 
 ## トラブルシューティング
 
-ランチャー（内部の `scripts/start-webui.bat`）は各エラーを `[OpenCode WebUI] ERROR <code>: <english summary>` の英語行として表示します。
+`scripts/start-webui.bat` は失敗時に `[OpenCode WebUI] ERROR <code>: <english summary>` を出力し、続けて `scripts/setup-messages/` の日本語案内を表示します。
 
-| コード | 意味 | 復旧方法 |
+| コード | 意味 | 対処 |
 | ---: | --- | --- |
-| 1 | `winget` がない | 「アプリインストーラー」を導入する |
-| 2 | Node.js 導入失敗 | [nodejs.org](https://nodejs.org/) から手動導入する |
-| 3 | Node.js の PATH が未反映 | 再ログインまたは PC 再起動後に再実行する |
-| 4 | OpenCode 導入失敗または PATH 未反映 | [OpenCode Docs](https://opencode.ai/docs) を参照し、必要なら再ログイン後に再実行する |
-| 5 | web の依存関係導入失敗 | ネットワークと `web/package-lock.json` を確認する |
-| 6 | web build 失敗 | 表示されたビルドエラーと Node.js バージョンを確認する |
-| 7 | build 後に `BUILD_ID` がない | ビルドログを確認して再実行する |
-| 8 | host の依存関係導入失敗 | ネットワークと `host/package-lock.json` を確認する |
+| 1 | winget が見つからない | 「アプリ インストーラー」を導入する |
+| 2 | Node.js の導入に失敗 | [nodejs.org](https://nodejs.org/) から手動導入する |
+| 3 | Node.js が PATH に反映されていない | 再ログインまたは再起動後に再実行する |
+| 4 | OpenCode の導入失敗、または PATH 未反映 | [OpenCode Docs](https://opencode.ai/docs) を確認し、必要なら再ログイン後に再実行する |
+| 5 | web の依存関係の導入に失敗 | ネットワークと `web/package-lock.json` を確認する |
+| 6 | web のビルドに失敗 | 表示されたビルドエラーと Node.js のバージョンを確認する |
+| 7 | ビルド後に `BUILD_ID` が無い | ビルドログを確認して再実行する |
+| 8 | host の依存関係の導入に失敗 | ネットワークと `host/package-lock.json` を確認する |
+| 9 | Browser Bridge の依存関係の導入に失敗 | `browser-bridge` で `npm ci` を実行してエラーを確認する |
+| 10 | ビルド出力ディレクトリを解決できない | Node.js の利用可否と `OPENCODE_WEBUI_DIST_DIR` の値を確認する |
 
-UI から起動しないときは、headless モードでログを直接確認できます:
+UI が開かない場合は headless モードでログを直接確認できます。
 
 ```bat
 cd host
@@ -226,84 +188,56 @@ set OPENCODE_WEBUI_MODE=prod
 node src\index.js
 ```
 
-ログに `WebUI is ready` / `OpenCode is ready` が出れば OK です。
+`OpenCode is ready` と `WebUI is ready` が出力されれば起動は完了しています。
 
----
-
-## 開発者向け
-
-### プロジェクト構成
+## 開発
 
 | パス | 役割 |
 | --- | --- |
-| `web/` | Next.js BFF + UI |
-| `host/` | トレイ常駐（opencode + Next 管理） |
-| `scripts/` | セットアップ / ランチャー / Caddy 連携スクリプト |
-| `deploy/` | Caddyfile テンプレート |
-| `scripts/smoke-api.mjs` | API スモークテスト |
+| `web/` | Next.js の UI と BFF |
+| `host/` | トレイ常駐プロセス（OpenCode / Next.js / Caddy の管理） |
+| `browser-bridge/` | Browser Bridge の MCP サーバー、Broker、ブラウザ拡張 |
+| `addons/` | WebUI 専用のアドオン（`addons/README.md` を参照） |
+| `scripts/` | セットアップ、ランチャー、Caddy 連携、同期スクリプト |
+| `deploy/` | Caddyfile とテンプレート |
+| `docs/` | 仕様書と OpenAPI スナップショット |
 
-### 開発サーバー
+開発サーバーとテスト:
 
 ```bat
-cd web && npm install && npm run dev
+cd web
+npm install
+npm run dev
+npm run typecheck
+npm run lint
+npm test
 ```
 
-別ターミナルで `opencode serve --hostname 127.0.0.1 --port 4096` を起動します。
-スモーク: WebUI 起動後に `node scripts/smoke-api.mjs`。Browser Bridge はトレイ host が起動済みの環境で `npm run smoke:browser-bridge` を実行します（このコマンドは host / Broker を起動しません）。
+別のターミナルで `opencode serve --hostname 127.0.0.1 --port 4096` を起動します。E2E は `npm run e2e`（web ディレクトリ）で実行します。API スモークテストは WebUI 起動後にリポジトリ直下で `node scripts/smoke-api.mjs`、Browser Bridge のスモークは host が起動済みの状態で `npm run smoke:browser-bridge` を実行します（このコマンドは host と Broker を起動しません）。
 
-<details>
-<summary><b>production build のミラーとガード</b></summary>
+### production build のミラー
 
-production build は**リポジトリ内では実行されません**。`scripts/web-build-mirror.mjs` がインストール全体をハードリンクでミラーし（既定 `%LOCALAPPDATA%\opencode-webui\build\<インストール名>-<ハッシュ>`、`OPENCODE_WEBUI_BUILD_DIR` で上書き可能）、`next build` と `next start` はそのミラー内で動きます。
+production build はリポジトリ内では実行されません。`scripts/web-build-mirror.mjs` がインストール全体をハードリンクでミラーし（既定 `%LOCALAPPDATA%\opencode-webui\build\<インストール名>-<ハッシュ>`）、`next build` と `next start` はそのミラー内で動作します。
 
-理由は2つあります。OneDrive 同期がビルド中・配信中の出力に触れると HTML とチャンクの世代が混在して `ChunkLoadError` になること、そして Next 16 の Turbopack が「プロジェクト外を指す distDir」を拒否するため、出力だけでなくプロジェクトごと同期対象の外に置く必要があることです。
+理由は 2 つあります。OneDrive の同期がビルド中・配信中の出力に触れると HTML とチャンクの世代が混在して `ChunkLoadError` になること、そして Turbopack がプロジェクト外を指す `distDir` を拒否するため、出力だけでなくプロジェクトごと同期対象の外へ置く必要があることです。
 
-ハードリンクなので追加ディスクはほぼゼロで、同期は差分のみです。ジャンクションやシンボリックリンクは使えません（バンドラがリンクを実パスへ正規化し、モジュール解決が同期ツリーへ戻ってしまいます）。ミラーはインストールパスのハッシュで分離されるため、複数のチェックアウトが同じミラーを奪い合うことはありません。別ボリュームなどハードリンクを作れない環境では自動的にバイトコピーへ退避します。
+ハードリンクのため追加のディスク消費はほぼなく、同期は差分のみです。ジャンクションやシンボリックリンクは使えません（バンドラがリンクを実パスへ正規化し、モジュール解決が同期ツリーへ戻ります）。ミラーはインストールパスのハッシュで分離されるため、複数のチェックアウトが同じミラーを共有しません。ハードリンクを作成できないボリュームでは自動的にバイトコピーへ退避します。ミラーは複製なので、サーバーは `OPENCODE_WEBUI_INSTALL_ROOT` で実インストール先を受け取ります（自己更新と git restore は実リポジトリに対して動作します）。手動でビルドする場合はリポジトリ直下で `node scripts/build-web.mjs` を実行します。
 
-ミラーはコピーなので、サーバーは `OPENCODE_WEBUI_INSTALL_ROOT` で実インストール先を受け取ります（自己更新や git-restore は実リポジトリに対して動作します）。手動でビルドする場合はリポジトリ直下で `node scripts/build-web.mjs`（= `npm --prefix web run build`）を実行してください。
+配信中の出力を壊さないためのガードがあります。`build.bat` は本番 WebUI が同じポートで稼働中、またはリスナーの正体が不明な場合はビルドを中止します。`scripts/start-webui.bat` は稼働中の WebUI があれば初回ビルドを飛ばして host へ進み、健全な WebUI をそのまま再利用するか、古い `next start` を引き継いでからミラーへリビルドします（正体不明のプロセスは終了させません）。
 
-配信中の出力を壊さないためのガードも従来どおりです:
+### バッチファイルのエンコード規則
 
-- `build.bat` は、本番 WebUI（`next start`）が同じポートで稼働中（またはリスナーの正体が不明）なら **ビルドを中止** します。トレイまたは `OpenCodeWebUI.exe` から WebUI を停止してから再実行してください
-- ランチャー内部の `scripts/start-webui.bat` は、稼働中の WebUI があれば **初回ビルドをスキップして host 本体へ進みます**。トレイ host が健全な WebUI をそのまま再利用するか、古くなった自前の `next start` を引き継いでからミラーへリビルドします（孤立した不明プロセスは決して終了させません）
-
-</details>
-
-<details>
-<summary><b>バッチファイルのエンコード規則（貢献者向け）</b></summary>
-
-`.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）に分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。ランチャーが呼ぶ内部の `scripts/start-webui.bat` は英語の要約行（`[OpenCode WebUI] ERROR <code>: ...`）を先に出力し、続けて日本語詳細を `type` する二段構成のため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落していても `scripts/start-webui.bat` は完走します。README 内の `bat` コード例も ASCII のみにしてください。配布前チェック: `npm run test:encoding`。詳細は [`docs/specs/bat-encoding-safety.md`](./docs/specs/bat-encoding-safety.md) を参照してください。
-
-</details>
-
-### 実装済み機能
-
-| Phase | 内容 |
-| --- | --- |
-| 0 | BFF プロキシ / SSE / 権限承認 / allowlist / トレイ |
-| 1 | worktree / Diff / orphan / SessionBinding |
-| 2 | Commit / Merge / PR（`gh` 任意） |
-| 3 | `temporary_copy` / Dev Container **検知 + host-fallback**（コンテナ起動は未） |
-| UI-0〜4 | Codex 型 UI（composer-first ホーム / タスクカード / SSE 増分タイムライン / Part レンダラ / 権限インラインカード / ファイル別 Diff ペイン / light-dark テーマ / モバイル / ⌘K） |
-| R | リモート: トレイ管理の Caddy 逆プロキシ（`OPENCODE_WEBUI_CADDY=1`） |
-| MM | OpenCode登録済みの画像対応モデル（ローカルOllama含む）で画像非対応モデルを補助（`OPENCODE_WEBUI_QWEN_NATIVE=1`） |
-
----
+`.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）へ分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。`scripts/start-webui.bat` は英語の要約行を先に出力してから日本語の詳細を表示するため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落しても処理は完走します。README 内の `bat` コード例も ASCII のみとしてください。確認は `npm run test:encoding` です。詳細は [`docs/specs/bat-encoding-safety.md`](./docs/specs/bat-encoding-safety.md) を参照してください。
 
 ## ドキュメント
 
-| 文書 | 役割 |
+| 文書 | 内容 |
 | --- | --- |
-| [`docs/opencode/`](./docs/opencode/) | OpenAPI スナップショット |
-| [`docs/browser-bridge-setup.md`](./docs/browser-bridge-setup.md) | Browser Bridge MCP セットアップ手順 |
-| [`docs/specs/bat-encoding-safety.md`](./docs/specs/bat-encoding-safety.md) | バッチファイルのエンコード安全規則 |
-| [OpenCode Docs](https://opencode.ai/docs) | OpenCode 公式ドキュメント |
-
-> [!NOTE]
-> 企画・アーキテクチャや開発途中の計画・作業メモは非公開のローカル文書として管理しており、本リポジトリには含まれません。
-
----
+| [`docs/specs/`](./docs/specs/) | 機能ごとの仕様書 |
+| [`docs/opencode/`](./docs/opencode/) | OpenCode API の OpenAPI スナップショット |
+| [`docs/browser-bridge-setup.md`](./docs/browser-bridge-setup.md) | Browser Bridge MCP のセットアップ手順 |
+| [OpenCode Docs](https://opencode.ai/docs) | OpenCode 本体のドキュメント |
 
 ## ライセンス
 
-[MIT](./LICENSE) — 詳細は LICENSE ファイルを参照してください。
+[MIT](./LICENSE)
