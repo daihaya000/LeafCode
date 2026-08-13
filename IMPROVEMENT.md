@@ -714,6 +714,15 @@ URL 解決の非対称は「一方だけが loopback 外 URL を拒否する」�
 `encoding-check.yml` に追加するか、`ci.yml` を復活させる。`next build` はローカル
 本番 WebUI と競合するため CI では省略可（E2E は `webServer` 起動時のみ）。
 
+> **対応済み（2026-08-13, コミット `eada365`）**: `.github/workflows/ci.yml` を復活
+> （web の lint / typecheck / vitest、Node 24、Ubuntu）。`next build` と E2E は
+> 除外（理由は ci.yml 内コメントに記載）。`.gitignore` に `!.github/` 例外を追加。
+> 復活時の既存エラー状況（可視化結果）: typecheck クリーン / lint 0 error・
+> 1 warning（`src/lib/opencode-generation.settings.test.ts:13` の unused `EVENT`）/
+> vitest 298 ファイル・3693 passed・1 skipped・0 failed。warning 1 件は別途修正
+> （対象: IMPROVEMENT.md 8-3 と併せて）。
+
+
 ### 8-2. 【中】vitest の並列化・所要時間の管理
 
 vitest は現在 287 ファイル / 3561 テスト。`vitest.config.ts` に test shard や

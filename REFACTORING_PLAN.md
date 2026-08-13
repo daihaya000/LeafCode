@@ -68,6 +68,15 @@ npm run test:encoding              # .bat エンコード検証
 
 **目的**: 以降の全フェーズのリグレッション検知を自動化する。**最初に必ず実施**。
 
+> **状態: 実施済み（2026-08-13, コミット `eada365`）**
+> - `.github/workflows/ci.yml` を復活: web の lint / typecheck / vitest（Node 24 / Ubuntu）
+> - `next build`・E2E は除外（ci.yml 内コメントに理由記載。E2E の CI 化は 8-4 / Phase 7 で確定）
+> - `.gitignore` に `!.github/` 例外を追加（`.*/` パターンが ci.yml を無視するため）
+> - 可視化結果（既存エラー）: typecheck クリーン / lint 0 error・1 warning
+>   （`src/lib/opencode-generation.settings.test.ts:13` unused `EVENT`）/ vitest
+>   298 ファイル・3693 passed・1 skipped・0 failed
+> - 残作業: lint warning 1 件の修正（別 PR。D3 に従い CI 復活 PR では直さない）
+
 ### 作業単位
 
 | # | 作業 | 対象 | 完了条件 |
