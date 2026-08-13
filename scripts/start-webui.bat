@@ -17,6 +17,11 @@ goto :main
 
 :main
 setlocal EnableExtensions DisableDelayedExpansion
+rem :pf_status caches its snapshot in PREFLIGHT_STATUS. setlocal does not hide
+rem variables inherited from the parent environment, so a stale value (leaked
+rem from a shell that ran preflight by hand, or from a wrapper process) would
+rem be treated as this run's snapshot and skip the check entirely. Reset it.
+set "PREFLIGHT_STATUS="
 rem Workflow Graph rollout defaults for the packaged EXE. Explicit false/0 overrides remain supported.
 if not defined OPENCODE_WEBUI_WORKFLOW_MODE set "OPENCODE_WEBUI_WORKFLOW_MODE=true"
 if not defined OPENCODE_WEBUI_WORKFLOW_GRAPH set "OPENCODE_WEBUI_WORKFLOW_GRAPH=true"
@@ -99,9 +104,32 @@ call :restore_code_page
 call :pause_if_interactive
 exit /b %FAIL_EXIT%
 
+:pf_status
+rem Preflight status snapshot: one Node boot answers the launcher / opencode
+rem / caddy checks that used to spawn PowerShell or the tools themselves
+rem (~250-950 ms each). See scripts\preflight.mjs. Cached so later callers
+rem (:check_opencode / :check_caddy) reuse the snapshot taken here, since
+rem :refresh_launcher always runs first.
+if defined PREFLIGHT_STATUS exit /b 0
+for /f "usebackq delims=" %%R in (`node scripts\preflight.mjs`) do set "PREFLIGHT_STATUS=%%R"
+exit /b 0
+
+:pf_has
+rem Argument: preflight status item name (opencode / caddy / launcher).
+rem Errorlevel mirrors the item's value: 0 = available, 1 = missing,
+rem 2 = shim-only (caller verifies it once with --version before deciding).
+rem findstr /C is required: cmd's %VAR:old=new% substitution misparses the
+rem "=" inside a "name=value" pair, so string comparison is not an option.
+echo %PREFLIGHT_STATUS% | findstr /C:"%~1=0" >nul 2>&1
+if not errorlevel 1 exit /b 0
+echo %PREFLIGHT_STATUS% | findstr /C:"%~1=2" >nul 2>&1
+if not errorlevel 1 exit /b 2
+exit /b 1
+
 :refresh_launcher
 rem Exit 0 = the root exe is current, 1 = missing or older than an input.
-"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "if(-not (Test-Path -LiteralPath 'OpenCodeWebUI.exe')){exit 1}; $e=(Get-Item -LiteralPath 'OpenCodeWebUI.exe').LastWriteTimeUtc; foreach($i in 'scripts\launcher\Launcher.cs','scripts\build-launcher.bat','host\src\icon.json'){ if((Test-Path -LiteralPath $i) -and (Get-Item -LiteralPath $i).LastWriteTimeUtc -gt $e){exit 1} }" >nul 2>&1
+call :pf_status
+call :pf_has launcher
 if not errorlevel 1 exit /b 0
 echo [OpenCode WebUI] Refreshing native launcher...
 call scripts\build-launcher.bat /quiet
@@ -145,8 +173,14 @@ call :fail 3 "Node.js is not available in this command prompt." error-3
 exit /b 3
 
 :check_opencode
-call opencode --version >nul 2>&1
+call :pf_status
+call :pf_has opencode
 if not errorlevel 1 exit /b 0
+if errorlevel 2 (
+  rem Only an npm shim is reachable without a verified binary; run it once.
+  call opencode --version >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
 rem A broken npm bin stub (postinstall not run) can shadow a working WinGet
 rem install on PATH. Accept the Links shim directly, same as :check_caddy.
 if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\opencode.exe" (
@@ -201,8 +235,14 @@ rem blocks WebUI startup on 127.0.0.1. Unlike Node.js/OpenCode this step
 rem therefore never returns a non-zero exit code.
 :check_caddy
 if "%OPENCODE_WEBUI_CADDY%"=="0" exit /b 0
-call caddy version >nul 2>&1
+call :pf_status
+call :pf_has caddy
 if not errorlevel 1 exit /b 0
+if errorlevel 2 (
+  rem Only a shim is reachable; verify it once before falling back to install.
+  call caddy version >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
 rem WinGet often installs Caddy as a Links shim under LOCALAPPDATA that this
 rem console's inherited PATH does not see yet; host/src/index.js's findCaddy()
 rem already checks this path directly, so treat it as installed without
@@ -228,8 +268,7 @@ rem Use Settings -> Image analysis -> "Ollama setup" in the WebUI, which
 rem installs Ollama, pulls the model, and registers it as an OpenCode provider.
 
 :install_web
-if not exist "web\node_modules\" goto :install_web_run
-call npm --prefix web ls --depth=0 >nul 2>&1
+call node scripts\check-deps.mjs "web"
 if not errorlevel 1 goto :install_web_build
 echo [OpenCode WebUI] Web dependencies changed; refreshing...
 
@@ -240,6 +279,7 @@ if errorlevel 1 goto :web_ci_failed_without_pushd
 call npm ci
 if errorlevel 1 goto :web_ci_failed
 popd
+call node scripts\check-deps.mjs --update "web" >nul 2>&1
 
 :install_web_build
 call :resolve_dist_dir
@@ -295,8 +335,7 @@ call :fail 7 "BUILD_ID is missing after the build." error-7
 exit /b 7
 
 :install_host
-if not exist "host\node_modules\" goto :install_host_run
-call npm --prefix host ls --depth=0 >nul 2>&1
+call node scripts\check-deps.mjs "host"
 if not errorlevel 1 exit /b 0
 echo [OpenCode WebUI] Host dependencies changed; refreshing...
 
@@ -307,6 +346,7 @@ if errorlevel 1 goto :host_ci_failed_without_pushd
 call npm ci
 if errorlevel 1 goto :host_ci_failed
 popd
+call node scripts\check-deps.mjs --update "host" >nul 2>&1
 exit /b 0
 
 :host_ci_failed_without_pushd
@@ -319,8 +359,7 @@ call :fail 8 "host dependencies could not be installed." error-8
 exit /b 8
 
 :install_browser_bridge
-if not exist "browser-bridge\node_modules\" goto :install_browser_bridge_run
-call npm --prefix browser-bridge ls --depth=0 >nul 2>&1
+call node scripts\check-deps.mjs "browser-bridge"
 if not errorlevel 1 exit /b 0
 echo [OpenCode WebUI] Browser Bridge dependencies changed; refreshing...
 
@@ -331,6 +370,7 @@ if errorlevel 1 goto :browser_bridge_ci_failed_without_pushd
 call npm ci
 if errorlevel 1 goto :browser_bridge_ci_failed
 popd
+call node scripts\check-deps.mjs --update "browser-bridge" >nul 2>&1
 exit /b 0
 
 :browser_bridge_ci_failed_without_pushd

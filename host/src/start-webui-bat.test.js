@@ -106,6 +106,16 @@ function createSandbox(options = {}) {
 
   if (options.withNode !== false) {
     const nodeScript = [
+      // preflight.mjs prints one status line consumed by :pf_status (one node
+      // boot replaces the old PowerShell launcher check + opencode/caddy
+      // --version probes). Values are injected per-test via SETUP_TEST_*.
+      'if "%~1"=="scripts\\preflight.mjs" echo launcher=%SETUP_TEST_PREFLIGHT_LAUNCHER% opencode=%SETUP_TEST_PREFLIGHT_OPENCODE% caddy=%SETUP_TEST_PREFLIGHT_CADDY%',
+      // check-deps.mjs decides whether npm ci is needed: missing node_modules
+      // or a changed lockfile (simulated by SETUP_TEST_DEPS_STALE=1) exit 1.
+      'if "%~1"=="scripts\\check-deps.mjs" if "%~2"=="--update" exit /b 0',
+      'if "%~1"=="scripts\\check-deps.mjs" if "%SETUP_TEST_DEPS_STALE%"=="1" exit /b 1',
+      'if "%~1"=="scripts\\check-deps.mjs" if not exist "%~2\\node_modules" exit /b 1',
+      'if "%~1"=="scripts\\check-deps.mjs" exit /b 0',
       'if "%~1"=="scripts\\production-webui-build-guard.mjs" exit /b %SETUP_TEST_GUARD_EXIT%',
       'if "%~1"=="scripts\\web-build-mirror.mjs" echo %SETUP_TEST_WEB_DIST_DIR%',
       'if "%~1"=="scripts\\web-build-mirror.mjs" exit /b 0',
@@ -203,6 +213,15 @@ function createSandbox(options = {}) {
     SETUP_TEST_CREATE_BUILD_ID: options.createBuildId === false ? "0" : "1",
     SETUP_TEST_GUARD_EXIT: String(options.guardExit ?? 0),
     SETUP_TEST_HOST_EXIT: String(options.hostExit ?? 0),
+    // preflight.mjs status values. opencodeExit: 1 mirrors "opencode missing"
+    // (the old `opencode --version` failure); a real exe is always "present"
+    // in the sandbox otherwise. Caddy follows the install-state options.
+    SETUP_TEST_PREFLIGHT_LAUNCHER: String(options.preflightLauncher ?? "0"),
+    SETUP_TEST_PREFLIGHT_OPENCODE: String(options.preflightOpencode ?? (options.opencodeExit === 1 ? "1" : "0")),
+    SETUP_TEST_PREFLIGHT_CADDY: String(
+      options.preflightCaddy ?? (options.caddyAlreadyInstalled || options.caddyWingetLinksShim ? "0" : "1"),
+    ),
+    SETUP_TEST_DEPS_STALE: String(options.depsStale ? "1" : "0"),
   };
   return {
     root,
@@ -410,15 +429,13 @@ test("start-webui.bat skips npm ci / build / guard entirely when already install
   } finally { sandbox.cleanup(); }
 });
 
-test("start-webui.bat refreshes existing but invalid dependency trees", { skip: !isWindows }, () => {
+test("start-webui.bat refreshes dependency trees when lockfiles changed", { skip: !isWindows }, () => {
   const sandbox = createSandbox({
     webNodeModules: true,
     webBuildId: true,
     hostNodeModules: true,
     browserBridgeNodeModules: true,
-    npmWebLsExit: 1,
-    npmHostLsExit: 1,
-    npmBrowserBridgeLsExit: 1,
+    depsStale: true,
   });
   try {
     const result = sandbox.run();
