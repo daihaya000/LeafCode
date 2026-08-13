@@ -216,6 +216,7 @@ import { MarkdownViewerPanel } from "./MarkdownViewerPanel";
 const LazyPtyPanel = lazy(() => import("./PtyPanel").then((m) => ({ default: m.PtyPanel })));
 const LazyWorkflowPanel = lazy(() => import("./WorkflowPanel").then((m) => ({ default: m.WorkflowPanel })));
 import { QuestionCard } from "./QuestionCard";
+import { WorkingProgressPanel } from "./WorkingProgressPanel";
 import {
   CompactButton,
   compactSession,
@@ -4977,28 +4978,13 @@ export function TaskView({
                   />
                 ))}
                 {working && stream.questions.length === 0 && (
-                  <div className="flex items-center gap-2 text-sm text-muted">
-                    <Loader2 className="h-4 w-4 animate-spin text-working" />
-                    {stream.status?.type === "retry"
-                      ? `リトライ中… ${stream.status.message ?? ""}`
-                      : currentTool
-                        ? `${currentTool}…`
-                        : "作業中…"}
-                    {stream.mutationElapsedMs != null && stream.mutationElapsedMs > 0 && (
-                      <span
-                        className={cx(
-                          "text-xs",
-                          stream.mutationElapsedMs >= 60_000
-                            ? "text-danger"
-                            : stream.mutationElapsedMs >= 30_000
-                              ? "text-warning"
-                              : "text-faint",
-                        )}
-                      >
-                        ({formatElapsed(Math.floor(stream.mutationElapsedMs / 1_000))})
-                      </span>
-                    )}
-                  </div>
+                  <WorkingProgressPanel
+                    status={stream.status}
+                    messages={stream.visibleMessages}
+                    todos={stream.todos}
+                    mutationElapsedMs={stream.mutationElapsedMs}
+                    currentTool={currentTool}
+                  />
                 )}
               </div>
             </div>

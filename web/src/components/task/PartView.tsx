@@ -41,7 +41,7 @@ import {
   questionToolSummary,
 } from "./tool-part-summary";
 
-function toolIcon(tool: string) {
+export function toolIcon(tool: string) {
   const t = tool.toLowerCase();
   if (t.includes("bash") || t.includes("shell")) return Terminal;
   if (t.includes("edit") || t.includes("write") || t.includes("patch")) return FilePen;
@@ -74,7 +74,7 @@ function elapsedForTool(state: ToolState | undefined): number | null {
   return Math.max(0, Math.round((Date.now() - start) / 1_000));
 }
 
-function toolSummary(tool: string, state: ToolState | undefined): string {
+export function toolSummary(tool: string, state: ToolState | undefined): string {
   if (state?.title) return state.title;
   const input = state?.input ?? {};
   const t = tool.toLowerCase();
@@ -167,7 +167,7 @@ function inputFields(tool: string, input: Record<string, unknown> | undefined): 
   return fields;
 }
 
-function toolLabel(tool: string): string {
+export function toolLabel(tool: string): string {
   const t = tool.toLowerCase();
   if (t === "task") return "サブエージェント";
   if (t === "question") return "確認";
