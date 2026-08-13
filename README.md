@@ -248,6 +248,8 @@ production build はリポジトリ内では実行されません。`scripts/web
 | 文書 | 内容 |
 | --- | --- |
 | [`docs/specs/`](./docs/specs/) | 機能ごとの仕様書 |
+| [`docs/ui-components.md`](./docs/ui-components.md) | UI 部品の props 規約（`ui.tsx` 正本） |
+| [`docs/verification.md`](./docs/verification.md) | 検証スクリプトの実行前提条件 |
 | [`docs/opencode/`](./docs/opencode/) | OpenCode API の OpenAPI スナップショット |
 | [`docs/browser-bridge-setup.md`](./docs/browser-bridge-setup.md) | Browser Bridge MCP のセットアップ手順 |
 | [`BUG.md`](./BUG.md) | バグ発見のインベントリ（修正は本ファイル参照で別途実施） |
