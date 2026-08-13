@@ -214,7 +214,7 @@ npm run lint
 npm test
 ```
 
-別のターミナルで `opencode serve --hostname 127.0.0.1 --port 4096` を起動します。E2E は `npm run e2e`（web ディレクトリ）で実行します。API スモークテストは WebUI 起動後にリポジトリ直下で `node scripts/smoke-api.mjs`、Browser Bridge のスモークは host が起動済みの状態で `npm run smoke:browser-bridge` を実行します（このコマンドは host と Broker を起動しません）。
+別のターミナルで `opencode serve --hostname 127.0.0.1 --port 4096` を起動します。E2E は `npm run e2e`（web ディレクトリ）で実行します。API スモークテストは WebUI 起動後にリポジトリ直下で `node scripts/smoke-api.mjs`、Browser Bridge のスモークは host が起動済みの状態で `npm run smoke:browser-bridge` を実行します（このコマンドは host と Broker を起動しません）。各検証コマンドの前提条件は [`docs/verification.md`](./docs/verification.md) に集約しています。
 
 ### production build のミラー
 
