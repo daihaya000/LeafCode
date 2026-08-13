@@ -1,3 +1,5 @@
+import { isLoopbackHost } from '../../scripts/lib/loopback.mjs';
+
 /**
  * Keep the Caddyfile's HTTPS site addresses in sync with the machine's current
  * LAN IPs.
@@ -38,9 +40,7 @@ export function isIpv4Literal(host) {
 }
 
 /** True for addresses that must always stay in the list. */
-function isLoopbackHost(host) {
-  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
-}
+/* isLoopbackHost is imported from scripts/lib/loopback.mjs (shared). */
 
 /**
  * Split `https://host:port` into its host and port parts.

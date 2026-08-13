@@ -22,22 +22,9 @@
 const CONTROL_HEALTH_URL = "http://127.0.0.1:18765/health";
 const PROBE_TIMEOUT_MS = 800;
 
-const LOOPBACK_HOSTS = new Set([
-  "127.0.0.1",
-  "::1",
-  "localhost",
-  "0:0:0:0:0:0:0:1",
-]);
+import { isLoopbackHost } from "../../../scripts/lib/loopback.mjs";
 
-/** True when `value` is a loopback host or IPv4/IPv6 address. */
-export function isLoopbackHost(value: string): boolean {
-  const raw = value.trim().toLowerCase();
-  if (!raw) return false;
-  const v = raw.startsWith("[") && raw.endsWith("]") ? raw.slice(1, -1) : raw;
-  if (LOOPBACK_HOSTS.has(v)) return true;
-  if (v.startsWith("::ffff:")) return isLoopbackHost(v.slice(7));
-  return false;
-}
+export { isLoopbackHost };
 
 /** True for a bare private IPv4/unique-local address (RFC 1918 / RFC 4193). */
 export function isPrivateHost(value: string): boolean {
