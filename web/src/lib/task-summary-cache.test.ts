@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import type { TaskSummary, SessionStatus } from "@/lib/types";
+import type { TaskSummary } from "@/lib/types";
 import {
   __clearTaskSummaryCacheForTest,
   prefetchTaskSummaries,
@@ -14,10 +14,10 @@ function makeTask(id: string, updatedAt: string, title = `task ${id}`): TaskSumm
     projectName: "proj",
     title,
     directory: `/w/${id}`,
-    isolation: false,
-    status: "idle" as SessionStatus,
+    isolation: "current_folder",
+    status: "idle",
     sessionId: null,
-    executionMode: "session",
+    executionMode: "standard",
     favorite: false,
     branch: null,
     additions: 0,
