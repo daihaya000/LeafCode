@@ -32,35 +32,37 @@ function payload(label: string): DiffFilesPayload {
   };
 }
 
+function mockMetaApisResponse(url: string) {
+  if (String(url).includes("/api/diff/files")) {
+    return Promise.resolve(payload("file"));
+  }
+  if (String(url).includes("/api/git/branches")) {
+    return Promise.resolve({
+      branches: [],
+      current: "main",
+      defaultTarget: "main",
+      upstream: "origin/main",
+      ahead: 2,
+      remotes: ["origin"],
+      hasRemote: true,
+    });
+  }
+  if (String(url).includes("/api/git/pr")) {
+    return Promise.resolve({ available: false });
+  }
+  if (String(url).includes("/api/workspaces/")) {
+    return Promise.resolve({
+      sessions: [
+        { opencodeSessionId: "session-current", title: "実装担当" },
+        { opencodeSessionId: "session-other", title: "レビュー担当" },
+      ],
+    });
+  }
+  return Promise.resolve({});
+}
+
 function mockMetaApis() {
-  getJson.mockImplementation((url: string) => {
-    if (String(url).includes("/api/diff/files")) {
-      return Promise.resolve(payload("file"));
-    }
-    if (String(url).includes("/api/git/branches")) {
-      return Promise.resolve({
-        branches: [],
-        current: "main",
-        defaultTarget: "main",
-        upstream: "origin/main",
-        ahead: 2,
-        remotes: ["origin"],
-        hasRemote: true,
-      });
-    }
-    if (String(url).includes("/api/git/pr")) {
-      return Promise.resolve({ available: false });
-    }
-    if (String(url).includes("/api/workspaces/")) {
-      return Promise.resolve({
-        sessions: [
-          { opencodeSessionId: "session-current", title: "実装担当" },
-          { opencodeSessionId: "session-other", title: "レビュー担当" },
-        ],
-      });
-    }
-    return Promise.resolve({});
-  });
+  getJson.mockImplementation(mockMetaApisResponse);
 }
 
 describe("DiffPane directory race", () => {
@@ -524,5 +526,133 @@ describe("DiffPane directory race", () => {
       "/api/git/push",
       expect.objectContaining({ directory: "/repo-a", setUpstream: false }),
     );
+  });
+
+  it("opens a file in the editor via /api/files/open", async () => {
+    mockMetaApis();
+    sendJson.mockImplementation((method: string, url: string) => {
+      if (method === "POST" && url === "/api/files/open") {
+        return Promise.resolve({ ok: true, editor: "vscode" });
+      }
+      return Promise.resolve({});
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "src/file.ts をエディタで開く" }),
+    );
+    await screen.findByText("VSCode で開きました: src/file.ts");
+
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/files/open", {
+      directory: "/repo-a",
+      path: "src/file.ts",
+    });
+  });
+
+  it("reports the default editor when VSCode is unavailable", async () => {
+    mockMetaApis();
+    sendJson.mockImplementation((method: string, url: string) => {
+      if (method === "POST" && url === "/api/files/open") {
+        return Promise.resolve({ ok: true, editor: "default" });
+      }
+      return Promise.resolve({});
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "src/file.ts をエディタで開く" }),
+    );
+    expect(
+      await screen.findByText("既定のエディタで開きました: src/file.ts"),
+    ).toBeTruthy();
+  });
+
+  it("deletes a file via /api/git/rm after confirmation and refreshes the diff", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockMetaApis();
+    let diffCalls = 0;
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) diffCalls += 1;
+      return mockMetaApisResponse(url);
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "src/file.ts を削除" }),
+    );
+    await screen.findByText("削除しました: src/file.ts");
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining("src/file.ts"),
+    );
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/git/rm", {
+      directory: "/repo-a",
+      path: "src/file.ts",
+    });
+    expect(diffCalls).toBe(2);
+    confirmSpy.mockRestore();
+  });
+
+  it("does not delete when the confirmation is declined", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    mockMetaApis();
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "src/file.ts を削除" }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(sendJson).not.toHaveBeenCalledWith("POST", "/api/git/rm", expect.anything());
+    confirmSpy.mockRestore();
+  });
+
+  it("calls onFilesCountChange with the visible file count", async () => {
+    const onFilesCountChange = vi.fn();
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          git: true,
+          branch: "main",
+          additions: 0,
+          deletions: 0,
+          files: [
+            { path: "src/a.ts", additions: 1, deletions: 0, binary: false, untracked: false, hunks: [] },
+            { path: "src/b.ts", additions: 1, deletions: 0, binary: false, untracked: false, hunks: [] },
+          ],
+        });
+      }
+      return mockMetaApisResponse(url);
+    });
+
+    render(
+      <DiffPane
+        directory="/repo-a"
+        workspaceId="ws-a"
+        refreshKey={0}
+        touchedPaths={new Set(["src/a.ts"])}
+        onFilesCountChange={onFilesCountChange}
+      />,
+    );
+    await screen.findByText("a.ts");
+
+    // Initial render: sessionFilter = "all", so both files are visible.
+    expect(onFilesCountChange).toHaveBeenLastCalledWith(2);
+
+    // Switch to "current" session filter → only a.ts visible.
+    fireEvent.change(screen.getByRole("combobox", { name: "表示するセッションの変更" }), {
+      target: { value: "current" },
+    });
+    await screen.findByText("a.ts");
+    expect(onFilesCountChange).toHaveBeenLastCalledWith(1);
+
+    // Switch to "external" session filter → only b.ts visible.
+    fireEvent.change(screen.getByRole("combobox", { name: "表示するセッションの変更" }), {
+      target: { value: "external" },
+    });
+    await screen.findByText("b.ts");
+    expect(onFilesCountChange).toHaveBeenLastCalledWith(1);
   });
 });

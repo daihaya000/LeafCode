@@ -16,7 +16,9 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  Pencil,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { Button, DiffStat, Spinner, cx } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
@@ -48,8 +50,11 @@ function FileDiffBlock({
   expanded,
   selected,
   sideBySide,
+  busy,
   onToggle,
   onSelect,
+  onEdit,
+  onDelete,
   anchorRef,
   externalChange,
 }: {
@@ -57,8 +62,11 @@ function FileDiffBlock({
   expanded: boolean;
   selected: boolean;
   sideBySide: boolean;
+  busy: boolean;
   onToggle: () => void;
   onSelect: (v: boolean) => void;
+  onEdit: () => void;
+  onDelete: () => void;
   anchorRef?: (el: HTMLDivElement | null) => void;
   /** True when this file changed without this session's own tool calls
    * touching it — a possible parallel-session edit (AGENTS.md "並列セッション
@@ -122,6 +130,29 @@ function FileDiffBlock({
           <span className="flex-1" />
           <DiffStat additions={file.additions} deletions={file.deletions} className="shrink-0" />
         </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={busy}
+            title="既定のエディタで開く（VSCode の場合はリポジトリを開いてアクティブタブ化）"
+            aria-label={`${file.path} をエディタで開く`}
+            onClick={onEdit}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={busy}
+            title="ファイルを削除（コミット対象からも取り除きます）"
+            aria-label={`${file.path} を削除`}
+            onClick={onDelete}
+            className="hover:bg-danger-bg hover:text-danger"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
       {expanded && !file.binary && file.hunks.length > 0 && (
         <div className="overflow-x-auto border-t border-border font-mono text-xs leading-5">
@@ -210,6 +241,7 @@ export function DiffPane({
   focusFile,
   onFocusHandled,
   onMutated,
+  onFilesCountChange,
   touchedPaths,
 }: {
   directory: string;
@@ -220,6 +252,9 @@ export function DiffPane({
   focusFile?: string | null;
   onFocusHandled?: () => void;
   onMutated?: () => void;
+  /** Report the current visible file count (after type + session filtering)
+   * so the parent can show it in the tab badge. */
+  onFilesCountChange?: (count: number) => void;
   /** File paths (relative to `directory`) touched by this session's own
    * tool calls. Files changed outside this set are flagged as a possible
    * parallel-session edit. Omit or leave empty to skip the check. */
@@ -392,6 +427,13 @@ export function DiffPane({
     );
   }, [payload, filter, sessionFilter, touchedPaths]);
   const hasChanges = files.length > 0;
+
+  // Propagate the visible file count to the parent so the tab badge stays in
+  // sync with the filtered list (not the stale dirstat cache).
+  useEffect(() => {
+    onFilesCountChange?.(files.length);
+  }, [files.length, onFilesCountChange]);
+
   const currentSession = sessions.find((s) => s.opencodeSessionId === sessionId);
   const hasSessionOwnership = Boolean(touchedPaths?.size);
   const selectedPaths = useMemo(
@@ -520,6 +562,32 @@ export function DiffPane({
       );
       return `プッシュしました: ${res.summary ?? ""}`;
     });
+
+  const openInEditor = (filePath: string) =>
+    run(async () => {
+      const res = await sendJson<{ editor?: "vscode" | "default" }>(
+        "POST",
+        "/api/files/open",
+        { directory, path: filePath },
+      );
+      return res?.editor === "vscode"
+        ? `VSCode で開きました: ${filePath}`
+        : `既定のエディタで開きました: ${filePath}`;
+    });
+
+  const deleteFile = (filePath: string) => {
+    if (
+      !window.confirm(
+        `ファイルを削除しますか？\n${filePath}\n（コミット対象からも取り除かれます）`,
+      )
+    ) {
+      return;
+    }
+    void run(async () => {
+      await sendJson("POST", "/api/git/rm", { directory, path: filePath });
+      return `削除しました: ${filePath}`;
+    });
+  };
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg">
@@ -910,12 +978,15 @@ export function DiffPane({
             expanded={Boolean(expanded[f.path])}
             selected={!deselected[f.path]}
             sideBySide={sideBySide}
+            busy={busy}
             onToggle={() =>
               setExpanded((prev) => ({ ...prev, [f.path]: !prev[f.path] }))
             }
             onSelect={(v) =>
               setDeselected((prev) => ({ ...prev, [f.path]: !v }))
             }
+            onEdit={() => void openInEditor(f.path)}
+            onDelete={() => deleteFile(f.path)}
             anchorRef={(el) => {
               if (el) fileRefs.current.set(f.path, el);
               else fileRefs.current.delete(f.path);
