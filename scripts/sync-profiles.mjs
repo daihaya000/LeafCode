@@ -21,6 +21,7 @@
 import { readFileSync, writeFileSync, existsSync, lstatSync, readlinkSync, rmdirSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { readJsonc, stripJsonc } from "./lib/jsonc.mjs";
 
 const HOME = homedir();
 const OPENCODE_CONFIG_LINK = path.join(HOME, ".config", "opencode");
@@ -51,53 +52,6 @@ function resolveActiveOpencodeConfigPath() {
 }
 
 const OPENCODE_CONFIG = resolveActiveOpencodeConfigPath();
-
-function stripJsonc(text) {
-  let out = "";
-  let i = 0;
-  let inStr = false;
-  let strCh = "";
-  while (i < text.length) {
-    const c = text[i];
-    if (inStr) {
-      if (c === "\\") {
-        out += c + (text[i + 1] ?? "");
-        i += 2;
-        continue;
-      }
-      out += c;
-      if (c === strCh) inStr = false;
-      i++;
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      inStr = true;
-      strCh = c;
-      out += c;
-      i++;
-      continue;
-    }
-    if (c === "/" && text[i + 1] === "/") {
-      while (i < text.length && text[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && text[i + 1] === "*") {
-      i += 2;
-      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    out += c;
-    i++;
-  }
-  // JSONC permits trailing commas, but JSON.parse does not.
-  return out.replace(/,(\s*[}\]])/g, "$1");
-}
-
-function readJsonc(path) {
-  const raw = readFileSync(path, "utf8");
-  return JSON.parse(stripJsonc(raw));
-}
 
 function tomlString(v) {
   if (typeof v !== "string") return String(v);
