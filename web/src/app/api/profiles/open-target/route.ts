@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import fs from "node:fs";
 import { requireAuthorized } from "@/lib/api-guard";
 import {
-  openFolder,
   parseOpenAction,
   runOpenAction,
 } from "@/lib/profiles/open";

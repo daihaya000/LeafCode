@@ -7,7 +7,6 @@ import type {
   WorkflowGraphReactEdge,
   WorkflowGraphReactNode,
 } from "@/lib/workflow-graph-react-flow";
-import type { WorkflowGraphRuntimeState } from "@/lib/workflow-graph-react-flow";
 
 const h = vi.hoisted(() => ({
   isEditEnabled: vi.fn(() => true),
