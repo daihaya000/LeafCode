@@ -330,6 +330,7 @@ export async function stopOpencodeProcessTree(pids, deps = {}) {
  *   isAlive?: (pid: number) => boolean,
  *   hardKill?: (pid: number) => void,
  *   getListeningPids?: (port: number) => number[],
+ *   listChildren?: (pid: number) => number[],
  * }} [deps]
  */
 export function reapOpencodePortHolders(exitedPid, deps = {}) {
@@ -338,11 +339,12 @@ export function reapOpencodePortHolders(exitedPid, deps = {}) {
   const isAlive = deps.isAlive ?? isProcessAlive;
   const hardKill = deps.hardKill ?? ((id) => hardKillTree(id));
   const getListeningPids = deps.getListeningPids ?? (() => []);
+  const listChildren = deps.listChildren ?? listChildPids;
   const listeningPids = getListeningPids(port);
   const killed = reapInheritedHolders({
     exitedPid,
     listeningPids,
-    listChildren: listChildPids,
+    listChildren,
     isAlive,
     hardKill,
   });

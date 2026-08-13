@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import * as host from './index.js';
 import {
@@ -410,4 +412,23 @@ test('repairNpmOpencodeStub returns null when postinstall throws', () => {
     runPostinstall: () => { throw new Error('boom'); },
   };
   assert.equal(host.repairNpmOpencodeStub('C:\\npm\\opencode.cmd', io), null);
+});
+
+test('index.js imports process-stop helpers that cold start still calls', () => {
+  const src = readFileSync(fileURLToPath(new URL('./index.js', import.meta.url)), 'utf8');
+  const block = src.match(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/process-stop\.js['"]/);
+  assert.ok(block, 'index.js must import from process-stop.js');
+  const imported = new Set(
+    block[1]
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  for (const name of ['isProcessAlive', 'stopOpencodeProcessTree', 'reapOpencodePortHolders']) {
+    assert.equal(
+      imported.has(name),
+      true,
+      `${name} must be imported from process-stop.js (missing import crashes EXE startup)`,
+    );
+  }
 });

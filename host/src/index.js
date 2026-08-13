@@ -83,9 +83,12 @@ export { stronglyLooksLikeHostCommandLine } from './process-info.js';
 import {
   disposeOpencodeServer,
   hardKillTree,
+  isProcessAlive,
   listChildPids,
   reapInheritedHolders,
+  reapOpencodePortHolders,
   softKillTree,
+  stopOpencodeProcessTree,
   stopProcessTreeGracefully,
   stopWebTreeSync,
 } from './process-stop.js';

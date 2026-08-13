@@ -4,10 +4,13 @@ import {
   disposeAuthHeaders,
   disposeOpencodeServer,
   hardKillTree,
+  isProcessAlive,
   listChildPids,
   parseChildPidOutput,
   reapInheritedHolders,
+  reapOpencodePortHolders,
   softKillTree,
+  stopOpencodeProcessTree,
   stopProcessTreeGracefully,
   stopWebTreeSync,
 } from './process-stop.js';
@@ -182,4 +185,57 @@ test('stopWebTreeSync tolerates a missing hardKill callback', () => {
   // No hardKill supplied: resolves targets without throwing.
   const result = stopWebTreeSync({ ownedPid: 42, listeningPids: [] });
   assert.deepEqual(result, [42]);
+});
+
+test('isProcessAlive rejects invalid PIDs without spawning', () => {
+  const calls = [];
+  const execSync = (cmd) => {
+    calls.push(cmd);
+    return '';
+  };
+  assert.equal(isProcessAlive(0, { execSync }), false);
+  assert.equal(isProcessAlive(-1, { execSync }), false);
+  assert.equal(isProcessAlive('abc', { execSync }), false);
+  assert.deepEqual(calls, []);
+});
+
+test('isProcessAlive is true when tasklist output contains the PID', () => {
+  const execSync = () => ' node.exe                      4242 Console';
+  assert.equal(isProcessAlive(4242, { execSync }), true);
+});
+
+test('isProcessAlive is false when tasklist output omits the PID', () => {
+  const execSync = () => 'INFO: No tasks are running which match the specified criteria.';
+  assert.equal(isProcessAlive(4242, { execSync }), false);
+});
+
+test('isProcessAlive is false when tasklist throws', () => {
+  const execSync = () => {
+    throw new Error('boom');
+  };
+  assert.equal(isProcessAlive(4242, { execSync }), false);
+});
+
+test('stopOpencodeProcessTree is a no-op for empty pid lists', async () => {
+  let fetched = false;
+  await stopOpencodeProcessTree([], {
+    fetch: async () => {
+      fetched = true;
+      return { ok: true };
+    },
+  });
+  assert.equal(fetched, false);
+});
+
+test('reapOpencodePortHolders kills leftover live holders', () => {
+  const killed = [];
+  reapOpencodePortHolders(10, {
+    port: 4096,
+    log: () => {},
+    isAlive: (pid) => pid === 20 || pid === 40,
+    hardKill: (pid) => killed.push(pid),
+    getListeningPids: () => [10, 40],
+    listChildren: (pid) => (pid === 10 ? [20] : []),
+  });
+  assert.deepEqual(killed.sort((a, b) => a - b), [20, 40]);
 });
