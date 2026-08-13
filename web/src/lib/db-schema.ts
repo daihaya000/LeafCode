@@ -16,6 +16,134 @@
  */
 export const CURRENT_SCHEMA_VERSION = 1;
 
+/**
+ * Ordered migration list. Each entry may add columns (applied only when the
+ * column is missing, so databases stamped 0 but already fully shaped are
+ * safe) and run additive, idempotent SQL afterwards (indexes / data
+ * backfills). After a migration completes the database is stamped with its
+ * version, so later opens skip it.
+ */
+export type SchemaMigration = {
+  version: number;
+  columns: Array<{ table: string; column: string; sql: string }>;
+  /** Additive SQL executed after the column adds (indexes / backfills). */
+  sql?: string;
+};
+
+export const MIGRATIONS: SchemaMigration[] = [
+  {
+    version: 1,
+    columns: [
+      {
+        table: "workspaces",
+        column: "execution_mode",
+        sql: "ALTER TABLE workspaces ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'standard'",
+      },
+      {
+        table: "workspaces",
+        column: "primary_session_id",
+        sql: "ALTER TABLE workspaces ADD COLUMN primary_session_id TEXT",
+      },
+      {
+        table: "memories",
+        column: "revision",
+        sql: "ALTER TABLE memories ADD COLUMN revision INTEGER NOT NULL DEFAULT 0",
+      },
+      {
+        table: "memories",
+        column: "scope_kind",
+        sql: "ALTER TABLE memories ADD COLUMN scope_kind TEXT",
+      },
+      {
+        table: "memories",
+        column: "scope_key",
+        sql: "ALTER TABLE memories ADD COLUMN scope_key TEXT",
+      },
+      {
+        table: "memories",
+        column: "norm_key",
+        sql: "ALTER TABLE memories ADD COLUMN norm_key TEXT",
+      },
+      {
+        table: "workspaces",
+        column: "revision",
+        sql: "ALTER TABLE workspaces ADD COLUMN revision INTEGER NOT NULL DEFAULT 0",
+      },
+      {
+        table: "goal_loops",
+        column: "revision",
+        sql: "ALTER TABLE goal_loops ADD COLUMN revision INTEGER NOT NULL DEFAULT 0",
+      },
+      {
+        table: "goal_loops",
+        column: "turn_kind",
+        sql: "ALTER TABLE goal_loops ADD COLUMN turn_kind TEXT NOT NULL DEFAULT 'goal'",
+      },
+      {
+        table: "goal_loops",
+        column: "pause_reason",
+        sql: "ALTER TABLE goal_loops ADD COLUMN pause_reason TEXT NOT NULL DEFAULT ''",
+      },
+      {
+        table: "goal_loops",
+        column: "rejected_claims",
+        sql: "ALTER TABLE goal_loops ADD COLUMN rejected_claims INTEGER NOT NULL DEFAULT 0",
+      },
+      {
+        table: "goal_loops",
+        column: "pause_requested",
+        sql: "ALTER TABLE goal_loops ADD COLUMN pause_requested INTEGER NOT NULL DEFAULT 0",
+      },
+      {
+        table: "goal_loops",
+        column: "force_full_run",
+        sql: "ALTER TABLE goal_loops ADD COLUMN force_full_run INTEGER NOT NULL DEFAULT 0",
+      },
+      {
+        table: "goal_loops",
+        column: "dismissed",
+        sql: "ALTER TABLE goal_loops ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0",
+      },
+      {
+        table: "session_bindings",
+        column: "favorite",
+        sql: "ALTER TABLE session_bindings ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0",
+      },
+      {
+        table: "workflow_node_attempts",
+        column: "usage_snapshot",
+        sql: "ALTER TABLE workflow_node_attempts ADD COLUMN usage_snapshot TEXT NOT NULL DEFAULT '{}'",
+      },
+      {
+        table: "projects",
+        column: "archived",
+        sql: "ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+      },
+    ],
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope_key, approved);
+      CREATE INDEX IF NOT EXISTS idx_memories_norm ON memories(scope_key, norm_key);
+      UPDATE memories
+      SET scope_kind = 'project',
+          scope_key = (SELECT w.project_id FROM workspaces w WHERE w.id = memories.workspace_id)
+      WHERE scope_key IS NULL
+        AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = memories.workspace_id);
+      UPDATE memories
+      SET scope_kind = 'workspace', scope_key = workspace_id
+      WHERE scope_key IS NULL;
+      UPDATE workspaces
+      SET primary_session_id = (
+        SELECT sb.opencode_session_id
+        FROM session_bindings sb
+        WHERE sb.workspace_id = workspaces.id
+        ORDER BY sb.updated_at DESC, sb.opencode_session_id DESC
+        LIMIT 1
+      )
+      WHERE primary_session_id IS NULL;
+    `,
+  },
+];
+
 export const SCHEMA_SQL = `
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,

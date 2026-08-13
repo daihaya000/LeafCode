@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { copyFileSync, existsSync } from "node:fs";
-import { CURRENT_SCHEMA_VERSION, SCHEMA_SQL } from "./db-schema";
+import { CURRENT_SCHEMA_VERSION, MIGRATIONS, SCHEMA_SQL } from "./db-schema";
 import { isSafeOpenCodeSessionId } from "./opencode-id";
 import { normalizeMemoryKey } from "./memory-key";
 import { dbPath, ensureDataDir } from "./paths";
@@ -147,140 +147,50 @@ export function getDb(): Database.Database {
   db.pragma("foreign_keys = ON");
   // SCHEMA_SQL is idempotent (CREATE TABLE IF NOT EXISTS / CREATE INDEX IF
   // NOT EXISTS / DROP TRIGGER + CREATE TRIGGER), so it runs on every open and
-  // creates the full schema for fresh databases. The migration chain below
-  // only runs for databases stamped below CURRENT_SCHEMA_VERSION (a legacy
-  // database has user_version 0); afterwards the version is recorded so later
-  // opens skip the per-column PRAGMA checks (REFACTORING_PLAN P2-d).
+  // creates the full schema for fresh databases. A fresh database (no tables)
+  // is stamped with CURRENT_SCHEMA_VERSION directly. Legacy databases run the
+  // ordered MIGRATIONS list and are stamped version by version
+  // (REFACTORING_PLAN P2-e).
+  const tableCount = db
+    .prepare(
+      "SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    )
+    .get() as { n: number };
+  const isFreshDb = tableCount.n === 0;
   db.exec(SCHEMA_SQL);
   const schemaVersion = db.pragma("user_version", { simple: true }) as number;
-  if (schemaVersion < CURRENT_SCHEMA_VERSION) {
-    runSchemaMigrations(db);
+  if (isFreshDb) {
     db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
+  } else if (schemaVersion < CURRENT_SCHEMA_VERSION) {
+    runSchemaMigrations(db);
   }
   return db;
 }
 
 /**
- * Upgrade a legacy database to the current schema: add every column that the
- * current CREATE TABLE definitions carry but this database lacks, then run the
- * data backfills (scope promotion / primary_session_id / norm keys).
- * All steps are additive and idempotent (REFACTORING_PLAN P2-e target shape).
+ * Apply the ordered migrations for a database stamped below the current
+ * version. Each migration adds its columns only when missing (a database at
+ * version 0 may already be fully shaped, e.g. it was opened by a build that
+ * ran SCHEMA_SQL without stamping) and then runs its additive SQL. The
+ * JS-driven norm-key backfill runs after the SQL steps.
  */
 function runSchemaMigrations(db: Database.Database): void {
-  const workspaceColumns = db
-    .prepare("PRAGMA table_info(workspaces)")
-    .all() as { name: string }[];
-  const hasWorkspaceColumn = (name: string): boolean =>
-    workspaceColumns.some((column) => column.name === name);
-  if (!hasWorkspaceColumn("execution_mode")) {
-    db.exec("ALTER TABLE workspaces ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'standard'");
+  const current = db.pragma("user_version", { simple: true }) as number;
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= current) continue;
+    db.transaction(() => {
+      for (const step of migration.columns) {
+        const cols = db
+          .prepare(`PRAGMA table_info(${step.table})`)
+          .all() as { name: string }[];
+        if (cols.some((c) => c.name === step.column)) continue;
+        db.exec(step.sql);
+      }
+      if (migration.sql) db.exec(migration.sql);
+    })();
+    db.pragma(`user_version = ${migration.version}`);
   }
-  if (!hasWorkspaceColumn("primary_session_id")) {
-    db.exec("ALTER TABLE workspaces ADD COLUMN primary_session_id TEXT");
-  }
-  const memoryColumns = db
-    .prepare("PRAGMA table_info(memories)")
-    .all() as { name: string }[];
-  const hasMemoryColumn = (name: string): boolean =>
-    memoryColumns.some((column) => column.name === name);
-  if (!hasMemoryColumn("revision")) {
-    db.exec("ALTER TABLE memories ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
-  }
-  // Retrieval scope + dedupe key (docs/specs/memory-layer.md 「スコープ」).
-  // Nullable on purpose: NULL marks a row the backfill below has not processed.
-  if (!hasMemoryColumn("scope_kind")) {
-    db.exec("ALTER TABLE memories ADD COLUMN scope_kind TEXT");
-  }
-  if (!hasMemoryColumn("scope_key")) {
-    db.exec("ALTER TABLE memories ADD COLUMN scope_key TEXT");
-  }
-  if (!hasMemoryColumn("norm_key")) {
-    db.exec("ALTER TABLE memories ADD COLUMN norm_key TEXT");
-  }
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope_key, approved);
-    CREATE INDEX IF NOT EXISTS idx_memories_norm ON memories(scope_key, norm_key);
-  `);
-  // Promote workspace-scoped rows to their project scope so knowledge captured
-  // under an earlier task remains retrievable from later tasks in the same
-  // project. Rows whose workspace no longer exists keep a workspace scope.
-  db.exec(`
-    UPDATE memories
-    SET scope_kind = 'project',
-        scope_key = (SELECT w.project_id FROM workspaces w WHERE w.id = memories.workspace_id)
-    WHERE scope_key IS NULL
-      AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = memories.workspace_id);
-    UPDATE memories
-    SET scope_kind = 'workspace', scope_key = workspace_id
-    WHERE scope_key IS NULL;
-  `);
   backfillMemoryNormKeys(db);
-  if (!hasWorkspaceColumn("revision")) {
-    db.exec("ALTER TABLE workspaces ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
-  }
-  db.exec(`
-    UPDATE workspaces
-    SET primary_session_id = (
-      SELECT sb.opencode_session_id
-      FROM session_bindings sb
-      WHERE sb.workspace_id = workspaces.id
-      ORDER BY sb.updated_at DESC, sb.opencode_session_id DESC
-      LIMIT 1
-    )
-    WHERE primary_session_id IS NULL;
-  `);
-  const goalLoopColumns = db
-    .prepare("PRAGMA table_info(goal_loops)")
-    .all() as { name: string }[];
-  const hasGoalLoopColumn = (name: string): boolean =>
-    goalLoopColumns.some((column) => column.name === name);
-  if (!hasGoalLoopColumn("revision")) {
-    db.exec("ALTER TABLE goal_loops ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
-  }
-  // See docs/specs/goal-loop.md. These three columns replace state that used to
-  // be inferred from the human-readable `error` text or from the tail of the
-  // `progress` array (which is truncated to 50 entries and therefore unusable
-  // as a source of truth).
-  if (!hasGoalLoopColumn("turn_kind")) {
-    db.exec("ALTER TABLE goal_loops ADD COLUMN turn_kind TEXT NOT NULL DEFAULT 'goal'");
-  }
-  if (!hasGoalLoopColumn("pause_reason")) {
-    db.exec("ALTER TABLE goal_loops ADD COLUMN pause_reason TEXT NOT NULL DEFAULT ''");
-  }
-  if (!hasGoalLoopColumn("rejected_claims")) {
-    db.exec("ALTER TABLE goal_loops ADD COLUMN rejected_claims INTEGER NOT NULL DEFAULT 0");
-  }
-  if (!hasGoalLoopColumn("pause_requested")) {
-    db.exec("ALTER TABLE goal_loops ADD COLUMN pause_requested INTEGER NOT NULL DEFAULT 0");
-  }
-  // 完走モード: 完了宣言・検証を使わず max_turns まで必ず goal ターンを回す（既定 OFF）
-  if (!hasGoalLoopColumn("force_full_run")) {
-    db.exec("ALTER TABLE goal_loops ADD COLUMN force_full_run INTEGER NOT NULL DEFAULT 0");
-  }
-  // ユーザーが手動で片付けたループ。行は残す（再開時のフォーム復元に使う）が、
-  // パネルは表示しない。これがないと終了したループのカードが永久に残り、
-  // paused のまま放置されたループが新規ループ開始の導線まで塞いでいた。
-  if (!hasGoalLoopColumn("dismissed")) {
-    db.exec("ALTER TABLE goal_loops ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0");
-  }
-  const sessionBindingColumns = db
-    .prepare("PRAGMA table_info(session_bindings)")
-    .all() as { name: string }[];
-  if (!sessionBindingColumns.some((column) => column.name === "favorite")) {
-    db.exec("ALTER TABLE session_bindings ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0");
-  }
-  const workflowAttemptColumns = db
-    .prepare("PRAGMA table_info(workflow_node_attempts)")
-    .all() as { name: string }[];
-  if (!workflowAttemptColumns.some((column) => column.name === "usage_snapshot")) {
-    db.exec("ALTER TABLE workflow_node_attempts ADD COLUMN usage_snapshot TEXT NOT NULL DEFAULT '{}'");
-  }
-  const projectColumns = db
-    .prepare("PRAGMA table_info(projects)")
-    .all() as { name: string }[];
-  if (!projectColumns.some((column) => column.name === "archived")) {
-    db.exec("ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
-  }
 }
 
 export function getSetting(key: string): string | null {

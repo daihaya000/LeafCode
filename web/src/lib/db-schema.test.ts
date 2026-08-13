@@ -243,3 +243,19 @@ test("getDb() stamps user_version and skips the migration chain on the next open
   expect(reopened.pragma("user_version", { simple: true })).toBe(version);
   reopened.close();
 });
+
+test("a fully shaped database at version 0 is upgraded without errors", async () => {
+  resetDataDir();
+  const dataDir = path.join(testDataDir, "opencode-webui");
+  mkdirSync(dataDir, { recursive: true });
+  const { SCHEMA_SQL } = await import("./db-schema");
+  const full = new Database(path.join(dataDir, "webui.db"));
+  full.exec(SCHEMA_SQL);
+  full.pragma("user_version = 0");
+  full.close();
+  vi.resetModules();
+  const { getDb } = await import("./db");
+  const db = getDb();
+  expect(db.pragma("user_version", { simple: true })).toBe(1);
+  db.close();
+});
