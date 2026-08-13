@@ -2,6 +2,7 @@ import { ocServer } from "@/lib/oc-server";
 import {
   cachedAgentsByDir,
   cachedProvidersByDir,
+  readBoundedCapabilityCache,
   setBoundedCapabilityCache,
   type AgentResponse,
   type ProviderResponse,
@@ -45,7 +46,7 @@ export function modelFromRequest(body: Record<string, unknown>):
 // — fall back to a live, directory-scoped query so capability enforcement
 // does not incorrectly fail-closed for a directory whose cache never filled.
 export async function resolveAgents(directory: string | null): Promise<AgentResponse | undefined> {
-  const cached = directory ? cachedAgentsByDir.get(directory) : undefined;
+  const cached = directory ? readBoundedCapabilityCache(cachedAgentsByDir, directory) : undefined;
   if (cached) return cached;
   try {
     const agents = await ocServer<AgentResponse>(directory, "/agent");
@@ -61,7 +62,7 @@ export async function resolveAgents(directory: string | null): Promise<AgentResp
 // write paths make the same fail-closed decision from the same source of
 // truth (OpenCode's live /provider capabilities for this directory).
 export async function resolveProviders(directory: string | null): Promise<ProviderResponse | undefined> {
-  const cached = directory ? cachedProvidersByDir.get(directory) : undefined;
+  const cached = directory ? readBoundedCapabilityCache(cachedProvidersByDir, directory) : undefined;
   if (cached) return cached;
   try {
     const providers = await ocServer<ProviderResponse>(directory, "/provider");

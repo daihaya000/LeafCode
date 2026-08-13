@@ -40,8 +40,8 @@ export type AgentResponse = {
 // Keep only their capability/model metadata so this write proxy can enforce the
 // same fail-closed decision without forwarding an unsupported prompt first.
 // Cache per directory to avoid cross-project contamination in multi-project setups.
-export const cachedProvidersByDir = new Map<string, ProviderResponse>();
-export const cachedAgentsByDir = new Map<string, AgentResponse>();
+export const cachedProvidersByDir = new Map<string, CapabilityEntry<ProviderResponse>>();
+export const cachedAgentsByDir = new Map<string, CapabilityEntry<AgentResponse>>();
 
 /**
  * Bound the per-directory capability caches. They are keyed by directory and
@@ -52,10 +52,18 @@ export const cachedAgentsByDir = new Map<string, AgentResponse>();
  * capability data.
  */
 export const CAPABILITY_CACHE_MAX = 64;
+/** How long a per-directory capability entry stays valid before a refetch. */
+export const CAPABILITY_CACHE_TTL_MS = 60_000;
 
-export function setBoundedCapabilityCache<T>(cache: Map<string, T>, key: string, value: T): void {
+type CapabilityEntry<T> = { at: number; value: T };
+
+export function setBoundedCapabilityCache<T>(
+  cache: Map<string, CapabilityEntry<T>>,
+  key: string,
+  value: T,
+): void {
   cache.delete(key);
-  cache.set(key, value);
+  cache.set(key, { at: Date.now(), value });
   while (cache.size > CAPABILITY_CACHE_MAX) {
     const oldest = cache.keys().next().value;
     if (typeof oldest !== "string") break;
@@ -97,6 +105,24 @@ export function storeGetResponseCache(
     if (typeof oldest !== "string") break;
     getResponseCache.delete(oldest);
   }
+}
+
+/**
+ * Read a capability entry when it is still fresh; expired entries are
+ * dropped so the next resolution refetches (provider reconnect/disconnect
+ * surfaces within the TTL instead of being served stale forever).
+ */
+export function readBoundedCapabilityCache<T>(
+  cache: Map<string, CapabilityEntry<T>>,
+  key: string,
+): T | undefined {
+  const entry = cache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() - entry.at >= CAPABILITY_CACHE_TTL_MS) {
+    cache.delete(key);
+    return undefined;
+  }
+  return entry.value;
 }
 
 export function getResponseCacheKey(
