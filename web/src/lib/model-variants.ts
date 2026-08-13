@@ -48,6 +48,15 @@ const INTELLIGENCE_KEYS: readonly IntelligenceVariant[] = [
   "thinking",
 ];
 
+/**
+ * Fallback list shown when a model's provider metadata is unavailable (e.g.
+ * the provider catalogue fetch failed in the agent settings screens). Mirrors
+ * {@link INTELLIGENCE_KEYS} order.
+ */
+export const ALL_INTELLIGENCE_VARIANTS: IntelligenceVariant[] = [
+  ...INTELLIGENCE_KEYS,
+];
+
 const INTELLIGENCE_KEY_SET = new Set<string>(INTELLIGENCE_KEYS);
 
 /**

@@ -129,6 +129,68 @@ describe("ProjectSettingsView", () => {
     );
   });
 
+  it("sets the effort variant for a project agent and saves it", async () => {
+    const filesResponse = {
+      project: { id: "project-1", name: "Fixture", rootPath: "C:\\repo" },
+      files: [
+        {
+          key: "AGENTS.md",
+          label: "AGENTS.md",
+          description: "Agent instructions",
+          exists: true,
+          content: "Existing",
+        },
+      ],
+    };
+    const agent = {
+      name: "reviewer",
+      path: "C:\\repo\\.opencode\\agents\\reviewer.md",
+      relativePath: ".opencode/agents/reviewer.md",
+      exists: true,
+      content: "---\ndescription: Reviewer\nmodel: openai/gpt-5\n---\n",
+      enabled: true,
+    };
+    getJson.mockImplementation((path: string) => {
+      if (path.endsWith("/agents")) {
+        return Promise.resolve({
+          project: { id: "project-1", name: "Fixture", rootPath: "C:\\repo" },
+          agents: [agent],
+        });
+      }
+      return Promise.resolve(filesResponse);
+    });
+    sendJson.mockImplementation(async (method: string, url: string, body?: unknown) => {
+      if (method === "PUT" && url.includes("/agents/reviewer")) {
+        const content = (body as { content?: string })?.content ?? "";
+        return { ok: true, agent: { ...agent, content } };
+      }
+      return { ok: true };
+    });
+
+    render(<ProjectSettingsView projectId="project-1" />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "エージェント" }));
+    await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/projects/project-1/agents"));
+
+    expect(await screen.findByText("推論 effort")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "インテリジェンス" }));
+    fireEvent.click(await screen.findByRole("option", { name: "xhigh" }));
+
+    const editor = screen.getByRole("textbox", { name: "エージェント「reviewer」の内容" });
+    expect((editor as HTMLTextAreaElement).value).toContain("variant: xhigh");
+
+    fireEvent.click(screen.getByRole("button", { name: "エージェントを保存" }));
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/projects/project-1/agents/reviewer",
+        expect.objectContaining({
+          content: expect.stringContaining("variant: xhigh"),
+        }),
+      ),
+    );
+  });
+
   it("toggles a project agent and syncs the editor draft", async () => {
     const agent = {
       name: "reviewer",

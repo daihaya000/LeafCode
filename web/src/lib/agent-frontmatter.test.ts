@@ -4,6 +4,7 @@ import {
   isAgentEnabled,
   parseAgentFrontmatter,
   setAgentDisabled,
+  setAgentScalar,
 } from "./agent-frontmatter";
 
 describe("isAgentDisabled", () => {
@@ -98,5 +99,64 @@ describe("parseAgentFrontmatter", () => {
   it("ignores unknown mode values and missing frontmatter", () => {
     expect(parseAgentFrontmatter("---\nmode: weird\n---\n").mode).toBeUndefined();
     expect(parseAgentFrontmatter("plain")).toEqual({ disabled: false });
+  });
+
+  it("reads the variant key", () => {
+    expect(
+      parseAgentFrontmatter(
+        '---\nmodel: openai/gpt-5\nvariant: "high"\n---\n',
+      ).variant,
+    ).toBe("high");
+    expect(
+      parseAgentFrontmatter("---\nmodel: openai/gpt-5\n---\n").variant,
+    ).toBeUndefined();
+  });
+});
+
+describe("setAgentScalar", () => {
+  it("adds the key to existing frontmatter", () => {
+    expect(setAgentScalar("---\nmodel: openai/gpt-5\n---\nbody\n", "variant", "high")).toBe(
+      "---\nmodel: openai/gpt-5\nvariant: high\n---\nbody\n",
+    );
+  });
+
+  it("updates an existing key in place", () => {
+    expect(
+      setAgentScalar(
+        "---\nmodel: openai/gpt-5\nvariant: low\n---\nbody\n",
+        "variant",
+        "xhigh",
+      ),
+    ).toBe("---\nmodel: openai/gpt-5\nvariant: xhigh\n---\nbody\n");
+  });
+
+  it("removes the key when the value is empty", () => {
+    expect(
+      setAgentScalar(
+        "---\nmodel: openai/gpt-5\nvariant: high\n---\nbody\n",
+        "variant",
+        "",
+      ),
+    ).toBe("---\nmodel: openai/gpt-5\n---\nbody\n");
+  });
+
+  it("preserves CRLF line endings", () => {
+    expect(
+      setAgentScalar("---\r\nmodel: openai/gpt-5\r\n---\r\nbody", "variant", "high"),
+    ).toBe("---\r\nmodel: openai/gpt-5\r\nvariant: high\r\n---\r\nbody");
+  });
+
+  it("creates frontmatter when the file has none", () => {
+    expect(setAgentScalar("body\n", "variant", "high")).toBe(
+      "---\nvariant: high\n---\n\nbody\n",
+    );
+    expect(setAgentScalar("body\n", "variant", "")).toBe("body\n");
+  });
+
+  it("round-trips through set and clear", () => {
+    const original = "---\nmodel: openai/gpt-5\n---\nbody\n";
+    expect(
+      setAgentScalar(setAgentScalar(original, "variant", "medium"), "variant", ""),
+    ).toBe(original);
   });
 });

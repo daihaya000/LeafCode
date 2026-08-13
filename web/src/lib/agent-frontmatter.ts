@@ -63,6 +63,8 @@ export type AgentFrontmatter = {
   description?: string;
   mode?: "subagent" | "primary" | "all";
   model?: { providerID: string; modelID: string };
+  /** Default model variant (reasoning effort) for this agent. */
+  variant?: string;
   disabled: boolean;
 };
 
@@ -105,6 +107,11 @@ export function parseAgentFrontmatter(markdown: string): AgentFrontmatter {
           modelID: value.slice(slash + 1),
         };
       }
+      continue;
+    }
+    const variant = topLevelKey(line, "variant");
+    if (variant && result.variant === undefined) {
+      result.variant = unquote(variant[1]);
     }
   }
   return result;
@@ -144,6 +151,43 @@ export function setAgentDisabled(markdown: string, disabled: boolean): string {
 
   // Dropping the only key would leave an empty frontmatter block; keep it
   // syntactically valid by emitting `---\n---`.
+  const body = lines.join(eol);
+  return `${fm.open}${body}${fm.close}${fm.rest}`;
+}
+
+/**
+ * Set or remove a top-level scalar frontmatter key (e.g. `variant`).
+ *
+ * An empty `value` removes the key entirely; a non-empty value upserts it in
+ * place, preserving line endings and the rest of the file. Frontmatter is
+ * created when the file has none. Same shape contract as
+ * {@link setAgentDisabled}: single-line scalars only.
+ */
+export function setAgentScalar(
+  markdown: string,
+  key: string,
+  value: string,
+): string {
+  const fm = splitFrontmatter(markdown);
+  if (!fm) {
+    if (value === "") return markdown;
+    const separator = markdown.length > 0 ? "\n" : "";
+    return `---\n${key}: ${value}\n---\n${separator}${markdown}`;
+  }
+
+  const eol = fm.open.includes("\r\n") ? "\r\n" : "\n";
+  const lines = fm.body.split(/\r?\n/);
+  const index = lines.findIndex((line) => topLevelKey(line, key));
+
+  if (index === -1) {
+    if (value === "") return markdown;
+    lines.push(`${key}: ${value}`);
+  } else if (value === "") {
+    lines.splice(index, 1);
+  } else {
+    lines[index] = `${key}: ${value}`;
+  }
+
   const body = lines.join(eol);
   return `${fm.open}${body}${fm.close}${fm.rest}`;
 }

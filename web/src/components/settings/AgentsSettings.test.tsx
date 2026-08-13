@@ -400,4 +400,122 @@ describe("AgentsSettings", () => {
       expect(screen.getByRole("heading", { name: "Rank A" })).toBeTruthy();
     });
   });
+
+  it("sets the effort variant for a file-backed agent and saves it", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/extensions/provider-models")) {
+        return new Response(
+          JSON.stringify({
+            providers: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                enabled: true,
+                models: [
+                  { id: "gpt-5", name: "GPT-5", variants: { low: {}, high: {} } },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/extensions/agent-files")) {
+        return new Response(
+          JSON.stringify({
+            files: [
+              {
+                name: "a-explorer-openai-gpt-5",
+                displayPath: "~/.config/opencode/agents/a-explorer-openai-gpt-5.md",
+                exists: true,
+                content: "---\ndescription: Explores the codebase\ntemperature: 0.2\n---\n",
+                enabled: true,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/extensions/agents")) {
+        return new Response(JSON.stringify({ agents: AGENTS }), { status: 200 });
+      }
+      if (url.includes("/api/host")) {
+        return new Response(JSON.stringify(HOST_OK), { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentsSettings />);
+    await screen.findByRole("heading", { name: "Rank A" });
+    // The delete button's aria-label also contains the agent name, so take
+    // the first match (the row button precedes it in the DOM).
+    fireEvent.click(screen.getAllByRole("button", { name: /explorer/ })[0]);
+
+    expect(screen.getByText("推論 effort")).toBeTruthy();
+    // Model-declared variants only (low/high), plus the default entry.
+    fireEvent.click(screen.getByRole("button", { name: "インテリジェンス" }));
+    fireEvent.click(await screen.findByRole("option", { name: "high" }));
+
+    const editor = screen.getByRole("textbox", {
+      name: "エージェント「a-explorer-openai-gpt-5」の内容",
+    });
+    expect((editor as HTMLTextAreaElement).value).toContain("variant: high");
+
+    fireEvent.click(screen.getByRole("button", { name: "エージェントを保存" }));
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find((call) =>
+        String(call[0]).includes("/api/extensions/agent-files/"),
+      );
+      expect(putCall).toBeTruthy();
+      const body = JSON.parse(String(putCall?.[1]?.body));
+      expect(body.content).toContain("variant: high");
+    });
+  });
+
+  it("disables the effort dropdown and warns when the agent has no model", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/extensions/agent-files")) {
+        return new Response(
+          JSON.stringify({
+            files: [
+              {
+                name: "no-model-agent",
+                displayPath: "~/.config/opencode/agents/no-model-agent.md",
+                exists: true,
+                content: "---\ndescription: No model\n---\n",
+                enabled: true,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/extensions/agents")) {
+        return new Response(
+          JSON.stringify({
+            agents: [
+              { name: "no-model-agent", mode: "subagent", enabled: true, toggleable: true },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/host")) {
+        return new Response(JSON.stringify(HOST_OK), { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentsSettings />);
+    await screen.findByText("no-model-agent");
+    fireEvent.click(screen.getAllByRole("button", { name: /no-model-agent/ })[0]);
+
+    const trigger = screen.getByRole("button", { name: "インテリジェンス" });
+    expect((trigger as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("model が未設定のため適用されません")).toBeTruthy();
+  });
 });

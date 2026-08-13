@@ -1,13 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, FileText, Plus, Sparkles, Trash2, Users } from "lucide-react";
+import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import { AgentSwitch } from "@/components/settings/AgentSwitch";
 import { Badge, Button, cx, Spinner } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
+import {
+  parseAgentFrontmatter,
+  setAgentScalar,
+} from "@/lib/agent-frontmatter";
+import { ALL_INTELLIGENCE_VARIANTS } from "@/lib/model-variants";
+import { useProviderModelVariants } from "@/lib/useProviderModelVariants";
 import type {
   ProjectSettingFileDto,
   ProjectSettingFileKey,
@@ -388,6 +395,22 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
   const selected = data?.files.find((file) => file.key === activeFile);
   const selectedAgent = agents.find((a) => a.name === activeAgent);
   const selectedSkill = skills.find((skill) => skill.name === activeSkill);
+  const providerVariants = useProviderModelVariants();
+  // Draft-based so the effort dropdown tracks unsaved textarea edits (e.g.
+  // adding/removing `model:` in the editor) immediately.
+  const selectedAgentFrontmatter = useMemo(
+    () =>
+      selectedAgent ? parseAgentFrontmatter(draftByTab.agents) : null,
+    [selectedAgent, draftByTab.agents],
+  );
+  const selectedAgentVariantOptions = useMemo(() => {
+    if (!selectedAgentFrontmatter?.model) return ALL_INTELLIGENCE_VARIANTS;
+    return (
+      providerVariants[
+        `${selectedAgentFrontmatter.model.providerID}::${selectedAgentFrontmatter.model.modelID}`
+      ] ?? ALL_INTELLIGENCE_VARIANTS
+    );
+  }, [selectedAgentFrontmatter, providerVariants]);
 
   return (
     <div className="flex h-full flex-col">
@@ -621,6 +644,33 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                       <p className="mt-1 truncate font-mono text-[11px] text-faint">
                         {selectedAgent.relativePath}
                       </p>
+                      {selectedAgentFrontmatter?.model && (
+                        <p className="mt-1 truncate font-mono text-[11px] text-faint">
+                          {selectedAgentFrontmatter.model.providerID} /{" "}
+                          {selectedAgentFrontmatter.model.modelID}
+                        </p>
+                      )}
+                    </div>
+                    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <span className="text-xs font-medium text-muted">
+                        推論 effort
+                      </span>
+                      <IntelligenceSelect
+                        variants={selectedAgentVariantOptions}
+                        value={parseAgentFrontmatter(draft).variant ?? ""}
+                        disabled={saving || !selectedAgentFrontmatter?.model}
+                        onChange={(value) =>
+                          setDraftForTab(
+                            "agents",
+                            setAgentScalar(draft, "variant", value),
+                          )
+                        }
+                      />
+                      {!selectedAgentFrontmatter?.model && (
+                        <span className="text-[11px] text-faint">
+                          model が未設定のため適用されません
+                        </span>
+                      )}
                     </div>
                     <textarea
                       aria-label={`エージェント「${selectedAgent.name}」の内容`}

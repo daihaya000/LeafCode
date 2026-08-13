@@ -2,10 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, Users } from "lucide-react";
+import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { AgentSwitch } from "@/components/settings/AgentSwitch";
 import { Badge, Button, cx } from "@/components/ui";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
-import { parseAgentFrontmatter } from "@/lib/agent-frontmatter";
+import {
+  parseAgentFrontmatter,
+  setAgentScalar,
+} from "@/lib/agent-frontmatter";
+import { ALL_INTELLIGENCE_VARIANTS } from "@/lib/model-variants";
+import { useProviderModelVariants } from "@/lib/useProviderModelVariants";
 import type { HealthDto } from "@/lib/types";
 import {
   filterAgents,
@@ -570,6 +576,19 @@ export function AgentsSettings() {
     () => rows.find((row) => row.name === activeName) ?? null,
     [rows, activeName],
   );
+  const providerVariants = useProviderModelVariants();
+  const selectedVariantOptions = useMemo(() => {
+    if (!selected?.model) return ALL_INTELLIGENCE_VARIANTS;
+    return (
+      providerVariants[
+        `${selected.model.providerID}::${selected.model.modelID}`
+      ] ?? ALL_INTELLIGENCE_VARIANTS
+    );
+  }, [selected, providerVariants]);
+  const selectedVariant = useMemo(
+    () => parseAgentFrontmatter(draft).variant ?? "",
+    [draft],
+  );
   const switchesBusy = busyName !== null || busyProvider !== null;
 
   const providerGroups = useMemo(() => {
@@ -815,6 +834,29 @@ export function AgentsSettings() {
 
               {selected.file ? (
                 <>
+                  <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className="text-xs font-medium text-muted">
+                      推論 effort
+                    </span>
+                    <IntelligenceSelect
+                      variants={selectedVariantOptions}
+                      value={selectedVariant}
+                      disabled={savingFile || switchesBusy || !selected.model}
+                      onChange={(value) =>
+                        setDraft(setAgentScalar(draft, "variant", value))
+                      }
+                    />
+                    {!selected.model && (
+                      <span className="text-[11px] text-faint">
+                        model が未設定のため適用されません
+                      </span>
+                    )}
+                    {selectedVariant && (
+                      <span className="text-[11px] text-faint">
+                        保存時に frontmatter へ variant: {selectedVariant} を書き込みます
+                      </span>
+                    )}
+                  </div>
                   <textarea
                     aria-label={`エージェント「${selected.name}」の内容`}
                     value={draft}
