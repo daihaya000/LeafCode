@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, FileText, Plus, Sparkles, Trash2, Users } from "lucide-react";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
+import { ModelSelect } from "@/components/ModelSelect";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import { AgentSwitch } from "@/components/settings/AgentSwitch";
@@ -14,7 +15,10 @@ import {
   setAgentScalar,
 } from "@/lib/agent-frontmatter";
 import { ALL_INTELLIGENCE_VARIANTS } from "@/lib/model-variants";
-import { useProviderModelVariants } from "@/lib/useProviderModelVariants";
+import {
+  ensureModelOption,
+  useProviderModels,
+} from "@/lib/useProviderModels";
 import type {
   ProjectSettingFileDto,
   ProjectSettingFileKey,
@@ -395,22 +399,37 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
   const selected = data?.files.find((file) => file.key === activeFile);
   const selectedAgent = agents.find((a) => a.name === activeAgent);
   const selectedSkill = skills.find((skill) => skill.name === activeSkill);
-  const providerVariants = useProviderModelVariants();
-  // Draft-based so the effort dropdown tracks unsaved textarea edits (e.g.
-  // adding/removing `model:` in the editor) immediately.
+  const providerModels = useProviderModels();
+  // Draft-based so the model/effort dropdowns track unsaved textarea edits
+  // (e.g. adding/removing `model:` in the editor) immediately.
   const selectedAgentFrontmatter = useMemo(
     () =>
       selectedAgent ? parseAgentFrontmatter(draftByTab.agents) : null,
     [selectedAgent, draftByTab.agents],
   );
+  const selectedAgentModelValue = useMemo(() => {
+    const model = selectedAgentFrontmatter?.model;
+    return model ? `${model.providerID}::${model.modelID}` : "";
+  }, [selectedAgentFrontmatter?.model]);
+  const selectedAgentModelOptions = useMemo(
+    () =>
+      ensureModelOption(
+        providerModels.modelOptions,
+        selectedAgentModelValue,
+      ),
+    [providerModels.modelOptions, selectedAgentModelValue],
+  );
   const selectedAgentVariantOptions = useMemo(() => {
     if (!selectedAgentFrontmatter?.model) return ALL_INTELLIGENCE_VARIANTS;
     return (
-      providerVariants[
-        `${selectedAgentFrontmatter.model.providerID}::${selectedAgentFrontmatter.model.modelID}`
-      ] ?? ALL_INTELLIGENCE_VARIANTS
+      providerModels.variantsMap[selectedAgentModelValue] ??
+      ALL_INTELLIGENCE_VARIANTS
     );
-  }, [selectedAgentFrontmatter, providerVariants]);
+  }, [
+    providerModels.variantsMap,
+    selectedAgentModelValue,
+    selectedAgentFrontmatter?.model,
+  ]);
 
   return (
     <div className="flex h-full flex-col">
@@ -652,6 +671,24 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                       )}
                     </div>
                     <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <span className="text-xs font-medium text-muted">モデル</span>
+                      <ModelSelect
+                        value={selectedAgentModelValue}
+                        options={selectedAgentModelOptions}
+                        disabled={saving}
+                        emptyLabel="未設定"
+                        ariaLabel="モデル"
+                        onChange={(value) =>
+                          setDraftForTab(
+                            "agents",
+                            setAgentScalar(
+                              draft,
+                              "model",
+                              value ? value.split("::").join("/") : "",
+                            ),
+                          )
+                        }
+                      />
                       <span className="text-xs font-medium text-muted">
                         推論 effort
                       </span>
@@ -668,7 +705,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                       />
                       {!selectedAgentFrontmatter?.model && (
                         <span className="text-[11px] text-faint">
-                          model が未設定のため適用されません
+                          モデルが未設定のため effort は適用されません
                         </span>
                       )}
                     </div>

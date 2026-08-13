@@ -191,6 +191,85 @@ describe("ProjectSettingsView", () => {
     );
   });
 
+  it("sets the model for a project agent via the dropdown and saves it", async () => {
+    const filesResponse = {
+      project: { id: "project-1", name: "Fixture", rootPath: "C:\\repo" },
+      files: [
+        {
+          key: "AGENTS.md",
+          label: "AGENTS.md",
+          description: "Agent instructions",
+          exists: true,
+          content: "Existing",
+        },
+      ],
+    };
+    const agent = {
+      name: "reviewer",
+      path: "C:\\repo\\.opencode\\agents\\reviewer.md",
+      relativePath: ".opencode/agents/reviewer.md",
+      exists: true,
+      content: "---\ndescription: Reviewer\n---\n",
+      enabled: true,
+    };
+    getJson.mockImplementation((path: string) => {
+      if (path.endsWith("/provider-models")) {
+        return Promise.resolve({
+          providers: [
+            {
+              id: "openai",
+              name: "OpenAI",
+              enabled: true,
+              models: [{ id: "gpt-5", name: "GPT-5" }],
+            },
+          ],
+        });
+      }
+      if (path.endsWith("/agents")) {
+        return Promise.resolve({
+          project: { id: "project-1", name: "Fixture", rootPath: "C:\\repo" },
+          agents: [agent],
+        });
+      }
+      return Promise.resolve(filesResponse);
+    });
+    sendJson.mockImplementation(async (method: string, url: string, body?: unknown) => {
+      if (method === "PUT" && url.includes("/agents/reviewer")) {
+        const content = (body as { content?: string })?.content ?? "";
+        return { ok: true, agent: { ...agent, content } };
+      }
+      return { ok: true };
+    });
+
+    render(<ProjectSettingsView projectId="project-1" />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "エージェント" }));
+    await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/projects/project-1/agents"));
+    await screen.findByText("推論 effort");
+
+    // Selecting a model enables the previously disabled effort dropdown.
+    fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
+    fireEvent.click(await screen.findByRole("option", { name: "GPT-5" }));
+
+    const editor = screen.getByRole("textbox", { name: "エージェント「reviewer」の内容" });
+    expect((editor as HTMLTextAreaElement).value).toContain("model: openai/gpt-5");
+    expect(
+      (screen.getByRole("button", { name: "インテリジェンス" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "エージェントを保存" }));
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/projects/project-1/agents/reviewer",
+        expect.objectContaining({
+          content: expect.stringContaining("model: openai/gpt-5"),
+        }),
+      ),
+    );
+  });
+
   it("toggles a project agent and syncs the editor draft", async () => {
     const agent = {
       name: "reviewer",

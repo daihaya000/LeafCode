@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, Users } from "lucide-react";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
+import { ModelSelect } from "@/components/ModelSelect";
 import { AgentSwitch } from "@/components/settings/AgentSwitch";
 import { Badge, Button, cx } from "@/components/ui";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
@@ -11,7 +12,10 @@ import {
   setAgentScalar,
 } from "@/lib/agent-frontmatter";
 import { ALL_INTELLIGENCE_VARIANTS } from "@/lib/model-variants";
-import { useProviderModelVariants } from "@/lib/useProviderModelVariants";
+import {
+  ensureModelOption,
+  useProviderModels,
+} from "@/lib/useProviderModels";
 import type { HealthDto } from "@/lib/types";
 import {
   filterAgents,
@@ -576,19 +580,29 @@ export function AgentsSettings() {
     () => rows.find((row) => row.name === activeName) ?? null,
     [rows, activeName],
   );
-  const providerVariants = useProviderModelVariants();
-  const selectedVariantOptions = useMemo(() => {
-    if (!selected?.model) return ALL_INTELLIGENCE_VARIANTS;
-    return (
-      providerVariants[
-        `${selected.model.providerID}::${selected.model.modelID}`
-      ] ?? ALL_INTELLIGENCE_VARIANTS
-    );
-  }, [selected, providerVariants]);
-  const selectedVariant = useMemo(
-    () => parseAgentFrontmatter(draft).variant ?? "",
+  const providerModels = useProviderModels();
+  // Draft-based so the model/effort dropdowns track unsaved textarea edits
+  // (e.g. typing a different `model:` line) immediately.
+  const selectedFrontmatter = useMemo(
+    () => parseAgentFrontmatter(draft),
     [draft],
   );
+  const selectedModelValue = useMemo(() => {
+    const model = selectedFrontmatter.model;
+    return model ? `${model.providerID}::${model.modelID}` : "";
+  }, [selectedFrontmatter.model]);
+  const selectedModelOptions = useMemo(
+    () => ensureModelOption(providerModels.modelOptions, selectedModelValue),
+    [providerModels.modelOptions, selectedModelValue],
+  );
+  const selectedVariantOptions = useMemo(() => {
+    if (!selectedFrontmatter.model) return ALL_INTELLIGENCE_VARIANTS;
+    return (
+      providerModels.variantsMap[selectedModelValue] ??
+      ALL_INTELLIGENCE_VARIANTS
+    );
+  }, [providerModels.variantsMap, selectedModelValue, selectedFrontmatter.model]);
+  const selectedVariant = selectedFrontmatter.variant ?? "";
   const switchesBusy = busyName !== null || busyProvider !== null;
 
   const providerGroups = useMemo(() => {
@@ -825,7 +839,15 @@ export function AgentsSettings() {
                   {selected.sourcePath ?? "ビルトイン（ファイルなし）"}
                 </p>
                 <p className="mt-1">
-                  <ModelLabel agent={selected} />
+                  {selected.file ? (
+                    <span className="min-w-0 break-words font-mono text-xs text-muted">
+                      {selectedFrontmatter.model
+                        ? `${selectedFrontmatter.model.providerID} / ${selectedFrontmatter.model.modelID}`
+                        : "未設定"}
+                    </span>
+                  ) : (
+                    <ModelLabel agent={selected} />
+                  )}
                 </p>
                 {selected.description && (
                   <p className="mt-1 text-xs text-muted">{selected.description}</p>
@@ -835,20 +857,39 @@ export function AgentsSettings() {
               {selected.file ? (
                 <>
                   <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className="text-xs font-medium text-muted">モデル</span>
+                    <ModelSelect
+                      value={selectedModelValue}
+                      options={selectedModelOptions}
+                      disabled={savingFile || switchesBusy}
+                      emptyLabel="未設定"
+                      ariaLabel="モデル"
+                      onChange={(value) =>
+                        setDraft(
+                          setAgentScalar(
+                            draft,
+                            "model",
+                            value ? value.split("::").join("/") : "",
+                          ),
+                        )
+                      }
+                    />
                     <span className="text-xs font-medium text-muted">
                       推論 effort
                     </span>
                     <IntelligenceSelect
                       variants={selectedVariantOptions}
                       value={selectedVariant}
-                      disabled={savingFile || switchesBusy || !selected.model}
+                      disabled={
+                        savingFile || switchesBusy || !selectedFrontmatter.model
+                      }
                       onChange={(value) =>
                         setDraft(setAgentScalar(draft, "variant", value))
                       }
                     />
-                    {!selected.model && (
+                    {!selectedFrontmatter.model && (
                       <span className="text-[11px] text-faint">
-                        model が未設定のため適用されません
+                        モデルが未設定のため effort は適用されません
                       </span>
                     )}
                     {selectedVariant && (

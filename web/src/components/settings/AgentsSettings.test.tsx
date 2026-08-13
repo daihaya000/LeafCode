@@ -433,7 +433,8 @@ describe("AgentsSettings", () => {
                 name: "a-explorer-openai-gpt-5",
                 displayPath: "~/.config/opencode/agents/a-explorer-openai-gpt-5.md",
                 exists: true,
-                content: "---\ndescription: Explores the codebase\ntemperature: 0.2\n---\n",
+                content:
+                  "---\ndescription: Explores the codebase\nmodel: openai/gpt-5\ntemperature: 0.2\n---\n",
                 enabled: true,
               },
             ],
@@ -516,6 +517,93 @@ describe("AgentsSettings", () => {
 
     const trigger = screen.getByRole("button", { name: "インテリジェンス" });
     expect((trigger as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("model が未設定のため適用されません")).toBeTruthy();
+    expect(
+      screen.getByText("モデルが未設定のため effort は適用されません"),
+    ).toBeTruthy();
+  });
+
+  it("sets the model via the dropdown and saves it", async () => {
+    let putBody: string | undefined;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/extensions/agent-files/")) {
+        putBody = init?.body ? String(init.body) : undefined;
+      }
+      if (url.includes("/api/extensions/provider-models")) {
+        return new Response(
+          JSON.stringify({
+            providers: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                enabled: true,
+                models: [{ id: "gpt-5", name: "GPT-5" }],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/extensions/agent-files")) {
+        return new Response(
+          JSON.stringify({
+            files: [
+              {
+                name: "no-model-agent",
+                displayPath: "~/.config/opencode/agents/no-model-agent.md",
+                exists: true,
+                content: "---\ndescription: No model\n---\n",
+                enabled: true,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/extensions/agents")) {
+        return new Response(
+          JSON.stringify({
+            agents: [
+              {
+                name: "no-model-agent",
+                mode: "subagent",
+                enabled: true,
+                toggleable: true,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/host")) {
+        return new Response(JSON.stringify(HOST_OK), { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentsSettings />);
+    await screen.findByText("no-model-agent");
+    fireEvent.click(screen.getAllByRole("button", { name: /no-model-agent/ })[0]);
+
+    // Selecting a model enables the previously disabled effort dropdown.
+    fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
+    fireEvent.click(await screen.findByRole("option", { name: "GPT-5" }));
+
+    const editor = screen.getByRole("textbox", {
+      name: "エージェント「no-model-agent」の内容",
+    });
+    expect((editor as HTMLTextAreaElement).value).toContain("model: openai/gpt-5");
+    expect(
+      (screen.getByRole("button", { name: "インテリジェンス" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "エージェントを保存" }));
+    await waitFor(() => {
+      expect(putBody).toBeTruthy();
+      const body = JSON.parse(String(putBody));
+      expect(body.content).toContain("model: openai/gpt-5");
+    });
   });
 });
