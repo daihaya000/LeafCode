@@ -11,9 +11,9 @@ import {
   isTokenSavingMode,
 } from "./token-saving-settings";
 import { OcError, ocServer } from "./oc-server";
-import { assertSafeOpenCodeSessionId } from "./opencode-id";
 import {
   SESSION_STATUS_PATH,
+  activeCompactPath,
   activeSessionMessagePath,
 } from "./opencode-paths";
 import type { MessageWithParts } from "./types";
@@ -92,7 +92,12 @@ export async function autoCompactGoalLoop(
     return "conflict";
   }
   try {
-    await ocServer(directory, `/api/session/${assertSafeOpenCodeSessionId(loop.sessionId)}/compact`, {
+    // Must go through the path builder. Interpolating
+    // `assertSafeOpenCodeSessionId(...)` (which returns void) produced
+    // `/api/session/undefined/compact`, and the engine answered 400
+    // "Invalid session ID" — a non-transient error that paused the loop with
+    // `scheduler_error` and reproduced on every resume.
+    await ocServer(directory, activeCompactPath(loop.sessionId), {
       method: "POST",
       body: {},
       timeoutMs: COMPACT_TIMEOUT_MS,

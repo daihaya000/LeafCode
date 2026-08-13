@@ -1486,7 +1486,12 @@ describe("goal loop server-side auto compact", () => {
     testDb.prepare("DELETE FROM session_compaction_locks WHERE session_id = ?").run("sess-1");
     h.compactedMessageResponse = [msg("m0", "assistant"), tokenMsg("a0", 20)];
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
-    expect(h.ocCalls.some((call) => call.path.endsWith("/compact"))).toBe(true);
+    // The path must carry the real session id. A previous build interpolated
+    // `assertSafeOpenCodeSessionId()` (void) and hit
+    // `/api/session/undefined/compact`, which the engine rejects with 400
+    // "Invalid session ID" — the loop then paused on every resume.
+    const compactCalls = h.ocCalls.filter((call) => call.path.endsWith("/compact"));
+    expect(compactCalls.map((call) => call.path)).toEqual(["/api/session/sess-1/compact"]);
     expect(h.promptAsyncCount).toBe(1);
   });
 
