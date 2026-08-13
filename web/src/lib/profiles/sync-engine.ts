@@ -12,11 +12,8 @@ import { readLinkState } from "./link";
 import { globalConfigLinkPath } from "./paths";
 import { stripJsonc } from "./jsonc";
 import {
-  filterEnv,
-  opencodeMcpToClaude,
-  opencodeMcpToCodex,
+  buildTargets,
   replaceCodexMcpTables,
-  type ClaudeMcpEntry,
   type McpDefinition,
 } from "../../../../scripts/lib/sync-utils.mjs";
 
@@ -108,43 +105,6 @@ export function parseJsonSettings(text: string): { mcpServers?: unknown } {
   return JSON.parse(text) as { mcpServers?: unknown };
 }
 
-type CursorMcpEntry = Omit<ClaudeMcpEntry, "type">;
-
-function opencodeMcpToCursor(name: string, def: McpDefinition): CursorMcpEntry | null {
-  const entry: CursorMcpEntry = {};
-  if (def.type === "remote") {
-    if (def.url) entry.url = def.url;
-    const headers = filterEnv(def.headers);
-    if (Object.keys(headers).length) entry.headers = headers;
-    return entry;
-  }
-  const cmd = def.command || [];
-  if (cmd[0]) entry.command = cmd[0];
-  if (cmd.length > 1) entry.args = cmd.slice(1);
-  const env = filterEnv(def.environment);
-  if (Object.keys(env).length) entry.env = env;
-  return entry;
-}
-
-function buildTargets(mcp: Record<string, McpDefinition>) {
-  const codexBlocks: string[] = [];
-  const claudeServers: Record<string, ClaudeMcpEntry> = {};
-  const cursorServers: Record<string, CursorMcpEntry> = {};
-  const names: string[] = [];
-  for (const [name, def] of Object.entries(mcp)) {
-    if (!isDistributableMcpServer(name)) continue;
-    if (def.enabled === false) continue;
-    const c = opencodeMcpToCodex(name, def);
-    if (c) codexBlocks.push(c);
-    const cl = opencodeMcpToClaude(name, def);
-    if (cl) claudeServers[name] = cl;
-    const cursor = opencodeMcpToCursor(name, def);
-    if (cursor) cursorServers[name] = cursor;
-    names.push(name);
-  }
-  return { codexBlocks, claudeServers, cursorServers, names };
-}
-
 /**
  * Read the current master opencode MCP config and the targets' sync state.
  * Returns status info without writing anything.
@@ -198,7 +158,7 @@ export function planSync(): SyncPlan {
   }
   const master = readJsonc(paths.opencode);
   const mcp = master.mcp || {};
-  const { codexBlocks, claudeServers, cursorServers, names } = buildTargets(mcp);
+  const { codexBlocks, claudeServers, cursorServers, names } = buildTargets(mcp, { isDistributable: isDistributableMcpServer });
 
   const targets: Record<string, CodexTargetStatus> = {};
 
@@ -295,7 +255,7 @@ export function applySync(): SyncApplyResult {
   }
   const master = readJsonc(paths.opencode);
   const mcp = master.mcp || {};
-  const { codexBlocks, claudeServers, cursorServers, names } = buildTargets(mcp);
+  const { codexBlocks, claudeServers, cursorServers, names } = buildTargets(mcp, { isDistributable: isDistributableMcpServer });
 
   const targets: Record<string, CodexApplyResult> = {};
   let changed = 0;

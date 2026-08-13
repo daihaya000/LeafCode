@@ -22,7 +22,7 @@ import { readFileSync, writeFileSync, existsSync, lstatSync, readlinkSync, rmdir
 import { homedir } from "node:os";
 import path from "node:path";
 import { readJsonc, stripJsonc } from "./lib/jsonc.mjs";
-import { envValueToClaude, envValueToCodex, filterEnv, isEnvRef, opencodeMcpToClaude, opencodeMcpToCodex, replaceCodexMcpTables, tomlArray, tomlString } from "./lib/sync-utils.mjs";
+import { envValueToClaude, envValueToCodex, filterEnv, isEnvRef, opencodeMcpToClaude, opencodeMcpToCodex, replaceCodexMcpTables, tomlArray, tomlString, buildTargets } from "./lib/sync-utils.mjs";
 
 const HOME = homedir();
 const OPENCODE_CONFIG_LINK = path.join(HOME, ".config", "opencode");
@@ -53,21 +53,6 @@ function resolveActiveOpencodeConfigPath() {
 }
 
 const OPENCODE_CONFIG = resolveActiveOpencodeConfigPath();
-
-function buildTargets(mcp) {
-  const codexBlocks = [];
-  const claudeServers = {};
-  const names = [];
-  for (const [name, def] of Object.entries(mcp)) {
-    if (def.enabled === false) continue;
-    const c = opencodeMcpToCodex(name, def);
-    if (c) codexBlocks.push(c);
-    const cl = opencodeMcpToClaude(name, def);
-    if (cl) claudeServers[name] = cl;
-    names.push(name);
-  }
-  return { codexBlocks, claudeServers, names };
-}
 
 /**
  * Parse `~/.claude/settings.json`. Unlike the master `opencode.jsonc`, it must

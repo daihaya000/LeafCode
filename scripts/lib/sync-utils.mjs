@@ -98,6 +98,47 @@ export function opencodeMcpToClaude(name, def) {
   return entry;
 }
 
+export function opencodeMcpToCursor(name, def) {
+  const entry = {};
+  if (def.type === "remote") {
+    if (def.url) entry.url = def.url;
+    const headers = filterEnv(def.headers);
+    if (Object.keys(headers).length) entry.headers = headers;
+    return entry;
+  }
+  const cmd = def.command || [];
+  if (cmd[0]) entry.command = cmd[0];
+  if (cmd.length > 1) entry.args = cmd.slice(1);
+  const env = filterEnv(def.environment);
+  if (Object.keys(env).length) entry.env = env;
+  return entry;
+}
+
+/**
+ * Build per-target MCP representations from the opencode master config.
+ * `isDistributable` filters names that must not be distributed (e.g. the
+ * bundled Browser Bridge); the CLI historically applied no filter and keeps
+ * that behaviour by omitting the option.
+ */
+export function buildTargets(mcp, { isDistributable = () => true } = {}) {
+  const codexBlocks = [];
+  const claudeServers = {};
+  const cursorServers = {};
+  const names = [];
+  for (const [name, def] of Object.entries(mcp)) {
+    if (!isDistributable(name)) continue;
+    if (def.enabled === false) continue;
+    const c = opencodeMcpToCodex(name, def);
+    if (c) codexBlocks.push(c);
+    const cl = opencodeMcpToClaude(name, def);
+    if (cl) claudeServers[name] = cl;
+    const cursor = opencodeMcpToCursor(name, def);
+    if (cursor) cursorServers[name] = cursor;
+    names.push(name);
+  }
+  return { codexBlocks, claudeServers, cursorServers, names };
+}
+
 export function replaceCodexMcpTables(tomlText, newBlocks) {
   const lines = tomlText.split(/\r?\n/);
   const out = [];

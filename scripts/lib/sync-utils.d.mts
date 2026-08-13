@@ -18,6 +18,8 @@ export type ClaudeMcpEntry = {
   env?: EnvMap;
 };
 
+export type CursorMcpEntry = Omit<ClaudeMcpEntry, "type">;
+
 export function tomlString(v: string): string;
 
 export function tomlArray(arr: string[]): string;
@@ -39,6 +41,21 @@ export function opencodeMcpToClaude(
   name: string,
   def: McpDefinition,
 ): ClaudeMcpEntry | null;
+
+export function opencodeMcpToCursor(
+  name: string,
+  def: McpDefinition,
+): CursorMcpEntry | null;
+
+export function buildTargets(
+  mcp: Record<string, McpDefinition>,
+  options?: { isDistributable?: (name: string) => boolean },
+): {
+  codexBlocks: string[];
+  claudeServers: Record<string, ClaudeMcpEntry>;
+  cursorServers: Record<string, CursorMcpEntry>;
+  names: string[];
+};
 
 export function replaceCodexMcpTables(
   tomlText: string,
