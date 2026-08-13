@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetStaleCacheForTests } from "@/lib/stale-cache";
 import { ProfilesSettings } from "./ProfilesSettings";
 
 const HOST_OK = { ok: true, controlUrl: "http://127.0.0.1:1" };
@@ -59,6 +60,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  // `/api/profiles` is stale-cached (persist: true); without this the memory
+  // cache leaks the previous test's response and breaks later tests.
+  resetStaleCacheForTests();
 });
 
 describe("ProfilesSettings", () => {

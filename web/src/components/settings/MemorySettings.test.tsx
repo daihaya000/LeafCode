@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetStaleCacheForTests } from "@/lib/stale-cache";
 import { MemorySettings } from "./MemorySettings";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -91,6 +92,9 @@ describe("MemorySettings", () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    // `/api/settings/` (and friends) is stale-cached (persist: true);
+    // without this the memory cache leaks the previous test's response.
+    resetStaleCacheForTests();
   });
 
   it("lists the workspace and approved/candidate memories across tabs", async () => {
