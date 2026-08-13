@@ -26,6 +26,11 @@
 import { existsSync, statSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  isWindowsPeExecutable,
+  npmOpencodeSiblingExe,
+  wingetLinkPath,
+} from './lib/opencode-path.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -86,18 +91,6 @@ export function findOnPath(name, { pathEnv, pathext } = {}) {
   return null;
 }
 
-/** WinGet Links shim location for a tool name (LOCALAPPDATA installs). */
-function wingetLinkPath(name, localAppData) {
-  if (!localAppData) return null;
-  return join(localAppData, 'Microsoft', 'WinGet', 'Links', `${name}.exe`);
-}
-
-/** npm global shim target for opencode (postinstall-placed real binary). */
-function npmOpencodeBinary(appData) {
-  if (!appData) return null;
-  return join(appData, 'npm', 'node_modules', 'opencode-ai', 'bin', 'opencode.exe');
-}
-
 /**
  * Locate a runnable opencode without executing it.
  * Returns { code, path }: code 0 = runnable found (real .exe on PATH, WinGet
@@ -110,11 +103,11 @@ export function locateOpencode({ apdata, localApdata } = {}) {
   const appData = apdata ?? process.env.APPDATA;
   const localAppData = localApdata ?? process.env.LOCALAPPDATA;
   const found = findOnPath('opencode');
-  if (found && /\.exe$/i.test(found)) return { code: 0, path: found };
+  if (found && /\.exe$/i.test(found) && isWindowsPeExecutable(found)) return { code: 0, path: found };
   const winget = wingetLinkPath('opencode', localAppData);
   if (winget && existsSync(winget)) return { code: 0, path: winget };
-  const npmBinary = npmOpencodeBinary(appData);
-  if (found && npmBinary && existsSync(npmBinary)) return { code: 0, path: npmBinary };
+  const npmBinary = found ? npmOpencodeSiblingExe(found) : null;
+  if (npmBinary && existsSync(npmBinary)) return { code: 0, path: npmBinary };
   if (found) return { code: 2, path: found };
   return { code: 1, path: null };
 }
