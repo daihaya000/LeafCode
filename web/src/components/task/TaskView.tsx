@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 
 import { AccessModeSelect } from "@/components/AccessModeSelect";
-import { Composer, type ComposerAttachment } from "@/components/Composer";
+import { Composer } from "@/components/Composer";
 import { GoalLoopOptions, GoalLoopToggle } from "@/components/GoalLoopComposer";
 import { AutoOptimizeSelect } from "@/components/AutoOptimizeSelect";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
@@ -121,6 +121,11 @@ import { useSessionPermissions } from "./use-session-permissions";
 import { useGoalLoop } from "./use-goal-loop";
 import { useAutoTask } from "./use-auto-task";
 import { useTaskModelConfig } from "./use-task-model-config";
+import {
+  useComposerSend,
+  type Attachment,
+  type QueuedFollowUp,
+} from "./use-composer-send";
 import { prepareAttachedImage } from "@/lib/prepare-attached-image";
 import {
   AUTO_MODEL_OPTION,
@@ -286,15 +291,6 @@ type AgentResponse = {
   model?: { modelID: string; providerID: string };
 }[];
 
-type Attachment = ComposerAttachment;
-type DeliveryMode = "steer" | "queue";
-type QueuedFollowUp = {
-  id: number;
-  text: string;
-  attachments: Attachment[];
-  /** Composer scope that enqueued this item — never drain on another session. */
-  scopeKey: string;
-};
 
 type ComposerDraft = { input: string; attachments: Attachment[] };
 
@@ -653,6 +649,34 @@ export function TaskView({
     providerModelsMap,
     setProviderModelsMap,
   } = useTaskModelConfig(taskId);
+  const {
+    input,
+    setInput,
+    sendError,
+    setSendError,
+    tokenSavingNotice,
+    setTokenSavingNotice,
+    dismissedSessionError,
+    setDismissedSessionError,
+    deliveryMode,
+    setDeliveryMode,
+    queuedFollowUps,
+    setQueuedFollowUps,
+    queuedAutoSend,
+    setQueuedAutoSend,
+    taskActionBusy,
+    setTaskActionBusy,
+    attachments,
+    setAttachments,
+    sending,
+    setSending,
+    resumingTurn,
+    setResumingTurn,
+    resumeTurnError,
+    setResumeTurnError,
+    sendingScopeKey,
+    setSendingScopeKey,
+  } = useComposerSend();
   const router = useRouter();
   const { setExtras } = useShellExtras();
   const setActiveScope = useShellSetActiveScope();
@@ -712,20 +736,10 @@ export function TaskView({
   // Initialize from the actual matchMedia to avoid desktop permanent collapse
   // (isMd starts false on SSR/first paint, causing initialCollapsed=true on desktop).
   const sideDragRef = useRef<{ x: number; w: number } | null>(null);
-  const [input, setInput] = useState("");
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [tokenSavingNotice, setTokenSavingNotice] = useState<string | null>(null);
-  const [dismissedSessionError, setDismissedSessionError] = useState<string | null>(null);
-  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("queue");
-  const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
-  const [queuedAutoSend, setQueuedAutoSend] = useState(false);
   const nextQueueIdRef = useRef(1);
   /** After abort, do not auto-drain this scope until the user sends explicitly. */
   const queueHoldScopesRef = useRef(new Set<string>());
   const sendingFromQueueRef = useRef(false);
-  const [taskActionBusy, setTaskActionBusy] = useState<
-    "remove" | "session" | "restore" | "workflow" | null
-  >(null);
   const [workflowConfirmOpen, setWorkflowConfirmOpen] = useState(false);
   const [taskToStandardConfirmOpen, setTaskToStandardConfirmOpen] = useState(false);
   const [pendingTaskDelete, setPendingTaskDelete] = useState<{
@@ -742,7 +756,6 @@ export function TaskView({
   const revertConfirmRef = useRef<HTMLDivElement | null>(null);
   const revertTriggerRef = useRef<HTMLElement | null>(null);
   const modelTouchedRef = useRef(false);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const inputRef = useRef(input);
   const attachmentsRef = useRef(attachments);
   const composerScopeRef = useRef("");
@@ -1049,7 +1062,7 @@ export function TaskView({
       el.style.height = "auto";
       el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
     });
-  }, [composerScopeKey]);
+  }, [composerScopeKey, setAttachments, setInput]);
 
   useEffect(() => {
     return () => {
@@ -1236,7 +1249,7 @@ export function TaskView({
     return () => {
       cancelled = true;
     };
-  }, [task?.id, task?.sessionId]);
+  }, [task?.id, task?.sessionId, setSendError]);
 
   // Apply localStorage のスキル権限を、タスクを開いた／セッションを切り替えた／
   // 新規セッションを bind したタイミングで OpenCode 側へ同期する。
@@ -1261,7 +1274,7 @@ export function TaskView({
     return () => {
       cancelled = true;
     };
-  }, [task?.id, task?.sessionId]);
+  }, [task?.id, task?.sessionId, setSendError]);
 
   // アクセスモードを OpenCode 側の `edit` ルールとして同期する。
   // OpenCode の既定ルールセットは `{"*": "allow"}` 始まりで `edit` を素通しする
@@ -1331,7 +1344,7 @@ export function TaskView({
     pendingDescendantSessionIds,
     clearPendingDescendants,
     accessEnsureRetry,
-, setAccessEnsureRetry]);
+, setAccessEnsureRetry, setSendError]);
 
   useEffect(() => {
     setAccessEnsureRetry(0);
@@ -1396,7 +1409,7 @@ export function TaskView({
         setAccessModeSaving(false);
       }
     },
-    [accessMode, accessModeSaving, task?.executionMode, task?.id, task?.sessionId, setAccessMode, setAccessModeSaving],
+    [accessMode, accessModeSaving, task?.executionMode, task?.id, task?.sessionId, setAccessMode, setAccessModeSaving, setSendError],
   );
 
   const changeSubagentPermission = useCallback(
@@ -1424,7 +1437,7 @@ export function TaskView({
         setSubagentPermissionSaving(false);
       }
     },
-    [subagentPermission, subagentPermissionSaving, task?.id, task?.sessionId, setSubagentPermission, setSubagentPermissionSaving],
+    [subagentPermission, subagentPermissionSaving, task?.id, task?.sessionId, setSubagentPermission, setSubagentPermissionSaving, setSendError],
   );
 
   const changeSkillPermission = useCallback(
@@ -1452,7 +1465,7 @@ export function TaskView({
         setSkillPermissionSaving(false);
       }
     },
-    [skillPermission, skillPermissionSaving, task?.id, task?.sessionId, setSkillPermission, setSkillPermissionSaving],
+    [skillPermission, skillPermissionSaving, task?.id, task?.sessionId, setSkillPermission, setSkillPermissionSaving, setSendError],
   );
 
   // Persist right-panel display state so it survives task/session switches.
@@ -2190,7 +2203,7 @@ export function TaskView({
       modelTouchedRef.current = true;
     }
     setGoalLoopEnabled(nextEnabled);
-  }, [goalLoop, goalLoopEnabled, setGoalLoopAcceptance, setGoalLoopEnabled, setGoalLoopForceFullRun, setGoalLoopMaxTurns, setAgent, setIntelligence, setModel]);
+  }, [goalLoop, goalLoopEnabled, setGoalLoopAcceptance, setGoalLoopEnabled, setGoalLoopForceFullRun, setGoalLoopMaxTurns, setAgent, setIntelligence, setModel, setInput]);
 
   const changeGoalLoopState = useCallback(
     async (action: "pause" | "resume" | "stop" | "finish") => {
@@ -2300,12 +2313,8 @@ export function TaskView({
     stream.visibleMessages.length > 0 &&
     stream.permissions.length === 0 &&
     stream.questions.length === 0;
-  const [sending, setSending] = useState(false);
   /** POST in flight for the manual "再開" of an interrupted/silent turn. */
-  const [resumingTurn, setResumingTurn] = useState(false);
-  const [resumeTurnError, setResumeTurnError] = useState<string | null>(null);
   /** Scope that owns the in-flight send — other sessions must stay editable. */
-  const [sendingScopeKey, setSendingScopeKey] = useState<string | null>(null);
   const sendingScopeRef = useRef<string | null>(null);
   const autoCompactInFlightRef = useRef(false);
   const autoCompactCooldownRef = useRef<number>(0);
@@ -2317,7 +2326,7 @@ export function TaskView({
     // 再開の失敗表示は中断したセッション固有なので、切り替え時に持ち越さない。
     setResumingTurn(false);
     setResumeTurnError(null);
-  }, [task?.sessionId]);
+  }, [task?.sessionId, setResumeTurnError, setResumingTurn]);
   const composerLocked =
     (sending && sendingScopeKey === composerScopeKey) || goalLoopStarting;
   const voiceDisabled = composerLocked || !task?.sessionId;
@@ -2363,7 +2372,7 @@ export function TaskView({
       }
       await streamAbort(reason);
     },
-    [composerScopeKey, streamAbort],
+    [composerScopeKey, streamAbort, setQueuedAutoSend],
   );
   const markTaskHang = useCallback(() => {
     if (!working || stream.aborting) return;
@@ -2633,7 +2642,7 @@ export function TaskView({
         err instanceof Error ? err.message : "タイトルの再生成に失敗しました";
       setSendError(`タイトルを更新できませんでした: ${message}`);
     }
-  }, []);
+  }, [setSendError]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -2958,7 +2967,7 @@ export function TaskView({
     deliveryMode,
     contextUsage,
     task?.directory,
-, setGoalLoop, setGoalLoopError, setAutoFollowUpNotice]);
+, setGoalLoop, setGoalLoopError, setAutoFollowUpNotice, setAttachments, setInput, setQueuedFollowUps, setSendError, setSending, setSendingScopeKey, setTokenSavingNotice]);
 
   // Drain only follow-ups that belong to the currently viewed session. Queue
   // items keep their scopeKey so switching sessions cannot auto-send another
@@ -2994,7 +3003,7 @@ export function TaskView({
     queuedFollowUps,
     sending,
     working,
-  ]);
+, setAttachments, setInput, setQueuedAutoSend, setQueuedFollowUps]);
 
   useEffect(() => {
     if (!queuedAutoSend || working || sending || goalLoopBlocksThisSession) return;
@@ -3022,7 +3031,7 @@ export function TaskView({
     send,
     sending,
     working,
-  ]);
+, setQueuedAutoSend]);
 
   const syncCursor = useCallback(() => {
     const el = textareaRef.current;
@@ -3045,7 +3054,7 @@ export function TaskView({
         el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
       });
     },
-    [input, cursor],
+    [input, cursor, setInput],
   );
 
   const applyAgentMention = useCallback(
@@ -3064,7 +3073,7 @@ export function TaskView({
         el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
       });
     },
-    [input, cursor],
+    [input, cursor, setInput],
   );
 
   // Resolve the model that will actually serve the prompt: the selected
@@ -3137,13 +3146,13 @@ export function TaskView({
         `一部の画像をスキップしました（上限 ${MAX_IMAGE_COUNT} 枚 / ${Math.floor(MAX_IMAGE_SIZE_BYTES / (1024 * 1024))} MB）。`,
       );
     }
-  }, [imageInputAvailable]);
+  }, [imageInputAvailable, setAttachments, setSendError]);
 
   const removeAttachment = useCallback((index: number) => {
     const next = attachmentsRef.current.filter((_, i) => i !== index);
     attachmentsRef.current = next;
     setAttachments(next);
-  }, []);
+  }, [setAttachments]);
 
   const onPaste = useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -3199,7 +3208,7 @@ export function TaskView({
     } finally {
       notifyTasksChanged();
     }
-  }, [working, stream, touchActivity, refreshSessionTitle, setAgent, setIntelligence]);
+  }, [working, stream, touchActivity, refreshSessionTitle, setAgent, setIntelligence, setSendError]);
 
   /**
    * 中断（`MessageAbortedError`）または無言終了したターンを、同じプロンプトの
@@ -3233,7 +3242,7 @@ export function TaskView({
         notifyTasksChanged();
       }
     },
-    [working, resumingTurn, stream, touchActivity, intelligence],
+    [working, resumingTurn, stream, touchActivity, intelligence, setResumeTurnError, setResumingTurn],
   );
 
   const intelligenceVariants = useMemo(() => {
@@ -3428,7 +3437,7 @@ export function TaskView({
     } finally {
       setTaskActionBusy(null);
     }
-  }, [task, taskId, router, taskActionBusy, onCloseSplit]);
+  }, [task, taskId, router, taskActionBusy, onCloseSplit, setSendError, setTaskActionBusy]);
 
   const convertToWorkflow = useCallback(async () => {
     if (!task || taskActionBusy) return;
@@ -3453,7 +3462,7 @@ export function TaskView({
     } finally {
       setTaskActionBusy(null);
     }
-  }, [refreshTask, task, taskActionBusy, setViewTab]);
+  }, [refreshTask, task, taskActionBusy, setViewTab, setSendError, setTaskActionBusy]);
 
   const convertToTask = useCallback(async () => {
     if (!task || taskActionBusy) return;
@@ -3495,7 +3504,7 @@ export function TaskView({
     } finally {
       setTaskActionBusy(null);
     }
-  }, [refreshTask, task, taskActionBusy, setViewTab]);
+  }, [refreshTask, task, taskActionBusy, setViewTab, setSendError, setTaskActionBusy]);
 
   const ensureSession = useCallback(async () => {
     if (!task || taskActionBusy) return;
@@ -3515,7 +3524,7 @@ export function TaskView({
     } finally {
       setTaskActionBusy(null);
     }
-  }, [task, refreshTask, taskActionBusy]);
+  }, [task, refreshTask, taskActionBusy, setSendError, setTaskActionBusy]);
 
   const restoreSession = useCallback(async () => {
     const restoreDirectory = task?.directory;
@@ -3543,7 +3552,7 @@ export function TaskView({
     } finally {
       setTaskActionBusy(null);
     }
-  }, [task?.directory, task?.sessionId, stream, taskActionBusy, setDiffKey]);
+  }, [task?.directory, task?.sessionId, stream, taskActionBusy, setDiffKey, setSendError, setTaskActionBusy]);
 
   // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
@@ -3669,7 +3678,7 @@ export function TaskView({
         el.setSelectionRange(len, len);
       });
     },
-    [],
+    [setAttachments, setInput],
   );
 
   const onVoiceTranscript = useCallback(
@@ -3690,7 +3699,7 @@ export function TaskView({
         el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
       });
     },
-    [],
+    [setInput],
   );
 
   // Session-level actions (compact / revert / unrevert) shared between the
@@ -3740,7 +3749,7 @@ export function TaskView({
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [revertConfirmOpen, cancelRevert]);
+  }, [revertConfirmOpen, cancelRevert, setAttachments, setInput]);
 
   /**
    * Mobile-only kebab menu groups. On md and above every action is surfaced
