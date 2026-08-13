@@ -1,11 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mirrorWebDir, resolveMirrorRoot } from "./web-build-mirror.mjs";
+import { resolveHostControlUrl } from "./lib/host-control.mjs";
 
 const defaultWebDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "web");
-const DEFAULT_CONTROL_URL = "http://127.0.0.1:18765";
 
 export function parseListeningPids(output, port) {
   const pids = new Set();
@@ -89,39 +88,6 @@ function webUiPort(value) {
 }
 
 const defaultSleep = (ms) => new Promise((done) => setTimeout(done, ms));
-
-/**
- * Resolve the tray host's localhost control-plane base URL.
- * env → %APPDATA%\opencode-webui\host-control.json → default port.
- */
-export function resolveHostControlUrl({
-  env = process.env,
-  exists = existsSync,
-  read = readFileSync,
-} = {}) {
-  const fromEnv = env.OPENCODE_WEBUI_HOST_CONTROL_URL?.trim();
-  if (fromEnv) return fromEnv.replace(/\/+$/, "");
-
-  const appData = env.APPDATA;
-  if (appData) {
-    const file = join(appData, "opencode-webui", "host-control.json");
-    if (exists(file)) {
-      try {
-        const data = JSON.parse(read(file, "utf8"));
-        if (typeof data.url === "string" && data.url.trim()) {
-          return data.url.trim().replace(/\/+$/, "");
-        }
-        if (typeof data.port === "number" && Number.isFinite(data.port)) {
-          return `http://127.0.0.1:${data.port}`;
-        }
-      } catch {
-        // fall through to the default
-      }
-    }
-  }
-
-  return DEFAULT_CONTROL_URL;
-}
 
 async function hostControlIsHealthy(controlUrl, doFetch, timeoutMs) {
   try {
