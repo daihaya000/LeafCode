@@ -237,6 +237,13 @@ IMPROVEMENT.md が**行位置まで特定済み**なので、そのまま作業�
   まず `goal-scheduler.ts` が `workflow-scheduler.ts` と同じ構造を踏襲する形に揃え、
   4 スケジューラ（goal / workflow / hang-watchdog / memory-auto-extract）の共通化は Phase 7 で再評価
 
+> **2026-08-13 Phase 7 再評価（実施）**: 共通 scheduler 基盤（`lib/scheduler.ts`）は**不要**と判断。
+> 4 スケジューラ（goal-scheduler 413 行 / workflow-scheduler 705 行 / hang-watchdog 680 行 /
+> memory-auto-extract 334 行）を比較した結果、共通化できるのは `setInterval` のライフサイクル
+> （start/stop + tick 登録）の数行のみで、残りは各ドメインの状態機械が大部分を占める。
+> 各スケジューラは既に独立テスト済み（goalLoopTestSeams 等）であり、抽象化の利益よりも
+> 間接層のコストが上回る（YAGNI）。
+
 ### P3-c. `task-service.ts` の小分割（3-7）— 付随作業
 
 - コスト推定（61–177 行）を `task-cost.ts` へ。テスト 476 行があるため低リスク
