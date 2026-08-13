@@ -23,12 +23,15 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { readJsonc, stripJsonc } from "./lib/jsonc.mjs";
 import { envValueToClaude, envValueToCodex, filterEnv, isEnvRef, opencodeMcpToClaude, opencodeMcpToCodex, replaceCodexMcpTables, tomlArray, tomlString, buildTargets } from "./lib/sync-utils.mjs";
+import { applySync, planSync } from "./lib/sync-engine.mjs";
 
 const HOME = homedir();
 const OPENCODE_CONFIG_LINK = path.join(HOME, ".config", "opencode");
 const OPENCODE_CONFIG_DEFAULT = path.join(OPENCODE_CONFIG_LINK, "opencode.jsonc");
 const CODEX_CONFIG = path.join(HOME, ".codex", "config.toml");
 const CLAUDE_SETTINGS = path.join(HOME, ".claude", "settings.json");
+const CURSOR_CONFIG = path.join(HOME, ".cursor", "mcp.json");
+
 
 const dryRun = process.argv.includes("--check");
 
@@ -53,181 +56,20 @@ function resolveActiveOpencodeConfigPath() {
 }
 
 const OPENCODE_CONFIG = resolveActiveOpencodeConfigPath();
+const CLI_PATHS = {
+  opencode: OPENCODE_CONFIG,
+  codex: CODEX_CONFIG,
+  claude: CLAUDE_SETTINGS,
+  cursor: CURSOR_CONFIG,
+};
 
 /**
  * Parse `~/.claude/settings.json`. Unlike the master `opencode.jsonc`, it must
  * be strict JSON; a corrupted file used to crash the script with a raw
  * stack trace. Returns null and a user-facing message instead.
  */
-function readClaudeSettings() {
-  const original = readFileSync(CLAUDE_SETTINGS, "utf8");
-  try {
-    return { settings: JSON.parse(original), original };
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    return {
-      error: `skip: ${CLAUDE_SETTINGS} is not valid JSON (${detail})`,
-    };
-  }
-}
-
-function planSync() {
-  if (!existsSync(OPENCODE_CONFIG)) {
-    return {
-      ok: false,
-      error: `master not found: ${OPENCODE_CONFIG}`,
-      masterServers: [],
-      targets: {},
-    };
-  }
-  const master = readJsonc(OPENCODE_CONFIG);
-  const mcp = master.mcp || {};
-  const { codexBlocks, claudeServers, names } = buildTargets(mcp);
-
-  const targets = {};
-
-  if (existsSync(CODEX_CONFIG)) {
-    const original = readFileSync(CODEX_CONFIG, "utf8");
-    const next = replaceCodexMcpTables(original, codexBlocks);
-    const inSync = next === original;
-    targets.codex = {
-      exists: true,
-      inSync,
-      wouldChange: !inSync,
-      message: inSync
-        ? `already in sync (${names.length} servers)`
-        : `would rewrite mcp_servers (${names.length} servers)`,
-    };
-  } else {
-    targets.codex = {
-      exists: false,
-      inSync: false,
-      wouldChange: false,
-      message: `skip: ${CODEX_CONFIG} not found`,
-    };
-  }
-
-  if (existsSync(CLAUDE_SETTINGS)) {
-    const parsed = readClaudeSettings();
-    if ("error" in parsed) {
-      targets.claude = {
-        exists: true,
-        inSync: false,
-        wouldChange: false,
-        message: parsed.error,
-      };
-    } else {
-      const { settings } = parsed;
-      const before = JSON.stringify(settings.mcpServers ?? null);
-      settings.mcpServers = claudeServers;
-      const after = JSON.stringify(settings.mcpServers);
-      const inSync = before === after;
-      targets.claude = {
-        exists: true,
-        inSync,
-        wouldChange: !inSync,
-        message: inSync
-          ? `already in sync (${names.length} servers)`
-          : `would rewrite mcpServers (${names.length} servers)`,
-      };
-    }
-  } else {
-    targets.claude = {
-      exists: false,
-      inSync: false,
-      wouldChange: false,
-      message: `skip: ${CLAUDE_SETTINGS} not found`,
-    };
-  }
-
-  return { ok: true, masterServers: names, targets };
-}
-
-function applySync() {
-  if (!existsSync(OPENCODE_CONFIG)) {
-    return {
-      ok: false,
-      error: `master not found: ${OPENCODE_CONFIG}`,
-      masterServers: [],
-      changedFiles: 0,
-      targets: {},
-    };
-  }
-  const master = readJsonc(OPENCODE_CONFIG);
-  const mcp = master.mcp || {};
-  const { codexBlocks, claudeServers, names } = buildTargets(mcp);
-
-  const targets = {};
-  let changed = 0;
-
-  if (existsSync(CODEX_CONFIG)) {
-    const original = readFileSync(CODEX_CONFIG, "utf8");
-    const next = replaceCodexMcpTables(original, codexBlocks);
-    if (next !== original) {
-      writeFileSync(CODEX_CONFIG, next, "utf8");
-      changed++;
-      targets.codex = {
-        exists: true,
-        updated: true,
-        message: `wrote ${names.length} mcp_servers`,
-      };
-    } else {
-      targets.codex = {
-        exists: true,
-        updated: false,
-        message: `already in sync (${names.length} servers)`,
-      };
-    }
-  } else {
-    targets.codex = {
-      exists: false,
-      updated: false,
-      message: `skip: ${CODEX_CONFIG} not found`,
-    };
-  }
-
-  if (existsSync(CLAUDE_SETTINGS)) {
-    const parsed = readClaudeSettings();
-    if ("error" in parsed) {
-      targets.claude = {
-        exists: true,
-        updated: false,
-        message: parsed.error,
-      };
-    } else {
-      const { settings, original } = parsed;
-      const before = JSON.stringify(settings.mcpServers ?? null);
-      settings.mcpServers = claudeServers;
-      const after = JSON.stringify(settings.mcpServers);
-      if (before !== after) {
-        writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2) + "\n", "utf8");
-        changed++;
-        targets.claude = {
-          exists: true,
-          updated: true,
-          message: `wrote ${names.length} mcpServers`,
-        };
-      } else {
-        targets.claude = {
-          exists: true,
-          updated: false,
-          message: `already in sync (${names.length} servers)`,
-        };
-      }
-    }
-  } else {
-    targets.claude = {
-      exists: false,
-      updated: false,
-      message: `skip: ${CLAUDE_SETTINGS} not found`,
-    };
-  }
-
-  return { ok: true, masterServers: names, changedFiles: changed, targets };
-}
-
 if (dryRun) {
-  const plan = planSync();
+  const plan = planSync({ paths: CLI_PATHS });
   if (!plan.ok) {
     console.error(`[sync-profiles] ${plan.error}`);
     process.exit(2);
@@ -242,7 +84,7 @@ if (dryRun) {
   process.exit(0);
 }
 
-const result = applySync();
+const result = applySync({ paths: CLI_PATHS });
 if (!result.ok) {
   console.error(`[sync-profiles] ${result.error}`);
   process.exit(2);
