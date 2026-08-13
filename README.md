@@ -239,6 +239,7 @@ production build はリポジトリ内では実行されません。`scripts/web
 | [`docs/browser-bridge-setup.md`](./docs/browser-bridge-setup.md) | Browser Bridge MCP のセットアップ手順 |
 | [`BUG.md`](./BUG.md) | バグ発見のインベントリ（修正は本ファイル参照で別途実施） |
 | [`IMPROVEMENT.md`](./IMPROVEMENT.md) | リファクタリング / 改善余地のインベントリ（優先度別） |
+| [`REFACTORING_PLAN.md`](./REFACTORING_PLAN.md) | IMPROVEMENT.md の実行計画（Phase 0–7・依存順） |
 | [OpenCode Docs](https://opencode.ai/docs) | OpenCode 本体のドキュメント |
 
 ## ライセンス
