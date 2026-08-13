@@ -1,6 +1,7 @@
 import type { IntelligenceVariant } from "./model-variants";
-import type { SessionStatus } from "./types";
-
+import type { MessageWithParts, SessionStatus } from "./types";
+import { OcError } from "./oc-server";
+import { isIntelligenceVariant, type ProviderModelMeta } from "./model-variants";
 
 export type GoalLoopStatus =
   | "queued"
@@ -143,3 +144,235 @@ export type GoalLoopRow = {
 export type StatusMap = Record<string, SessionStatus>;
 
 export const TERMINAL_STATUSES: GoalLoopStatus[] = ["completed", "blocked", "stopped"];
+
+/** Bound transient OpenCode failures so one scheduler tick never retries forever. */
+const OPENCODE_RETRY_ATTEMPTS = 3;
+const OPENCODE_RETRY_DELAY_MS = 100;
+const MAX_ACCEPTANCE_ITEMS = 10;
+const MAX_ACCEPTANCE_CHARS = 2_000;
+export function transientOpenCodeStatus(err: unknown): number | null {
+  if (err instanceof OcError) return err.status;
+  if (
+    err &&
+    typeof err === "object" &&
+    "status" in err &&
+    typeof (err as { status?: unknown }).status === "number"
+  ) {
+    return (err as { status: number }).status;
+  }
+  return null;
+}
+
+/** Network errors have no status; only retry known transient HTTP failures. */
+export function isTransientOpenCodeError(err: unknown): boolean {
+  const status = transientOpenCodeStatus(err);
+  return status === null || status === 408 || (status >= 500 && status <= 599);
+}
+
+/**
+ * HTTP statuses that mean "the prompt was NOT accepted, but resending
+ * immediately is unsafe or pointless". 409 (SessionBusyError) means the
+ * engine is already processing a prompt for this session — resending would
+ * either duplicate or immediately re-hit the busy state. 429 (rate limit)
+ * means the caller should back off, not retry right away. Treating these as
+ * ambiguous delivery (pause for a user decision) avoids a tight retry loop
+ * while preserving the non-idempotent prompt_async safety contract.
+ */
+const PROMPT_TRANSIENT_CONFLICT_STATUSES = new Set([409, 429]);
+
+/** True when `err` is a 409/429 that should pause instead of rollback+resend. */
+export function isTransientConflictPrompt(err: unknown): boolean {
+  const status = transientOpenCodeStatus(err);
+  return status !== null && PROMPT_TRANSIENT_CONFLICT_STATUSES.has(status);
+}
+
+/**
+ * `prompt_async` is non-idempotent. A network failure, timeout, or server
+ * failure may have accepted it despite the missing response, whereas a client
+ * error is an acknowledgement that OpenCode rejected the prompt. 409/429 are
+ * excluded: they are not a definite rejection, but an immediate resend is
+ * unsafe (busy session / rate limited), so the caller pauses instead.
+ */
+export function isDefinitelyRejectedPrompt(err: unknown): boolean {
+  const status = transientOpenCodeStatus(err);
+  return (
+    status !== null &&
+    status !== 408 &&
+    !isTransientConflictPrompt(err) &&
+    status >= 400 &&
+    status <= 499
+  );
+}
+
+export function promptErrorMessage(prefix: string, err: unknown): string {
+  const detail = err instanceof Error ? err.message : "OpenCode がプロンプトを拒否しました。";
+  return `${prefix}: ${Array.from(detail).slice(0, 3500).join("")}`;
+}
+
+export async function retryTransientOpenCode<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= OPENCODE_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (err) {
+      lastError = err;
+      if (!isTransientOpenCodeError(err) || attempt === OPENCODE_RETRY_ATTEMPTS) break;
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, OPENCODE_RETRY_DELAY_MS * attempt);
+      });
+    }
+  }
+  throw lastError;
+}
+
+export type ProviderResponse = {
+  all?: Array<{
+    id?: string;
+    models?: Record<string, ProviderModelMeta>;
+  }>;
+};
+
+export function providerModelsMap(response: ProviderResponse): Record<string, ProviderModelMeta> {
+  const result: Record<string, ProviderModelMeta> = {};
+  for (const provider of response.all ?? []) {
+    if (!provider.id || !provider.models) continue;
+    for (const [modelId, model] of Object.entries(provider.models)) {
+      result[`${provider.id}::${modelId}`] = model;
+    }
+  }
+  return result;
+}
+
+export type GoalLoopCompactionResult = "not_needed" | "compacted" | "conflict" | "retry";
+
+function safeJsonArray<T>(value: string, fallback: T[]): T[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? (parsed as T[]) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function toDto(row: GoalLoopRow): GoalLoopDto {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    sessionId: row.opencode_session_id,
+    status: row.status,
+    goal: row.goal,
+    acceptance: safeJsonArray<string>(row.acceptance, []),
+    maxTurns: row.max_turns,
+    turnCount: row.turn_count,
+    lastMessageId: row.last_message_id,
+    lastPromptAt: row.last_prompt_at,
+    agent: row.agent,
+    providerID: row.provider_id,
+    modelID: row.model_id,
+    variant: isIntelligenceVariant(row.variant) ? row.variant : null,
+    progress: safeJsonArray<GoalLoopProgress>(row.progress, []),
+    summary: row.summary,
+    evidence: row.evidence,
+    blockedReason: row.blocked_reason,
+    error: row.error,
+    revision: row.revision,
+    turnKind: toTurnKind(row.turn_kind),
+    pauseReason: toPauseReason(row.pause_reason),
+    rejectedClaims: row.rejected_claims ?? 0,
+    pauseRequested: row.pause_requested === 1,
+    forceFullRun: (row.force_full_run ?? 0) === 1,
+    dismissed: (row.dismissed ?? 0) === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function normalizeAcceptance(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return null;
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    if (trimmed.length > MAX_ACCEPTANCE_CHARS) return null;
+    out.push(trimmed);
+  }
+  // Reject rather than silently truncate: dropping acceptance criteria would let
+  // the loop verify against a different contract than the caller submitted.
+  if (out.length > MAX_ACCEPTANCE_ITEMS) return null;
+  return out;
+}
+
+export function latestMessageId(messages: MessageWithParts[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const id = messages[i]?.info?.id;
+    if (id) return id;
+  }
+  return null;
+}
+
+/**
+ * OpenCode splits one turn into many assistant messages (one per step), and
+ * only the last one carries the result payload we asked for. The latest
+ * message is therefore the only safe candidate: scanning backwards could
+ * consume an earlier completed result while a newer assistant step is still
+ * silent or streaming.
+ */
+export function finalAssistantAfter(
+  messages: MessageWithParts[],
+  lastMessageId: string | null,
+): MessageWithParts | null {
+  const start = boundaryStartIndex(messages, lastMessageId);
+  // The boundary is gone (reverted or pruned): we cannot tell this turn's reply
+  // from work that predates the loop, so refuse to pick one.
+  if (start === null) return null;
+  if (start >= messages.length) return null;
+  const last = messages[messages.length - 1];
+  return last?.info.role === "assistant" && typeof last.info.time?.completed === "number"
+    ? last
+    : null;
+}
+
+/**
+ * Index just past the read boundary, or `null` when the boundary message is no
+ * longer in the transcript.
+ *
+ * Returning `-1 + 1 === 0` for a missing boundary made the caller scan the
+ * whole transcript, so a reverted boundary let a reply from before the loop
+ * started be consumed as the current turn's result (and could jump the loop
+ * straight to `verifying_completed`). See docs/specs/goal-loop.md invariant I4.
+ */
+export function boundaryStartIndex(
+  messages: MessageWithParts[],
+  lastMessageId: string | null,
+): number | null {
+  if (!lastMessageId) return 0;
+  const index = messages.findIndex((m) => m.info.id === lastMessageId);
+  return index < 0 ? null : index + 1;
+}
+
+/** True when the loop has a read boundary that is no longer in the transcript. */
+export function boundaryLost(messages: MessageWithParts[], lastMessageId: string | null): boolean {
+  return boundaryStartIndex(messages, lastMessageId) === null;
+}
+
+/**
+ * `/session/status` omits sessions the engine is not actively tracking, so it
+ * cannot prove a turn ended. Fall back to the transcript: the last message must
+ * be a completed assistant that has stayed quiet for `quietMs`. Consecutive
+ * step messages are created within milliseconds of each other, so any real gap
+ * means the turn is over.
+ */
+export function transcriptIdleFor(
+  messages: MessageWithParts[],
+  quietMs: number,
+  now: number = Date.now(),
+): boolean {
+  const last = messages[messages.length - 1];
+  if (!last) return true;
+  if (last.info.role !== "assistant") return false;
+  const completed = last.info.time?.completed;
+  if (typeof completed !== "number") return false;
+  return now - completed >= quietMs;
+}
