@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cx, timeAgo } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
+import { useCodexUsage } from "./use-codex-usage";
 import {
   clampPercent,
   formatMonthlyTotal,
@@ -433,86 +434,53 @@ function ProviderSettingsRow({
 }
 
 export function CodexBarWidget() {
-  const [usage, setUsage] = useState<CodexBarUsage | null>(null);
-  const [tokens, setTokens] = useState<CodexTokensResult | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { usage, tokens, loadError, refreshing, refresh, now } = useCodexUsage();
   const [collapsed, setCollapsed] = useState(true);
   const [twoColumn, setTwoColumn] = useState(true);
   const [providerCollapsed, setProviderCollapsed] = useState<Record<string, boolean>>(
     {},
   );
-  const [refreshing, setRefreshing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
   const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
   const mounted = useRef(true);
 
-  const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const data = await getJson<CodexBarUsage>("/api/addons/codexbar/usage");
-      if (!mounted.current) return;
-      setUsage(data);
-      if (data.providers.length > 0) {
-        setProviderCollapsed((prev) => {
-          let saved: string | null = null;
-          try {
-            saved = readMigratedItem(PROVIDERS_KEY, LEGACY_PROVIDERS_KEY);
-          } catch {
-            /* ignore */
-          }
-          if (saved !== null) return prev;
-
-          const next = { ...prev };
-          for (const provider of data.providers) next[provider.id] = true;
-          saveProviderCollapsed(next);
-          return next;
-        });
+  // First load: expand all providers unless the user already saved a
+  // preference (useCodexUsage no longer touches this UI state).
+  useEffect(() => {
+    if (!usage || usage.providers.length === 0) return;
+    setProviderCollapsed((prev) => {
+      let saved: string | null = null;
+      try {
+        saved = readMigratedItem(PROVIDERS_KEY, LEGACY_PROVIDERS_KEY);
+      } catch {
+        /* ignore */
       }
-      setLoadError(null);
-    } catch (err) {
-      if (!mounted.current) return;
-      setLoadError(err instanceof Error ? err.message : "取得に失敗しました");
-    } finally {
-      if (mounted.current) setRefreshing(false);
-    }
-    // Token totals are best-effort and independent of the usage snapshot.
-    try {
-      const tok = await getJson<CodexTokensResult>("/api/addons/codexbar/tokens", {
-        days: "1",
-      });
-      if (mounted.current) setTokens(tok);
-    } catch {
-      /* leave previous tokens value */
-    }
+      if (saved !== null) return prev;
+
+      const next = { ...prev };
+      for (const provider of usage.providers) next[provider.id] = true;
+      saveProviderCollapsed(next);
+      return next;
+    });
+  }, [usage]);
+
+  // Restore persisted display preferences once on mount.
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   useEffect(() => {
-    mounted.current = true;
     setCollapsed(loadCollapsed());
     setTwoColumn(loadTwoColumn());
     setProviderCollapsed(loadProviderCollapsed());
-    void refresh();
-    const poll = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        setNow(Date.now());
-        void refresh();
-      }
-    }, POLL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void refresh();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      mounted.current = false;
-      clearInterval(poll);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [refresh]);
+  }, []);
 
   const toggleCollapsed = () => {
     setCollapsed((c) => {
