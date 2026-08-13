@@ -49,6 +49,7 @@ import {
 import { createHttpWaiter, procRunning } from './health.js';
 import { createOpencodeUpgrader } from './opencode-upgrade.js';
 import { allowFirewallPort, launchWindowsVoiceInput } from './windows-integration.js';
+import { createBrowserBridgeManager } from './browser-bridge.js';
 import { spawnNpm } from './npm-cli.js';
 import { readPort } from './port-config.js';
 import {
@@ -355,7 +356,14 @@ let caddyProc = null;
 let systray = null;
 /** @type {import('http').Server | null} */
 let controlServer = null;
-let browserBridgeBroker = null;
+const browserBridgeManager = createBrowserBridgeManager({
+  pairingFile: BROWSER_BRIDGE_PAIRING_FILE,
+  port: BROWSER_BRIDGE_PORT,
+  ensureDataDir,
+  log,
+  error,
+  WebSocketServer,
+});
 let quitting = false;
 let restartingServices = false;
 
@@ -380,36 +388,6 @@ const WEB_WATCHDOG_STARTUP_GRACE_MS = 60_000;
 const expectedWebExitPids = new Set();
 const expectedOpencodeExitPids = new Set();
 
-function browserBridgeEnvironment() {
-  if (!browserBridgeBroker) return {};
-  return {
-    OPENCODE_WEBUI_BROWSER_BROKER: browserBridgeBroker.url,
-    OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: browserBridgeBroker.internalToken,
-  };
-}
-
-function loadBrowserBridgePairing() {
-  if (!existsSync(BROWSER_BRIDGE_PAIRING_FILE)) return null;
-  try {
-    const value = JSON.parse(readFileSync(BROWSER_BRIDGE_PAIRING_FILE, 'utf8'));
-    if (value && typeof value === 'object' && !Array.isArray(value)
-      && typeof value.origin === 'string' && /^chrome-extension:\/\/[a-z]{16,64}$/.test(value.origin)
-      && typeof value.deviceKey === 'string' && /^[A-Za-z0-9_-]{20,}$/.test(value.deviceKey)) {
-      return { origin: value.origin, deviceKey: value.deviceKey };
-    }
-  } catch {}
-  try { unlinkSync(BROWSER_BRIDGE_PAIRING_FILE); } catch {}
-  return null;
-}
-
-function saveBrowserBridgePairing(value) {
-  ensureDataDir();
-  if (!value) {
-    try { unlinkSync(BROWSER_BRIDGE_PAIRING_FILE); } catch {}
-    return;
-  }
-  writeFileSync(BROWSER_BRIDGE_PAIRING_FILE, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
-}
 
 /** @type {string | null} */
 
@@ -674,7 +652,7 @@ function spawnOpencode(opencodePath) {
       env: {
         ...process.env,
         CURSOR_ACP_PROXY_PORT: String(proxyPort),
-        ...browserBridgeEnvironment(),
+        ...browserBridgeManager.environment(),
       },
     },
   );
@@ -1130,7 +1108,7 @@ async function spawnWeb() {
       // Preserve an explicit true/1 override for controlled rollout.
       OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT:
         process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? 'false',
-      ...browserBridgeEnvironment(),
+      ...browserBridgeManager.environment(),
       PORT: String(WEBUI_PORT),
       // Production serves the mirror's own `.next`, which is the default, so
       // any inherited NEXT_DIST_DIR must be cleared. Dev keeps its own value:
@@ -1954,29 +1932,6 @@ async function startControlServer() {
   log(`Host control listening on ${CONTROL_URL}`);
 }
 
-async function startBrowserBridgeBroker() {
-  if (browserBridgeBroker) return;
-  const broker = createBrowserBridgeBroker({
-    internalToken: randomBytes(32).toString('base64url'),
-    WebSocketServer,
-    persistedPairing: loadBrowserBridgePairing(),
-    onPairingChanged: (value) => {
-      try { saveBrowserBridgePairing(value); } catch (err) {
-        error(`Browser Bridge pairing state was not saved: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-  });
-  await broker.listen(BROWSER_BRIDGE_PORT);
-  browserBridgeBroker = broker;
-  log(`Browser Bridge Broker listening on ${broker.url}`);
-}
-
-async function closeBrowserBridgeBroker() {
-  if (!browserBridgeBroker) return;
-  const broker = browserBridgeBroker;
-  browserBridgeBroker = null;
-  await broker.close();
-}
 
 async function quit() {
   if (quitting) return;
@@ -1988,7 +1943,7 @@ async function quit() {
   }
   try {
     await stopChildren();
-    await closeBrowserBridgeBroker();
+    await browserBridgeManager.close();
     await closeControlServer(controlServer);
     controlServer = null;
     removeControlFile();
@@ -2265,7 +2220,7 @@ async function main() {
   try {
     await startControlServer();
     try {
-      await startBrowserBridgeBroker();
+      await browserBridgeManager.start();
     } catch (err) {
       error(
         `Browser Bridge Broker is disabled: ${err instanceof Error ? err.message : String(err)}`,
@@ -2274,7 +2229,7 @@ async function main() {
     await startChildren();
   } catch (err) {
     await stopChildren();
-    await closeBrowserBridgeBroker();
+    await browserBridgeManager.close();
     await closeControlServer(controlServer);
     controlServer = null;
     removeControlFile();
