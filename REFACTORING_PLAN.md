@@ -397,6 +397,23 @@ IMPROVEMENT.md のクラスタ分類をそのまま作業単位にする（useSt
 - 1 Phase = 複数 PR。PR タイトルに節 ID を含める（例: `refactor(6-1): sync ロジックを web 実装へ一本化`）
 - 未着手のまま状況が変わった節（コードが先に変わった等）は、着手前に IMPROVEMENT.md の記述を再検証する
 
+---
+
+## 完了記録（2026-08-13 全 Phase 対応）
+
+| Phase | 内容 | 完了 |
+|-------|------|------|
+| Phase 0 | CI 復活（可視化） | ✅ `eada365` |
+| Phase 1 | CLI↔web 単一ソース化（9 モジュール） | ✅ 複数コミット |
+| Phase 2 | db マイグレーション基盤 | ✅ |
+| Phase 3 | goal-loop / task-service 分割 | ✅ |
+| Phase 4 | opencode-proxy / settings-registry 分割 | ✅ |
+| Phase 5 | UI 層分割（タブ 5 分離 / GhostSelect 共通化 / OAuth フック / BroadcastChannel） | ✅ |
+| Phase 6 | host 分割（port-scanner / process-stop / lock-file / health 等 11 グループ + control-server テーブル化） | ✅ |
+| Phase 7 | テスト補完（2-4 / 3-6 / 8-3 主要 / 8-4 / 5-2 確認）+ 小分割（2-5 / 7-2 / 7-1）+ 型整理（3-5 / 9-1b）+ ドキュメント（8-5 / 9-3 / 1-4 / 6-4）+ 再評価（scheduler 不要） | ✅ |
+
+**全 Phase 完了**: 最終状態 — host テスト 400 本 / browser-bridge 91 本 / web vitest（既存 + 追加テスト多数）全パス。typecheck / lint クリーン。
+
 ## 3. 決定事項（2026-08-13 確定）
 
 | # | 事項 | 決定 | 反映先 |
