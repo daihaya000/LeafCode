@@ -402,8 +402,12 @@ describe("AgentsSettings", () => {
   });
 
   it("sets the effort variant for a file-backed agent and saves it", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    let putBody: string | undefined;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/api/extensions/agent-files/")) {
+        putBody = init?.body ? String(init.body) : undefined;
+      }
       if (url.includes("/api/extensions/provider-models")) {
         return new Response(
           JSON.stringify({
@@ -465,12 +469,8 @@ describe("AgentsSettings", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "エージェントを保存" }));
     await waitFor(() => {
-      const putCall = fetchMock.mock.calls.find((call) =>
-        String(call[0]).includes("/api/extensions/agent-files/"),
-      );
-      expect(putCall).toBeTruthy();
-      const body = JSON.parse(String(putCall?.[1]?.body));
-      expect(body.content).toContain("variant: high");
+      expect(putBody).toBeTruthy();
+      expect(JSON.parse(String(putBody)).content).toContain("variant: high");
     });
   });
 
