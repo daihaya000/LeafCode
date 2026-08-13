@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetStaleCacheForTests } from "@/lib/stale-cache";
 import { AgentsSettings } from "./AgentsSettings";
 import type { AgentDto } from "./agent-utils";
 
@@ -65,6 +66,10 @@ describe("AgentsSettings", () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    // `/api/extensions/agents` is stale-cached (persist: true); without this
+    // the memory cache leaks the previous test's response and breaks any
+    // later test that relies on its own fetch mock.
+    resetStaleCacheForTests();
   });
 
   it("renders grouped agents with rank sections and count", async () => {
