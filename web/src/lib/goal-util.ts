@@ -376,3 +376,39 @@ export function transcriptIdleFor(
   if (typeof completed !== "number") return false;
   return now - completed >= quietMs;
 }
+
+export const SCHEDULER_INTERVAL_MS = 2_500;
+/**
+ * `prompt_async` normally returns 202 immediately, but under engine load the
+ * prompt construction can take longer. 60s was too tight and surfaced raw
+ * "The operation was aborted due to timeout" errors on busy loops, so allow
+ * 120s. Still well under the BFF's long-running mutation ceiling (290s), and a
+ * send that exceeds it pauses with `prompt_unknown` rather than double-sending.
+ */
+export const PROMPT_TIMEOUT_MS = 120_000;
+export const STATUS_TIMEOUT_MS = 5_000;
+export const MESSAGE_TIMEOUT_MS = 10_000;
+export const COMPACT_TIMEOUT_MS = 30_000;
+export const COMPACT_POLL_MS = 250;
+export const COMPACT_LOCK_TTL_MS = 120_000;
+/**
+ * Aborting is a best-effort courtesy on the stop path. It must not inherit
+ * PROMPT_TIMEOUT_MS: a wedged engine would then hold the stop request for two
+ * minutes even though the loop row is already terminal.
+ */
+export const ABORT_TIMEOUT_MS = 10_000;
+/** Transcript silence that proves a multi-step turn ended (steps are ms apart). */
+export const TURN_QUIET_MS = 5_000;
+/** Longer silence before declaring a finished turn had no structured result. */
+export const STRUCTURED_GRACE_MS = 60_000;
+/** A `running` turn with no readable reply after this long is paused. */
+export const TURN_TIMEOUT_MS = 30 * 60_000;
+export const MAX_GOAL_CHARS = 12_000;
+/**
+ * How many times an agent may claim `completed` and have the independent
+ * verification turn reject it before we pause the loop. Without this cap the
+ * agent can alternate claim→reject until maxTurns is exhausted, spending the
+ * whole budget on verification round-trips instead of real work.
+ */
+export const MAX_REJECTED_CLAIMS = 2;
+export const GOAL_LOOP_PROMPT_MARKER = "<!-- webui-goal-loop-prompt -->";

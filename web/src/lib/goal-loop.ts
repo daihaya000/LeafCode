@@ -50,6 +50,20 @@ import {
   type GoalLoopStatus,
   type GoalLoopTurnKind,
   type ProviderResponse,
+  ABORT_TIMEOUT_MS,
+  COMPACT_LOCK_TTL_MS,
+  COMPACT_POLL_MS,
+  COMPACT_TIMEOUT_MS,
+  GOAL_LOOP_PROMPT_MARKER,
+  MAX_GOAL_CHARS,
+  MAX_REJECTED_CLAIMS,
+  MESSAGE_TIMEOUT_MS,
+  PROMPT_TIMEOUT_MS,
+  SCHEDULER_INTERVAL_MS,
+  STATUS_TIMEOUT_MS,
+  STRUCTURED_GRACE_MS,
+  TURN_QUIET_MS,
+  TURN_TIMEOUT_MS,
   type StatusMap,
 } from "./goal-util";
 export type {
@@ -71,41 +85,6 @@ import {
   collaborationContextFor,
   prependCollaborationContext,
 } from "./collaboration-context";
-const SCHEDULER_INTERVAL_MS = 2_500;
-/**
- * `prompt_async` normally returns 202 immediately, but under engine load the
- * prompt construction can take longer. 60s was too tight and surfaced raw
- * "The operation was aborted due to timeout" errors on busy loops, so allow
- * 120s. Still well under the BFF's long-running mutation ceiling (290s), and a
- * send that exceeds it pauses with `prompt_unknown` rather than double-sending.
- */
-const PROMPT_TIMEOUT_MS = 120_000;
-const STATUS_TIMEOUT_MS = 5_000;
-const MESSAGE_TIMEOUT_MS = 10_000;
-const COMPACT_TIMEOUT_MS = 30_000;
-const COMPACT_POLL_MS = 250;
-const COMPACT_LOCK_TTL_MS = 120_000;
-/**
- * Aborting is a best-effort courtesy on the stop path. It must not inherit
- * PROMPT_TIMEOUT_MS: a wedged engine would then hold the stop request for two
- * minutes even though the loop row is already terminal.
- */
-const ABORT_TIMEOUT_MS = 10_000;
-/** Transcript silence that proves a multi-step turn ended (steps are ms apart). */
-const TURN_QUIET_MS = 5_000;
-/** Longer silence before declaring a finished turn had no structured result. */
-const STRUCTURED_GRACE_MS = 60_000;
-/** A `running` turn with no readable reply after this long is paused. */
-const TURN_TIMEOUT_MS = 30 * 60_000;
-const MAX_GOAL_CHARS = 12_000;
-/**
- * How many times an agent may claim `completed` and have the independent
- * verification turn reject it before we pause the loop. Without this cap the
- * agent can alternate claim→reject until maxTurns is exhausted, spending the
- * whole budget on verification round-trips instead of real work.
- */
-const MAX_REJECTED_CLAIMS = 2;
-const GOAL_LOOP_PROMPT_MARKER = "<!-- webui-goal-loop-prompt -->";
 
 let schedulerStarted = false;
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
