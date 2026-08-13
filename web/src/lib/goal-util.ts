@@ -1,11 +1,6 @@
 import type { IntelligenceVariant } from "./model-variants";
 import type { SessionStatus } from "./types";
 
-import { memoryInjectionFor } from "./memory";
-import {
-  collaborationContextFor,
-  prependCollaborationContext,
-} from "./collaboration-context";
 
 export type GoalLoopStatus =
   | "queued"

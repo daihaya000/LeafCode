@@ -17,7 +17,6 @@ import {
 import { sweepIdleExtractions } from "./memory-idle";
 import {
   isIntelligenceVariant,
-  type IntelligenceVariant,
   type ProviderModelMeta,
 } from "./model-variants";
 import { OcError, ocServer } from "./oc-server";
@@ -28,15 +27,13 @@ import {
   activePromptPath,
   activeSessionMessagePath,
 } from "./opencode-paths";
-import type { MessageWithParts, SessionStatus } from "./types";
+import type { MessageWithParts } from "./types";
 import { unwrapOcData } from "./oc-server";
 import {
-  GOAL_LOOP_PAUSE_REASONS,
   TERMINAL_STATUSES,
   toPauseReason,
   toTurnKind,
   type GoalLoopDto,
-  type GoalLoopPauseReason,
   type GoalLoopProgress,
   type GoalLoopRow,
   type GoalLoopStatus,
