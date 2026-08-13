@@ -22,7 +22,9 @@ const h = vi.hoisted(() => ({
   autoExtractCalls: [] as { loopId: string; assistantMessageId?: string }[],
 }));
 
-vi.mock("./oc-server", () => ({
+vi.mock("./oc-server", async () => {
+  const actual = await vi.importActual<typeof import("./oc-server")>("./oc-server");
+  return {
   OcError: class OcError extends Error {
     status: number;
     constructor(message: string, status: number) {
@@ -30,6 +32,7 @@ vi.mock("./oc-server", () => ({
       this.status = status;
     }
   },
+  unwrapOcData: actual.unwrapOcData,
   ocServer: vi.fn(async (_dir: string | null, path: string, init?: { method?: string; body?: unknown }) => {
     h.ocCalls.push({ path, body: init?.body });
     if (path === "/session/status") {
@@ -84,7 +87,8 @@ vi.mock("./oc-server", () => ({
     if (path.endsWith("/abort")) return {};
     return {};
   }),
-}));
+  };
+});
 
 vi.mock("./goal-memory-hook", () => ({
   isAutoExtractEnabled: () => true,
