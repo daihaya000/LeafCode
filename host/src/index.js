@@ -46,6 +46,7 @@ import {
   looksLikeHostCommandLine,
   stronglyLooksLikeHostCommandLine,
 } from './process-info.js';
+import { createHttpWaiter, procRunning } from './health.js';
 import { readPort } from './port-config.js';
 import { isPlaceholderHost, syncCaddySiteAddresses } from './caddy-sites.js';
 import {
@@ -305,7 +306,7 @@ async function resolveBrowserUrl() {
   // Caddy can still be finishing TLS / listener startup when the WebUI is
   // already ready. Give it a short grace period so startup opens the intended
   // HTTPS proxy URL instead of racing and falling back to http://127.0.0.1:3000.
-  const caddyUp = probeUrl ? await waitForHttpUp(probeUrl, 12, 500) : false;
+  const caddyUp = probeUrl ? await httpWaiter.waitForHttpUp(probeUrl, 12, 500) : false;
   return pickBrowserUrl({
     caddyLocalUrl,
     caddyUrl,
@@ -605,7 +606,7 @@ async function resolveOccupiedPort(port, healthUrl, label, snapshot) {
     return { port, reuse: false };
   }
 
-  if (await isHttpUp(healthUrl)) {
+  if (await httpWaiter.isHttpUp(healthUrl)) {
     return { port, reuse: true };
   }
 
@@ -992,7 +993,7 @@ function spawnOpencode(opencodePath) {
           try {
             const opencodePath = findOpencode();
             spawnOpencode(opencodePath);
-            const ready = await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45, {
+            const ready = await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45, {
               proc: () => opencodeProc,
             });
             if (!ready) {
@@ -1489,7 +1490,7 @@ async function checkWebHealth() {
   webHealthCheckInFlight = true;
   try {
     const decision = webHealthDecision({
-      httpUp: await isHttpUp(WEBUI_URL),
+      httpUp: await httpWaiter.isHttpUp(WEBUI_URL),
       consecutiveFailures: webHealthFailures,
       startedAt: webStartedAt,
       startupGraceMs: WEB_WATCHDOG_STARTUP_GRACE_MS,
@@ -1546,7 +1547,7 @@ function scheduleWebRestart() {
     webRestartTimer = null;
     void (async () => {
       if (quitting || procRunning(webProc)) return;
-      if (await isHttpUp(WEBUI_URL)) {
+      if (await httpWaiter.isHttpUp(WEBUI_URL)) {
         // WebUI is healthy again — reset the counter and clear the cool-down
         // announcement so a future failure burst starts fresh.
         webRestarts = 0;
@@ -1845,7 +1846,7 @@ async function resolvePortPlan(preCaptured) {
     } else if (decision.takeover) {
       log(`Existing WebUI on :${WEBUI_PORT} is stale; stopping it to rebuild`);
       for (const pid of decision.takeover) hardKillTree(pid);
-      const freed = await waitForPortFree(WEBUI_PORT, 40);
+      const freed = await httpWaiter.waitForPortFree(WEBUI_PORT, 40);
       if (!freed) {
         log(`Could not free :${WEBUI_PORT} after stopping the stale WebUI; reusing it as-is`);
         plan.startWeb = false;
@@ -1857,52 +1858,6 @@ async function resolvePortPlan(preCaptured) {
   return plan;
 }
 
-async function isHttpUp(url) {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
-    return res.status < 500;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForHttpUp(url, attempts = 1, delayMs = 1000) {
-  for (let i = 0; i < attempts; i += 1) {
-    if (await isHttpUp(url)) return true;
-    if (i < attempts - 1) await sleep(delayMs);
-  }
-  return false;
-}
-
-/** Poll interval while waiting for a child service to answer HTTP. */
-const READY_POLL_MS = 250;
-
-/**
- * @param {number} attempts Timeout in seconds. The name is historical: the loop
- *   used to probe once per second. Probing every 250 ms instead returns up to
- *   ~750 ms sooner on a normal start while keeping the same overall timeout.
- */
-async function waitUntilReady(url, label, attempts = 60, { proc, pollMs = READY_POLL_MS } = {}) {
-  const iterations = Math.max(1, Math.ceil((attempts * 1000) / pollMs));
-  for (let i = 0; i < iterations; i += 1) {
-    if (await isHttpUp(url)) {
-      log(`${label} is ready`);
-      return true;
-    }
-    // ServeError / crash: fail fast instead of waiting the full timeout.
-    if (proc && !procRunning(proc())) {
-      error(`${label} exited before becoming ready (${url})`);
-      return false;
-    }
-    await sleep(pollMs);
-  }
-  error(`${label} did not become ready in time (${url})`);
-  return false;
-}
-
-function procRunning(proc) {
-  return proc != null && proc.exitCode == null && !proc.killed;
-}
 
 async function startChildren() {
   // netstat (~150 ms) does not depend on the pull and the pull cannot change
@@ -1972,7 +1927,7 @@ async function stopWebOnly({ preserveRestartBudget = false } = {}) {
     hardKillTree(pid);
   }
   webProc = null;
-  await waitForPortFree(WEBUI_PORT);
+  await httpWaiter.waitForPortFree(WEBUI_PORT);
 }
 
 async function stopOpencodeOnly() {
@@ -1983,7 +1938,7 @@ async function stopOpencodeOnly() {
   for (const pid of pids) expectedOpencodeExitPids.add(pid);
   opencodeProc = null;
   await stopOpencodeProcessTree(pids);
-  await waitForPortFree(OPENCODE_PORT);
+  await httpWaiter.waitForPortFree(OPENCODE_PORT);
 }
 
 async function stopChildren() {
@@ -2043,8 +1998,8 @@ async function stopChildren() {
   // sequence.
   await Promise.all([
     opencodeStop,
-    waitForPortFree(WEBUI_PORT),
-    waitForPortFree(OPENCODE_PORT),
+    httpWaiter.waitForPortFree(WEBUI_PORT),
+    httpWaiter.waitForPortFree(OPENCODE_PORT),
   ]);
 }
 
@@ -2054,8 +2009,8 @@ function formatStatus(name, proc, httpUp) {
 
 async function refreshStatusMenu() {
   const [opencodeUp, webUp] = await Promise.all([
-    isHttpUp(`${OPENCODE_URL}/global/health`),
-    isHttpUp(WEBUI_URL),
+    httpWaiter.isHttpUp(`${OPENCODE_URL}/global/health`),
+    httpWaiter.isHttpUp(WEBUI_URL),
   ]);
 
   statusOpencodeItem.title = formatStatus('OpenCode', opencodeProc, opencodeUp);
@@ -2179,7 +2134,7 @@ async function restartOpencode() {
         const opencodePath = findOpencode();
         log(`Starting OpenCode: ${opencodePath}`);
         spawnOpencode(opencodePath);
-        const ready = await waitUntilReady(
+        const ready = await httpWaiter.waitUntilReady(
           `${OPENCODE_URL}/global/health`,
           'OpenCode',
           45,
@@ -2200,7 +2155,7 @@ async function restartOpencode() {
         await stopWebOnly();
         await sleep(500);
         await spawnWeb();
-        const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+        const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'WebUI', 60, {
           proc: () => webProc,
         });
         if (!webReady) {
@@ -2711,10 +2666,10 @@ async function main() {
       refreshStatusMenu().catch(() => {});
     }, 5000);
     const browserUrl = startResolvingBrowserUrl();
-    const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+    const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'WebUI', 60, {
       proc: () => webProc,
     });
-    await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
+    await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
       proc: () => opencodeProc,
     });
     if (webReady && browserUrl) {
@@ -2737,10 +2692,10 @@ async function main() {
   }, 5000);
   await refreshStatusMenu();
   const browserUrl = startResolvingBrowserUrl();
-  const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+  const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'WebUI', 60, {
     proc: () => webProc,
   });
-  await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
+  await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
     proc: () => opencodeProc,
   });
   if (webReady && browserUrl) {
