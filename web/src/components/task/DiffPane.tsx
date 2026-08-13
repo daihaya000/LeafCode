@@ -13,6 +13,7 @@ import {
   ChevronsUpDown,
   CloudUpload,
   ExternalLink,
+  GitBranch,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
@@ -589,6 +590,12 @@ export function DiffPane({
     });
   };
 
+  const initializeRepo = () =>
+    run(async () => {
+      await sendJson("POST", "/api/git/init", { directory });
+      return "Git リポジトリを初期化しました";
+    });
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg">
       <div className="shrink-0 border-b border-border bg-surface-2 px-3 py-2 text-[11px]">
@@ -940,11 +947,27 @@ export function DiffPane({
             <Spinner />
           </div>
         )}
-        {payload && !payload.git && (
-          <p className="py-10 text-center text-sm text-faint">
-            {payload.error || "Git リポジトリではありません"}
-          </p>
-        )}
+        {payload && !payload.git &&
+          (payload.error && !/not a git repository/.test(payload.error) ? (
+            <p className="py-10 text-center text-sm text-faint">
+              {payload.error}
+            </p>
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <p className="text-sm text-faint" role="status" aria-live="polite">
+                このディレクトリは Git リポジトリではありません。初期化して変更管理を始められます。
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                busy={busy}
+                onClick={() => void initializeRepo()}
+              >
+                <GitBranch className="h-3.5 w-3.5" />
+                Git リポジトリを初期化
+              </Button>
+            </div>
+          ))}
         {payload?.git && files.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-10 text-center">
             <p className="text-sm text-faint" role="status" aria-live="polite">

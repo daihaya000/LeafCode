@@ -655,4 +655,115 @@ describe("DiffPane directory race", () => {
     await screen.findByText("b.ts");
     expect(onFilesCountChange).toHaveBeenLastCalledWith(1);
   });
+
+  it("shows a git-init empty state instead of raw stderr when the directory is not a repo", async () => {
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          git: false,
+          branch: null,
+          additions: 0,
+          deletions: 0,
+          files: [],
+          error:
+            "fatal: not a git repository (or any of the parent directories): .git",
+        });
+      }
+      if (String(url).includes("/api/workspaces/")) {
+        return Promise.resolve({ sessions: [] });
+      }
+      return Promise.reject(new Error("not a git repo"));
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+
+    expect(
+      await screen.findByText(
+        "このディレクトリは Git リポジトリではありません。初期化して変更管理を始められます。",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Git リポジトリを初期化" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/fatal: not a git repository/)).toBeNull();
+  });
+
+  it("keeps showing a real error (not an init button) for other non-git failures", async () => {
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          git: false,
+          branch: null,
+          additions: 0,
+          deletions: 0,
+          files: [],
+          error: "directory does not exist: /repo-a",
+        });
+      }
+      if (String(url).includes("/api/workspaces/")) {
+        return Promise.resolve({ sessions: [] });
+      }
+      return Promise.reject(new Error("not a git repo"));
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+
+    expect(
+      await screen.findByText("directory does not exist: /repo-a"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Git リポジトリを初期化" }),
+    ).toBeNull();
+  });
+
+  it("initializes the repository via /api/git/init and reloads the diff", async () => {
+    let diffCalls = 0;
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        diffCalls += 1;
+        if (diffCalls === 1) {
+          return Promise.resolve({
+            git: false,
+            branch: null,
+            additions: 0,
+            deletions: 0,
+            files: [],
+            error: "fatal: not a git repository (or any of the parent directories): .git",
+          });
+        }
+        return Promise.resolve(payload("init"));
+      }
+      if (String(url).includes("/api/git/branches")) {
+        return Promise.resolve({
+          branches: [],
+          current: "main",
+          defaultTarget: "main",
+        });
+      }
+      if (String(url).includes("/api/git/pr")) {
+        return Promise.resolve({ available: false });
+      }
+      if (String(url).includes("/api/workspaces/")) {
+        return Promise.resolve({ sessions: [] });
+      }
+      return Promise.resolve({});
+    });
+    sendJson.mockResolvedValue({ ok: true });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    const initButton = await screen.findByRole("button", {
+      name: "Git リポジトリを初期化",
+    });
+    fireEvent.click(initButton);
+
+    await screen.findByText("init.ts");
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/git/init", {
+      directory: "/repo-a",
+    });
+    expect(screen.getByText("Git リポジトリを初期化しました")).toBeTruthy();
+    expect(diffCalls).toBe(2);
+    expect(
+      screen.queryByRole("button", { name: "Git リポジトリを初期化" }),
+    ).toBeNull();
+  });
 });
