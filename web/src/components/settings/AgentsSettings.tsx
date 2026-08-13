@@ -222,6 +222,7 @@ export function AgentsSettings() {
   const [newAgentName, setNewAgentName] = useState("");
   const [creating, setCreating] = useState(false);
   const [savingFile, setSavingFile] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [busyName, setBusyName] = useState<string | null>(null);
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
@@ -240,6 +241,14 @@ export function AgentsSettings() {
   const baselineRef = useRef("");
   /** Mirrors `activeName` so reloads can re-seed the editor without re-running. */
   const activeNameRef = useRef<string | null>(null);
+  /**
+   * Unsaved model/variant overrides for agents without a definition file
+   * (built-ins and config-defined agents). `null` = nothing edited yet.
+   */
+  const [configDraft, setConfigDraft] = useState<{
+    model: string;
+    variant: string;
+  } | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -324,6 +333,16 @@ export function AgentsSettings() {
       setActiveName(row.name);
       baselineRef.current = row.file?.content ?? "";
       setDraft(baselineRef.current);
+      setConfigDraft(
+        row.file
+          ? null
+          : {
+              model: row.model
+                ? `${row.model.providerID}::${row.model.modelID}`
+                : "",
+              variant: row.variant ?? "",
+            },
+      );
       setActionError(null);
       setMessage(null);
     },
@@ -475,6 +494,46 @@ export function AgentsSettings() {
     [draft, reload, savingFile],
   );
 
+  /**
+   * Save model/effort overrides for an agent without a definition file
+   * (built-ins and config-defined agents) into `agent.<name>` of the
+   * opencode.jsonc. `model`/`variant` empty means "clear the override".
+   */
+  const saveAgentConfig = useCallback(
+    async (name: string) => {
+      if (savingConfig || !configDraft) return;
+      setSavingConfig(true);
+      setActionError(null);
+      setMessage(null);
+      try {
+        await sendJson(
+          "PATCH",
+          `/api/extensions/agents/${encodeURIComponent(name)}`,
+          {
+            model: configDraft.model
+              ? configDraft.model.split("::").join("/")
+              : null,
+            variant: configDraft.variant || null,
+          },
+        );
+        await reload();
+        if (mountedRef.current) {
+          setRestartNeeded(true);
+          setMessage(`エージェント「${name}」のモデル設定を保存しました`);
+        }
+      } catch (err) {
+        if (mountedRef.current) {
+          setActionError(
+            err instanceof Error ? err.message : "モデル設定の保存に失敗しました",
+          );
+        }
+      } finally {
+        if (mountedRef.current) setSavingConfig(false);
+      }
+    },
+    [configDraft, reload, savingConfig],
+  );
+
   const deleteAgentFile = useCallback(
     async (name: string) => {
       if (busyNameRef.current !== null) return;
@@ -604,6 +663,19 @@ export function AgentsSettings() {
   }, [providerModels.variantsMap, selectedModelValue, selectedFrontmatter.model]);
   const selectedVariant = selectedFrontmatter.variant ?? "";
   const switchesBusy = busyName !== null || busyProvider !== null;
+
+  // Model/effort dropdowns for agents without a definition file (built-ins).
+  const configModelOptions = useMemo(
+    () =>
+      ensureModelOption(providerModels.modelOptions, configDraft?.model ?? ""),
+    [providerModels.modelOptions, configDraft?.model],
+  );
+  const configVariantOptions = useMemo(() => {
+    if (!configDraft?.model) return ALL_INTELLIGENCE_VARIANTS;
+    return (
+      providerModels.variantsMap[configDraft.model] ?? ALL_INTELLIGENCE_VARIANTS
+    );
+  }, [providerModels.variantsMap, configDraft?.model]);
 
   const providerGroups = useMemo(() => {
     const counts = new Map<string, { total: number; enabledCount: number }>();
@@ -849,6 +921,11 @@ export function AgentsSettings() {
                     <ModelLabel agent={selected} />
                   )}
                 </p>
+                {selected.variant && (
+                  <p className="mt-1 font-mono text-xs text-muted">
+                    effort: {selected.variant}
+                  </p>
+                )}
                 {selected.description && (
                   <p className="mt-1 text-xs text-muted">{selected.description}</p>
                 )}
@@ -917,17 +994,67 @@ export function AgentsSettings() {
                   </div>
                 </>
               ) : (
-                <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-xs text-muted">
-                  このエージェントは
-                  {selected.scope === "project"
-                    ? "プロジェクト側"
-                    : selected.scope === "global"
-                      ? "opencode.jsonc"
-                      : "OpenCode 本体"}
-                  で定義されているため、ここでは編集できません。
-                  編集できるのは <code>~/.config/opencode/agents/*.md</code>{" "}
-                  のエージェントです。有効/無効の切り替えは左の一覧から行えます。
-                </p>
+                <>
+                  <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className="text-xs font-medium text-muted">モデル</span>
+                    <ModelSelect
+                      value={configDraft?.model ?? ""}
+                      options={configModelOptions}
+                      disabled={savingConfig || switchesBusy}
+                      emptyLabel="未設定（既定に従う）"
+                      ariaLabel="モデル"
+                      onChange={(value) =>
+                        setConfigDraft((d) => ({
+                          model: value,
+                          variant: d?.variant ?? "",
+                        }))
+                      }
+                    />
+                    <span className="text-xs font-medium text-muted">
+                      推論 effort
+                    </span>
+                    <IntelligenceSelect
+                      variants={configVariantOptions}
+                      value={configDraft?.variant ?? ""}
+                      disabled={
+                        savingConfig || switchesBusy || !configDraft?.model
+                      }
+                      onChange={(value) =>
+                        setConfigDraft((d) => ({
+                          model: d?.model ?? "",
+                          variant: value,
+                        }))
+                      }
+                    />
+                    {!configDraft?.model && (
+                      <span className="text-[11px] text-faint">
+                        モデルが未設定のため effort は適用されません
+                      </span>
+                    )}
+                  </div>
+                  <p className="rounded-lg border border-border bg-surface-2 px-4 py-3 text-xs text-muted">
+                    このエージェントは
+                    {selected.scope === "project"
+                      ? "プロジェクト側"
+                      : selected.scope === "global"
+                        ? "opencode.jsonc"
+                        : "OpenCode 本体"}
+                    で定義されています。モデルと effort は{" "}
+                    <code>agent.{selected.name}</code> として opencode.jsonc
+                    に書き込まれ、再起動後に反映されます。解除すると
+                    OpenCode の既定に戻ります。
+                  </p>
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      busy={savingConfig}
+                      onClick={() => void saveAgentConfig(selected.name)}
+                    >
+                      モデル設定を保存
+                    </Button>
+                  </div>
+                </>
               )}
             </>
           ) : (

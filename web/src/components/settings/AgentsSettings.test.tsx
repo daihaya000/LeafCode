@@ -606,4 +606,91 @@ describe("AgentsSettings", () => {
       expect(body.content).toContain("model: openai/gpt-5");
     });
   });
+
+  it("sets model and effort for a built-in agent and saves to the config", async () => {
+    let patchBody: string | undefined;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/api/extensions/provider-models")) {
+          return new Response(
+            JSON.stringify({
+              providers: [
+                {
+                  id: "openai",
+                  name: "OpenAI",
+                  enabled: true,
+                  models: [
+                    { id: "gpt-5", name: "GPT-5", variants: { low: {}, high: {} } },
+                  ],
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.includes("/api/extensions/agents")) {
+          if (init?.method === "PATCH") {
+            patchBody = init.body ? String(init.body) : undefined;
+          }
+          return new Response(JSON.stringify({ agents: AGENTS }), { status: 200 });
+        }
+        if (url.includes("/api/host")) {
+          return new Response(JSON.stringify(HOST_OK), { status: 200 });
+        }
+        return new Response("{}", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentsSettings />);
+    await screen.findByRole("heading", { name: "Rank A" });
+    fireEvent.click(screen.getByRole("button", { name: /general/ }));
+
+    // Built-ins get the model/effort override form instead of the
+    // "not editable" notice.
+    expect(screen.getByText(/OpenCode 本体/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
+    fireEvent.click(await screen.findByRole("option", { name: "GPT-5" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "インテリジェンス" }));
+    fireEvent.click(await screen.findByRole("option", { name: "high" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "モデル設定を保存" }));
+    await waitFor(() => {
+      expect(patchBody).toBeTruthy();
+      const body = JSON.parse(String(patchBody));
+      expect(body.model).toBe("openai/gpt-5");
+      expect(body.variant).toBe("high");
+    });
+  });
+
+  it("shows a built-in agent's configured model and variant", async () => {
+    stubFetch(() =>
+      new Response(
+        JSON.stringify({
+          agents: [
+            {
+              name: "plan",
+              mode: "primary",
+              model: { providerID: "openai", modelID: "gpt-5" },
+              variant: "high",
+              enabled: true,
+              toggleable: true,
+              scope: "builtin",
+              sourcePath: null,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    render(<AgentsSettings />);
+    await screen.findByRole("heading", { name: "ビルトイン" });
+    fireEvent.click(screen.getByRole("button", { name: /plan/ }));
+
+    expect(screen.getAllByText("openai / gpt-5").length).toBeGreaterThan(0);
+    expect(screen.getByText("effort: high")).toBeTruthy();
+  });
 });

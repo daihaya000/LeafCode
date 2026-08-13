@@ -6,6 +6,7 @@ import {
   agentStatePath,
   listAgents,
   setAgentEnabled,
+  setAgentModel,
   setProviderEnabled,
 } from "./agents";
 
@@ -333,6 +334,50 @@ describe("agents extension", () => {
     fs.writeFileSync(configPath, "{}");
     await expect(setAgentEnabled("ghost", false)).rejects.toMatchObject({
       code: "not-found",
+    });
+  });
+
+  it("writes model and variant overrides for a built-in agent into the config", async () => {
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    fs.writeFileSync(configPath, "{}");
+
+    await setAgentModel("build", "openai/gpt-5", "high");
+
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(config.agent.build.model).toBe("openai/gpt-5");
+    expect(config.agent.build.variant).toBe("high");
+
+    // The engine (not yet restarted) still reports the agent without a model;
+    // the config override must surface immediately in the listing.
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    const agents = await listAgents();
+    expect(agents.find((a) => a.name === "build")).toMatchObject({
+      model: { providerID: "openai", modelID: "gpt-5" },
+      variant: "high",
+    });
+  });
+
+  it("clears model and variant overrides", async () => {
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        agent: { build: { model: "openai/gpt-5", variant: "high" } },
+      }),
+    );
+
+    await setAgentModel("build", null, null);
+
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(config.agent.build.model).toBeUndefined();
+    expect(config.agent.build.variant).toBeUndefined();
+  });
+
+  it("rejects model overrides without a provider/model separator", async () => {
+    // Validation throws before the engine lookup, so no ocServer mock here.
+    fs.writeFileSync(configPath, "{}");
+    await expect(setAgentModel("build", "gpt-5", null)).rejects.toMatchObject({
+      code: "invalid-name",
     });
   });
 

@@ -38,6 +38,7 @@ type AgentResponse = {
   description?: string;
   mode?: "subagent" | "primary" | "all";
   model?: { providerID?: string; modelID?: string };
+  variant?: string;
 }[];
 
 /**
@@ -53,6 +54,7 @@ type AgentSnapshot = {
   description?: string;
   mode?: AgentDto["mode"];
   model?: { providerID: string; modelID: string };
+  variant?: string;
 };
 
 type AgentStateFile = {
@@ -88,6 +90,9 @@ function normalizeSnapshot(value: unknown): AgentSnapshot {
   }
   const model = parseModelValue(v.model);
   if (model) snapshot.model = model;
+  if (typeof v.variant === "string" && v.variant) {
+    snapshot.variant = v.variant;
+  }
   return snapshot;
 }
 
@@ -261,11 +266,16 @@ function agentEntryFromConfig(
       ? modeValue
       : (snapshot?.mode ?? "subagent");
   const model = parseModelValue(e.model) ?? snapshot?.model;
+  const variant =
+    typeof e.variant === "string" && e.variant
+      ? e.variant
+      : snapshot?.variant;
   return {
     name,
     description,
     mode,
     model,
+    variant,
     enabled: !disabled,
     toggleable: true,
   };
@@ -288,6 +298,7 @@ export async function listAgents(): Promise<AgentDto[]> {
                 modelID: item.model.modelID,
               }
             : undefined,
+        variant: item.variant,
         enabled: true,
         toggleable: true,
       });
@@ -322,6 +333,21 @@ export async function listAgents(): Promise<AgentDto[]> {
       // otherwise a toggle looks like it did nothing until restart.
       if (isConfigDisabled(entry)) {
         byName.set(name, { ...existing, enabled: false });
+      }
+      // Same for model/variant overrides written via this UI: the engine
+      // picks them up on restart, so surface them from the config now.
+      const e = entry as Record<string, unknown> | null | undefined;
+      const model = e ? parseModelValue(e.model) : undefined;
+      const variant =
+        e && typeof e.variant === "string" && e.variant
+          ? e.variant
+          : undefined;
+      if (model || variant) {
+        byName.set(name, {
+          ...(byName.get(name) ?? existing),
+          ...(model ? { model } : {}),
+          ...(variant ? { variant } : {}),
+        });
       }
       continue;
     }
@@ -420,6 +446,58 @@ export async function setAgentEnabled(
 }
 
 /**
+ * Write `model` / `variant` overrides for an agent into the config file.
+ *
+ * Built-in agents (no definition file) can still pin a model and reasoning
+ * effort via `agent.<name>.model` / `agent.<name>.variant`; OpenCode merges
+ * these over the built-in definition on restart. A `null` value removes the
+ * key, restoring the agent's default.
+ */
+export async function setAgentModel(
+  name: string,
+  model: string | null,
+  variant: string | null,
+): Promise<void> {
+  if (!name || typeof name !== "string") {
+    throw new ExtensionsError("not-found", "エージェント名が必要です");
+  }
+  if (model !== null && model.indexOf("/") < 1) {
+    throw new ExtensionsError(
+      "invalid-name",
+      "モデルは provider/model 形式で指定してください",
+    );
+  }
+
+  let known = false;
+  try {
+    const upstream = await ocServer<AgentResponse>(null, "/agent");
+    if (upstream.some((a) => a.name === name)) known = true;
+  } catch {
+    // Engine unavailable; rely on config/state.
+  }
+  const projectConfigAgents = readConfigAgentMapAt(projectConfigFilePath());
+  const inProjectConfig = projectConfigAgents[name] !== undefined;
+  if (!known) {
+    const configAgents = readConfigAgentMap();
+    if (configAgents[name] !== undefined || inProjectConfig) known = true;
+  }
+  if (!known) {
+    throw new ExtensionsError(
+      "not-found",
+      "指定のエージェントが見つかりません",
+    );
+  }
+
+  const targetConfigPath = inProjectConfig
+    ? (projectConfigFilePath() as string)
+    : opencodeConfigFilePath();
+
+  await updateConfigFile(targetConfigPath, (content) =>
+    updateAgentModelVariant(content, name, model, variant),
+  );
+}
+
+/**
  * Enable/disable every toggleable agent that resolves to `providerID`.
  * Idempotent: agents already in the target state are skipped. Returns the
  * number of agents whose state actually changed.
@@ -515,6 +593,46 @@ function mergeSnapshots(
     merged.model ??= source.model;
   }
   return merged;
+}
+
+function updateAgentModelVariant(
+  content: string,
+  name: string,
+  model: string | null,
+  variant: string | null,
+): string {
+  const root = parseJsoncConfig(content);
+  const agents = root.agent;
+  const hasAgentKey =
+    agents !== undefined && typeof agents === "object" && !Array.isArray(agents);
+
+  const formattingOptions = detectFormatting(content);
+
+  if (hasAgentKey) {
+    const entry = (agents as Record<string, unknown>)[name];
+    if (
+      entry !== undefined &&
+      (entry === null || typeof entry !== "object" || Array.isArray(entry))
+    ) {
+      throw new ExtensionsError("config", "agent 設定が不正です");
+    }
+  }
+
+  let next = content;
+  // `undefined` deletes the property (jsonc-parser), restoring defaults.
+  next = applyEdits(
+    next,
+    modify(next, ["agent", name, "model"], model ?? undefined, {
+      formattingOptions,
+    }),
+  );
+  next = applyEdits(
+    next,
+    modify(next, ["agent", name, "variant"], variant ?? undefined, {
+      formattingOptions,
+    }),
+  );
+  return next;
 }
 
 function updateAgentDisable(

@@ -23,6 +23,8 @@ export type AgentDto = {
   description?: string;
   mode: "subagent" | "primary" | "all";
   model?: { providerID: string; modelID: string };
+  /** Default model variant (reasoning effort), e.g. "high". */
+  variant?: string;
   enabled?: boolean;
   toggleable?: boolean;
   /** Omitted when the source hasn't been resolved (e.g. hand-built fixtures). */

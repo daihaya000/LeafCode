@@ -86,6 +86,65 @@ export function parseEnabledBody(
   return { enabled };
 }
 
+/**
+ * Parse an agent patch body: any of `enabled`, `model`, `variant`
+ * (`model`/`variant` accept `null` to clear the override). At least one
+ * field is required.
+ */
+export function parseAgentPatchBody(
+  body: unknown,
+):
+  | { enabled?: boolean; model?: string | null; variant?: string | null }
+  | { error: NextResponse } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return {
+      error: NextResponse.json({ error: "invalid body" }, { status: 400 }),
+    };
+  }
+  const { enabled, model, variant } = body as {
+    enabled?: unknown;
+    model?: unknown;
+    variant?: unknown;
+  };
+  if (enabled !== undefined && typeof enabled !== "boolean") {
+    return {
+      error: NextResponse.json(
+        { error: "enabled は真偽値で指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  if (model !== undefined && model !== null && typeof model !== "string") {
+    return {
+      error: NextResponse.json(
+        { error: "model は文字列または null で指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  if (variant !== undefined && variant !== null && typeof variant !== "string") {
+    return {
+      error: NextResponse.json(
+        { error: "variant は文字列または null で指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  if (enabled === undefined && model === undefined && variant === undefined) {
+    return {
+      error: NextResponse.json(
+        { error: "変更する項目が指定されていません" },
+        { status: 400 },
+      ),
+    };
+  }
+  return {
+    enabled,
+    model: model ?? null,
+    variant: variant ?? null,
+  };
+}
+
 /** Parse a per-provider bulk toggle body: `{ providerID, enabled }`. */
 export function parseProviderEnabledBody(
   body: unknown,
