@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readProfileSetupSettings, writeProfileSetupSettings } from "@/lib/profiles/settings";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export async function GET(req: Request) {
   const denied = await requireAuthorized(req);
   if (denied) return denied;
 
-  return NextResponse.json(readProfileSetupSettings());
+  return withReadCache(NextResponse.json(readProfileSetupSettings()));
 }
 
 export async function PUT(req: Request) {

@@ -5,6 +5,7 @@ import { resolveValidatedAllowlistPath } from "@/lib/path-validation";
 import { restoreProjectFromManifest } from "@/lib/project-session-sync";
 import { destroyProject, ServiceError } from "@/lib/workspace-service";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
     lastOpenedAt: p.last_opened_at,
     createdAt: p.created_at,
   }));
-  return NextResponse.json({ projects });
+  return withReadCache(NextResponse.json({ projects }));
 }
 
 export async function POST(req: NextRequest) {

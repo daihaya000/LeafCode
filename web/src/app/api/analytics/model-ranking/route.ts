@@ -6,6 +6,7 @@ import { sessionMessagePath } from "@/lib/opencode-paths";
 import { readProviderModelState } from "@/lib/provider-model-state";
 import type { MessageWithParts } from "@/lib/types";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,13 +46,16 @@ export async function GET(req: Request) {
     }),
   );
 
-  return NextResponse.json({
-    rankings: rankModelUsage(
-      histories.filter(
-        (history): history is { sessionId: string; messages: MessageWithParts[] } =>
-          history !== null && Array.isArray(history.messages),
+  return withReadCache(
+    NextResponse.json({
+      rankings: rankModelUsage(
+        histories.filter(
+          (history): history is { sessionId: string; messages: MessageWithParts[] } =>
+            history !== null && Array.isArray(history.messages),
+        ),
+        readProviderModelState().modelPricing,
       ),
-      readProviderModelState().modelPricing,
-    ),
-  });
+    }),
+    { maxAge: 300, staleWhileRevalidate: 3600 },
+  );
 }

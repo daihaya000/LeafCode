@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProfile, listProfiles } from "@/lib/profiles/service";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export async function GET(req: Request) {
 
   try {
     const result = await listProfiles();
-    return NextResponse.json(result);
+    return withReadCache(NextResponse.json(result));
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "プロファイル一覧の取得に失敗しました" },

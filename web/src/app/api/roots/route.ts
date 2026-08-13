@@ -3,6 +3,8 @@ import path from "node:path";
 import { addAllowedRoot, listAllowedRoots, removeAllowedRoot, setSetting } from "@/lib/db";
 import { resolveValidatedAllowlistPath } from "@/lib/path-validation";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
+
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
   try {
     addAllowedRoot(validation.canonicalPath);
     setSetting("lastDirectory", validation.canonicalPath);
-    return NextResponse.json({ roots: listAllowedRoots() });
+  return withReadCache(NextResponse.json({ roots: listAllowedRoots() }));
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "failed to add root" },

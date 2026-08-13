@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 import {
   VISION_ANALYSIS_TIMEOUT_MAX_MS,
   VISION_ANALYSIS_TIMEOUT_MIN_MS,
@@ -47,7 +48,9 @@ export async function GET(req: Request) {
   const denied = await requireAuthorized(req);
   if (denied) return denied;
 
-  return NextResponse.json(readQwenNativeSettings());
+  return withReadCache(NextResponse.json(readQwenNativeSettings()), {
+    maxAge: 60,
+  });
 }
 
 export async function PUT(req: Request) {

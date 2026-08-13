@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
 import { ocServer } from "@/lib/oc-server";
 import { listConfiguredImageModels } from "@/lib/opencode-extensions/provider-models";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,11 +48,17 @@ export async function GET(req: Request) {
           group: provider.name?.trim() || provider.id!,
         }));
     });
-    return NextResponse.json({ models: mergeModels(fromEngine, configured) });
+    return withReadCache(
+      NextResponse.json({ models: mergeModels(fromEngine, configured) }),
+      { maxAge: 60 },
+    );
   } catch (error) {
     // エンジンが落ちていても、設定ファイル由来の候補だけは返す。
     if (configured.length > 0) {
-      return NextResponse.json({ models: mergeModels([], configured) });
+      return withReadCache(
+        NextResponse.json({ models: mergeModels([], configured) }),
+        { maxAge: 60 },
+      );
     }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "モデル一覧を取得できません" },

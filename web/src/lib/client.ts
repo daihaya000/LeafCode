@@ -255,7 +255,7 @@ function getJsonWithCache<T>(
   if (hit) {
     if (Date.now() - hit.at >= policy.freshMs && !revalidatingJsonRequests.has(url)) {
       revalidatingJsonRequests.add(url);
-      getJsonUnshared<T>(path, params, init)
+      getJsonUnshared<T>(path, params, init, true)
         .then((data) => writeCache(url, data, policy))
         .catch(() => {
           // Keep serving the stale entry; re-validation is best-effort.
@@ -265,7 +265,7 @@ function getJsonWithCache<T>(
     return Promise.resolve(hit.data as T);
   }
 
-  const request = getJsonUnshared<T>(path, params, init).then((data) => {
+  const request = getJsonUnshared<T>(path, params, init, true).then((data) => {
     writeCache(url, data, policy);
     return data;
   });
@@ -283,10 +283,17 @@ async function getJsonUnshared<T>(
   path: string,
   params?: Record<string, string | undefined>,
   init?: { timeoutMs?: number },
+  httpCache = false,
 ): Promise<T> {
   const { signal, clear } = withTimeoutSignal(init?.timeoutMs);
   try {
-    const res = await fetch(apiUrl(path, params), { cache: "no-store", signal });
+    // Cacheable read endpoints use the HTTP cache with conditional
+    // revalidation (ETag) so the browser cache stays consistent with
+    // sendJson invalidation; everything else stays no-store.
+    const res = await fetch(apiUrl(path, params), {
+      cache: httpCache ? "no-cache" : "no-store",
+      signal,
+    });
     const body = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
       throw new ApiError(

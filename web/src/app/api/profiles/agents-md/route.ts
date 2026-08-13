@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
 import { readMasterAgents, writeMasterAgents } from "@/lib/profiles/agents-sync-engine";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   try {
-    return NextResponse.json(readMasterAgents());
+    return withReadCache(NextResponse.json(readMasterAgents()));
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "AGENTS.mdの読み込みに失敗しました" },

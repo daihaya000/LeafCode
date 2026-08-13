@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveHostControlUrl } from "@/lib/host-control";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,11 +54,14 @@ export async function GET(req: NextRequest) {
         { status: res.status },
       );
     }
-    return NextResponse.json({
-      windowsAuth: data.windowsAuth === true,
-      windowsAuthSupported: data.windowsAuthSupported === true,
-      hasUsers: data.hasUsers === true,
-    });
+    return withReadCache(
+      NextResponse.json({
+        windowsAuth: data.windowsAuth === true,
+        windowsAuthSupported: data.windowsAuthSupported === true,
+        hasUsers: data.hasUsers === true,
+      }),
+      { maxAge: 30, staleWhileRevalidate: 300 },
+    );
   } catch (err) {
     return hostUnreachable(err);
   }

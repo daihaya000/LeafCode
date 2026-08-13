@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listArchivedProjects } from "@/lib/db";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,5 +18,5 @@ export async function GET(req: Request) {
     lastOpenedAt: p.last_opened_at,
     createdAt: p.created_at,
   }));
-  return NextResponse.json({ projects });
+  return withReadCache(NextResponse.json({ projects }));
 }

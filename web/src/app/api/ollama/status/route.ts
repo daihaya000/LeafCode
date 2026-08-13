@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
 import { getOllamaStatus } from "@/lib/ollama-cli";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,5 +12,8 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   const status = await getOllamaStatus();
-  return NextResponse.json(status);
+  return withReadCache(NextResponse.json(status), {
+    maxAge: 30,
+    staleWhileRevalidate: 300,
+  });
 }

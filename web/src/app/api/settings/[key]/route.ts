@@ -8,6 +8,7 @@ import {
 } from "@/lib/commit-identity-keys";
 import { getSetting, setSetting } from "@/lib/db";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 import { WORKFLOW_MODE_SETTING_KEY } from "@/lib/workflow-feature";
 import {
   MEMORY_ENABLED_SETTING_KEY,
@@ -269,9 +270,11 @@ export async function GET(req: NextRequest,
     return NextResponse.json({ error: "unknown setting key" }, { status: 400 });
   }
   const value = getSetting(key);
-  return NextResponse.json({
-    value: value && value.length > 0 ? value : null,
-  });
+  return withReadCache(
+    NextResponse.json({
+      value: value && value.length > 0 ? value : null,
+    }),
+  );
 }
 
 export async function PUT(req: NextRequest,

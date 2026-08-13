@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 import {
   extensionsErrorResponse,
   parsePluginBody,
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   try {
-    return NextResponse.json({ plugins: await listPlugins() });
+    return withReadCache(NextResponse.json({ plugins: await listPlugins() }));
   } catch (err) {
     return extensionsErrorResponse(err, "プラグイン一覧を取得できません");
   }

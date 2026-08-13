@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { OPENCODE_BASE_URL } from "@/lib/opencode";
 import { isWorkflowModeEnabled } from "@/lib/workflow-feature";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,10 +28,13 @@ export async function GET() {
     };
   }
 
-  return NextResponse.json({
-    webui: { ok: true },
-    opencode,
-    opencodeBaseUrl: OPENCODE_BASE_URL,
-    workflowModeEnabled: isWorkflowModeEnabled(),
-  });
+  return withReadCache(
+    NextResponse.json({
+      webui: { ok: true },
+      opencode,
+      opencodeBaseUrl: OPENCODE_BASE_URL,
+      workflowModeEnabled: isWorkflowModeEnabled(),
+    }),
+    { maxAge: 10, staleWhileRevalidate: 60 },
+  );
 }

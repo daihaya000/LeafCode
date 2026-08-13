@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readAgentsSyncStatus, applyAgentsSync } from "@/lib/profiles/agents-sync-engine";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   try {
-    return NextResponse.json(readAgentsSyncStatus());
+    return withReadCache(NextResponse.json(readAgentsSyncStatus()));
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "同期状況の取得に失敗しました" },

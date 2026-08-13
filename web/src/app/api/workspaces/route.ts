@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listWorkspaces } from "@/lib/db";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 import {
   ServiceError,
   destroyWorkspace,
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     status: w.status,
     createdAt: w.created_at,
   }));
-  return NextResponse.json({ workspaces: rows });
+  return withReadCache(NextResponse.json({ workspaces: rows }));
 }
 
 export async function POST(req: NextRequest) {

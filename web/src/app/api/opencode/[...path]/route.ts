@@ -856,6 +856,12 @@ async function proxy(
             cachedHeaders.set(k, v);
           }
           cachedHeaders.set("Cache-Control", "no-cache, no-transform");
+          if (pathname === "/provider") {
+            cachedHeaders.set(
+              "Cache-Control",
+              "private, max-age=60, stale-while-revalidate=1800",
+            );
+          }
           return NextResponse.json(cached.body, {
             status: cached.status,
             headers: cachedHeaders,
@@ -965,6 +971,14 @@ async function proxy(
     outHeaders.set("Content-Type", "text/event-stream; charset=utf-8");
     outHeaders.set("Connection", "keep-alive");
     outHeaders.set("X-Accel-Buffering", "no");
+  }
+  // /provider GET is read-only, directory-independent provider metadata with
+  // secrets already masked; let the browser's HTTP cache serve it briefly.
+  if (req.method === "GET" && pathname === "/provider") {
+    outHeaders.set(
+      "Cache-Control",
+      "private, max-age=60, stale-while-revalidate=1800",
+    );
   }
 
   // Mask secrets on config/provider GET JSON responses (exact + prefix).

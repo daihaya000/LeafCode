@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveHostControlUrl } from "@/lib/host-control";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +46,10 @@ export async function GET(req: NextRequest) {
         { status: res.status },
       );
     }
-    return NextResponse.json({ users: data.users ?? [] });
+    return withReadCache(NextResponse.json({ users: data.users ?? [] }), {
+      maxAge: 30,
+      staleWhileRevalidate: 300,
+    });
   } catch (err) {
     return NextResponse.json(
       {

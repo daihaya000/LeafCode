@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { extensionsErrorResponse } from "@/lib/opencode-extensions/http";
 import { requireAuthorized } from "@/lib/api-guard";
+import { withReadCache } from "@/lib/http-cache";
 import {
   addCustomProvider,
   listProviderModels,
@@ -14,9 +15,11 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   try {
-    return NextResponse.json({
-      providers: await listProviderModels(),
-    });
+    return withReadCache(
+      NextResponse.json({
+        providers: await listProviderModels(),
+      }),
+    );
   } catch (err) {
     return extensionsErrorResponse(
       err,
