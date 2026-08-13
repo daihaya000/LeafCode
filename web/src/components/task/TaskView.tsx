@@ -148,6 +148,10 @@ import { copyText } from "@/lib/clipboard";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { estimateOpenAIApiCost } from "@/lib/openai-pricing";
 import { lookupModelPricing, setModelPricingRegistry } from "@/lib/model-pricing-registry";
+import {
+  readProviderModelsCache,
+  writeProviderModelsCache,
+} from "@/lib/provider-models-cache";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
   readSideWidthFromServer,
@@ -1635,6 +1639,94 @@ export function TaskView({
   ]);
 
   useEffect(() => {
+    /**
+     * DTO-only instant paint used for the cached catalogue: builds the model
+     * options/capabilities/variant metadata and the initial selection while
+     * the fresh `/api/opencode/provider` + `/api/extensions/provider-models`
+     * fetches are still in flight. The full fresh path below (raw provider
+     * response + auto-resolution inputs) replaces this state when it lands;
+     * `setModel(cur => cur || initial)` keeps a user choice intact.
+     */
+    const applyCachedProviderCatalogue = (providers: ProviderModelsDto[]) => {
+      setModelPricingRegistry(providers);
+      const options: ModelOption[] = [];
+      const caps: Record<string, { attachment?: boolean; image?: boolean }> = {};
+      const map: Record<string, ProviderModelMeta> = {};
+      for (const p of providers) {
+        if (p.enabled === false) continue;
+        for (const m of p.models ?? []) {
+          if (m.enabled === false) continue;
+          const value = `${p.id}::${m.id}`;
+          options.push({
+            value,
+            label: formatModelLabel(m.name, m.id),
+            group: p.name || p.id,
+            image:
+              m.capabilities?.input?.image === true ||
+              m.capabilities?.attachment === true,
+          });
+          caps[value] = {
+            attachment: m.capabilities?.attachment === true,
+            image: m.capabilities?.input?.image === true,
+          };
+          map[value] = {
+            name: m.name,
+            variants: m.variants,
+          };
+        }
+      }
+      const enabledOptions = filterEnabledModelOptions(options, providers);
+      const selectableOptions = [
+        AUTO_MODEL_OPTION,
+        ...sortModelOptions(
+          enabledOptions,
+          modelOrderPreferenceFromProviders(providers),
+        ),
+      ];
+      setModelOptions(selectableOptions);
+      setModelCapabilities(caps);
+      setProviderModelsMap(map);
+
+      // Same resolution order as the fresh path, minus the server-only
+      // sources (config.model / provider defaults) that aren't available
+      // synchronously. The fresh path re-resolves and never clobbers a
+      // selection already made from the cached list.
+      let initial = readAutoTaskRecord(taskId) ? AUTO_MODEL_VALUE : "";
+      const savedDefault = readDefaultModel();
+      if (
+        !initial &&
+        savedDefault &&
+        selectableOptions.some((o) => o.value === savedDefault)
+      ) {
+        initial = savedDefault;
+      }
+      if (!initial) {
+        const lastUsed = readLastUsedModel();
+        if (
+          lastUsed &&
+          selectableOptions.some((o) => o.value === lastUsed)
+        ) {
+          initial = lastUsed;
+        }
+      }
+      if (!initial && enabledOptions[0]) initial = enabledOptions[0].value;
+      const initialFromDefault =
+        !!savedDefault && !readAutoTaskRecord(taskId) && initial === savedDefault;
+      setModel((cur) => cur || initial);
+      if (initialFromDefault && initial !== AUTO_MODEL_VALUE) {
+        const savedEffort = readDefaultModelEffort();
+        if (isIntelligenceVariant(savedEffort)) {
+          setIntelligence((cur) => cur || savedEffort);
+        }
+      }
+    };
+
+    // Instant paint: reuse the last-known catalogue while the fresh fetch is
+    // in flight (the BFF can take seconds when the engine is cold or busy).
+    // The fetch that follows immediately replaces it with fresh data.
+    const cachedProviders = readProviderModelsCache();
+    if (cachedProviders) applyCachedProviderCatalogue(cachedProviders);
+
     void (async () => {
       try {
         const [providerRes, configRes, agentRes, providerModelsRes, qwenStatusRes] = await Promise.all([
@@ -1662,6 +1754,10 @@ export function TaskView({
           ? ((await providerModelsRes.json()) as { providers?: ProviderModelsDto[] })
           : null;
         setModelPricingRegistry(providerModels?.providers);
+
+        if (providerModels?.providers) {
+          writeProviderModelsCache(providerModels.providers);
+        }
 
         if (data) {
           // An omitted `connected` field is the legacy unrestricted shape.

@@ -119,6 +119,10 @@ import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import type { ProviderModelsDto } from "@/lib/extensions";
 import { setModelPricingRegistry } from "@/lib/model-pricing-registry";
+import {
+  readProviderModelsCache,
+  writeProviderModelsCache,
+} from "@/lib/provider-models-cache";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 
 type AgentResponse = {
@@ -513,6 +517,116 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
   useEffect(() => {
     let cancelled = false;
+
+    /**
+     * Build the composer model options/capabilities/variant metadata and the
+     * initial selection from a provider catalogue. Shared by the instant
+     * paint (cached data, no config yet) and the fresh fetch (full data).
+     */
+    const applyProviderCatalogue = (
+      providers: ProviderModelsDto[],
+      configModel?: string,
+    ) => {
+      setModelPricingRegistry(providers);
+      const options: ModelOption[] = [];
+      const caps: Record<string, { attachment?: boolean; image?: boolean }> = {};
+      const map: Record<string, ProviderModelMeta> = {};
+      for (const p of providers) {
+        if (p.enabled === false) continue;
+        for (const m of p.models ?? []) {
+          if (m.enabled === false) continue;
+          const value = `${p.id}::${m.id}`;
+          options.push({
+            value,
+            label: formatModelLabel(m.name, m.id),
+            group: p.name || p.id,
+            image:
+              m.capabilities?.input?.image === true ||
+              m.capabilities?.attachment === true,
+          });
+          caps[value] = {
+            attachment: m.capabilities?.attachment === true,
+            image: m.capabilities?.input?.image === true,
+          };
+          map[value] = {
+            name: m.name,
+            variants: m.variants,
+          };
+        }
+      }
+      const enabledOptions = filterEnabledModelOptions(options, providers);
+      // Auto is inserted *after* filter/sort on purpose: providerSortKey
+      // ("auto") is the unknown-provider tail value, so sorting would sink
+      // it to the bottom. Prepending keeps the "Auto" group first in the
+      // menu (groupedOptions preserves insertion order).
+      const selectableOptions = [
+        AUTO_MODEL_OPTION,
+        ...sortModelOptions(
+          enabledOptions,
+          modelOrderPreferenceFromProviders(providers),
+        ),
+      ];
+      setModelOptions(selectableOptions);
+      setModelCapabilities(caps);
+      setProviderModelsMap(map);
+
+      // Prefer the user-configured default model, then the last actually-
+      // used model, then OpenCode config.model (provider/modelID).
+      // `"auto"` is part of selectableOptions, so a stored last-used Auto
+      // restores through the same check. The provider-default fallback
+      // that used to come from /api/opencode/provider's `default` map is
+      // dropped: it was the last resort and the first enabled option
+      // below is an equivalent final fallback.
+      let initial = "";
+      let fromDefault = false;
+      const savedDefault = readDefaultModel();
+      if (
+        savedDefault &&
+        selectableOptions.some((o) => o.value === savedDefault)
+      ) {
+        initial = savedDefault;
+        fromDefault = true;
+      }
+      if (!initial) {
+        const lastUsed = readLastUsedModel();
+        if (
+          lastUsed &&
+          selectableOptions.some((o) => o.value === lastUsed)
+        ) {
+          initial = lastUsed;
+        }
+      }
+      if (!initial && configModel) {
+        const cfg = configModel.trim();
+        if (cfg) {
+          const slash = cfg.indexOf("/");
+          if (slash > 0) {
+            const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
+            if (selectableOptions.some((o) => o.value === value)) initial = value;
+          }
+        }
+      }
+      // Never fall back to Auto: it stays an explicit manual choice.
+      if (!initial && enabledOptions[0]) initial = enabledOptions[0].value;
+      setModel((cur) => cur || initial);
+      // Pair the default model with its configured effort (Settings →
+      // プロバイダー/モデル). Seeded only when the model came from the
+      // saved default; an invalid/unavailable effort is cleared by the
+      // intelligence-variant guard effect below.
+      if (fromDefault && initial !== AUTO_MODEL_OPTION.value) {
+        const savedEffort = readDefaultModelEffort();
+        if (isIntelligenceVariant(savedEffort)) {
+          setIntelligence((cur) => cur || savedEffort);
+        }
+      }
+    };
+
+    // Instant paint: reuse the last-known catalogue while the fresh fetch is
+    // in flight (the BFF can take seconds when the engine is cold or busy).
+    // The fetch that follows immediately replaces it with fresh data.
+    const cachedProviders = readProviderModelsCache();
+    if (cachedProviders) applyProviderCatalogue(cachedProviders);
+
     void (async () => {
       try {
         const [configRes, agentRes, providerModelsRes, qwenStatusRes] = await Promise.all([
@@ -536,7 +650,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         const providerModels = providerModelsRes.ok
           ? ((await providerModelsRes.json()) as { providers?: ProviderModelsDto[] })
           : null;
-        setModelPricingRegistry(providerModels?.providers);
 
         // Build options, capabilities and variant metadata from the
         // /api/extensions/provider-models response alone. This used to fire a
@@ -545,100 +658,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         // the Home boot latency. provider-models now forwards capabilities and
         // variants, so the raw provider response is no longer needed here.
         if (providerModels?.providers) {
-          const options: ModelOption[] = [];
-          const caps: Record<string, { attachment?: boolean; image?: boolean }> = {};
-          const map: Record<string, ProviderModelMeta> = {};
-          for (const p of providerModels.providers) {
-            if (p.enabled === false) continue;
-            for (const m of p.models ?? []) {
-              if (m.enabled === false) continue;
-              const value = `${p.id}::${m.id}`;
-              options.push({
-                value,
-                label: formatModelLabel(m.name, m.id),
-                group: p.name || p.id,
-                image:
-                  m.capabilities?.input?.image === true ||
-                  m.capabilities?.attachment === true,
-              });
-              caps[value] = {
-                attachment: m.capabilities?.attachment === true,
-                image: m.capabilities?.input?.image === true,
-              };
-              map[value] = {
-                name: m.name,
-                variants: m.variants,
-              };
-            }
-          }
-          const enabledOptions = filterEnabledModelOptions(
-            options,
-            providerModels.providers,
-          );
-          // Auto is inserted *after* filter/sort on purpose: providerSortKey
-          // ("auto") is the unknown-provider tail value, so sorting would sink
-          // it to the bottom. Prepending keeps the "Auto" group first in the
-          // menu (groupedOptions preserves insertion order).
-          const selectableOptions = [
-            AUTO_MODEL_OPTION,
-            ...sortModelOptions(
-              enabledOptions,
-              modelOrderPreferenceFromProviders(providerModels.providers),
-            ),
-          ];
-          setModelOptions(selectableOptions);
-          setModelCapabilities(caps);
-          setProviderModelsMap(map);
-
-          // Prefer the user-configured default model, then the last actually-
-          // used model, then OpenCode config.model (provider/modelID).
-          // `"auto"` is part of selectableOptions, so a stored last-used Auto
-          // restores through the same check. The provider-default fallback
-          // that used to come from /api/opencode/provider's `default` map is
-          // dropped: it was the last resort and the first enabled option
-          // below is an equivalent final fallback.
-          let initial = "";
-          let fromDefault = false;
-          const savedDefault = readDefaultModel();
-          if (
-            savedDefault &&
-            selectableOptions.some((o) => o.value === savedDefault)
-          ) {
-            initial = savedDefault;
-            fromDefault = true;
-          }
-          if (!initial) {
-            const lastUsed = readLastUsedModel();
-            if (
-              lastUsed &&
-              selectableOptions.some((o) => o.value === lastUsed)
-            ) {
-              initial = lastUsed;
-            }
-          }
-          if (!initial) {
-            const cfg = config?.model?.trim();
-            if (cfg) {
-              const slash = cfg.indexOf("/");
-              if (slash > 0) {
-                const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
-                if (selectableOptions.some((o) => o.value === value)) initial = value;
-              }
-            }
-          }
-          // Never fall back to Auto: it stays an explicit manual choice.
-          if (!initial && enabledOptions[0]) initial = enabledOptions[0].value;
-          setModel((cur) => cur || initial);
-          // Pair the default model with its configured effort (Settings →
-          // プロバイダー/モデル). Seeded only when the model came from the
-          // saved default; an invalid/unavailable effort is cleared by the
-          // intelligence-variant guard effect below.
-          if (fromDefault && initial !== AUTO_MODEL_OPTION.value) {
-            const savedEffort = readDefaultModelEffort();
-            if (isIntelligenceVariant(savedEffort)) {
-              setIntelligence((cur) => cur || savedEffort);
-            }
-          }
+          applyProviderCatalogue(providerModels.providers, config?.model);
+          writeProviderModelsCache(providerModels.providers);
         }
 
         if (agentRes.ok) {

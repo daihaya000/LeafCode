@@ -14,6 +14,20 @@ const { getJson, sendJson, push, timedFetch, readDefaultModelFromServer } = vi.h
   readDefaultModelFromServer: vi.fn().mockResolvedValue(null),
 }));
 
+// Cache module is controllable per-test: default null read keeps the existing
+// tests hermetic, and the cache-behaviour tests below drive it explicitly.
+const { readProviderModelsCache, writeProviderModelsCache } = vi.hoisted(() => ({
+  readProviderModelsCache: vi.fn((): unknown => null),
+  writeProviderModelsCache: vi.fn(),
+}));
+
+vi.mock("@/lib/provider-models-cache", () => ({
+  readProviderModelsCache,
+  writeProviderModelsCache,
+  clearProviderModelsCache: vi.fn(),
+  PROVIDER_MODELS_CACHE_MAX_AGE_MS: 6 * 60 * 60 * 1000,
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
@@ -1369,6 +1383,127 @@ describe("HomeView last-used model", () => {
     expect((screen.getByLabelText("インテリジェンス") as HTMLButtonElement).value).toBe(
       "",
     );
+  });
+
+  describe("HomeView provider catalogue cache", () => {
+    beforeEach(() => {
+      readProviderModelsCache.mockReset();
+      writeProviderModelsCache.mockReset();
+      readProviderModelsCache.mockReturnValue(null);
+    });
+    afterEach(() => {
+      readProviderModelsCache.mockReset();
+      writeProviderModelsCache.mockReset();
+      readProviderModelsCache.mockReturnValue(null);
+    });
+
+    it("paints the cached model and effort selectors before the provider fetch resolves", async () => {
+      readProviderModelsCache.mockReturnValue([
+        {
+          id: "openai",
+        name: "OpenAI",
+        enabled: true,
+        models: [
+          {
+            id: "gpt-5",
+            name: "GPT-5",
+            enabled: true,
+            variants: { low: {}, high: {} },
+          },
+        ],
+      },
+    ]);
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider-models")) {
+        return new Promise<Response>(() => {});
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    // Synchronous assertions: the selectors must exist before the provider
+    // fetch resolves, sourced from the cached catalogue.
+    const model = screen.getByLabelText("モデル") as HTMLButtonElement;
+    expect(model.value).toBe("openai::gpt-5");
+    expect(screen.getByLabelText("インテリジェンス")).toBeTruthy();
+  });
+
+  it("caches the fresh provider catalogue for the next mount", async () => {
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider-models")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            providers: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                enabled: true,
+                models: [{ id: "gpt-5", name: "GPT-5", enabled: true }],
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    await screen.findByLabelText("モデル");
+    await waitFor(() => {
+      expect(writeProviderModelsCache).toHaveBeenCalledWith([
+        expect.objectContaining({ id: "openai" }),
+      ]);
+    });
+  });
+
+  it("replaces cached options once the fresh catalogue arrives", async () => {
+    readProviderModelsCache.mockReturnValue([
+      {
+        id: "openai",
+        name: "OpenAI",
+        enabled: true,
+        models: [{ id: "gpt-5", name: "GPT-5", enabled: true }],
+      },
+    ]);
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider-models")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            providers: [
+              {
+                id: "anthropic",
+                name: "Anthropic",
+                enabled: true,
+                models: [
+                  {
+                    id: "claude-sonnet-5",
+                    name: "Claude Sonnet 5",
+                    enabled: true,
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    await waitFor(() => {
+      expect(writeProviderModelsCache).toHaveBeenCalled();
+    });
+    // The fresh catalogue wins: cached-only options disappear, the fresh
+    // ones appear (the menu shows the fresh list, not a merge).
+    fireEvent.click(screen.getByLabelText("モデル"));
+    expect(screen.getByRole("option", { name: "Claude Sonnet 5" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "GPT-5" })).toBeNull();
+    });
   });
 
   it("applies the server default after provider options win the hydration race", async () => {

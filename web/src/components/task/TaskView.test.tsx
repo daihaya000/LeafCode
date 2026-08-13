@@ -113,6 +113,20 @@ vi.mock("@/lib/default-model", () => ({
   writeLastUsedModel: vi.fn(),
 }));
 
+// Cache module is controllable per-test: default null read keeps the existing
+// tests hermetic, and the cache-behaviour tests below drive it explicitly.
+const { readProviderModelsCache, writeProviderModelsCache } = vi.hoisted(() => ({
+  readProviderModelsCache: vi.fn((): unknown => null),
+  writeProviderModelsCache: vi.fn(),
+}));
+
+vi.mock("@/lib/provider-models-cache", () => ({
+  readProviderModelsCache,
+  writeProviderModelsCache,
+  clearProviderModelsCache: vi.fn(),
+  PROVIDER_MODELS_CACHE_MAX_AGE_MS: 6 * 60 * 60 * 1000,
+}));
+
 vi.mock("@/components/shell/ShellContext", () => ({
   useShellExtras: () => ({ setExtras }),
   useShellSetActiveScope: () => setActiveScope,
@@ -266,6 +280,9 @@ describe("TaskView", () => {
     taskSessionId = "sess1";
     readDefaultModel.mockReturnValue(null);
     readLastUsedModel.mockReturnValue(null);
+    readProviderModelsCache.mockReset();
+    writeProviderModelsCache.mockReset();
+    readProviderModelsCache.mockReturnValue(null);
     taskResponseId = "ws1";
     taskSplitState.activeTaskId = null;
     taskSplitState.splitActive = false;
@@ -4534,6 +4551,111 @@ describe("TaskView voice input", () => {
       // still surface instead of being filtered out of the transcript.
       expect(screen.getByText("invalid api key")).toBeTruthy();
       expect(screen.queryByTestId("turn-resume")).toBeNull();
+    });
+  });
+});
+
+describe("TaskView provider catalogue cache", () => {
+  beforeEach(() => {
+    readProviderModelsCache.mockReset();
+    writeProviderModelsCache.mockReset();
+    readProviderModelsCache.mockReturnValue(null);
+  });
+  afterEach(() => {
+    readProviderModelsCache.mockReset();
+    writeProviderModelsCache.mockReset();
+    readProviderModelsCache.mockReturnValue(null);
+  });
+
+  it("paints the model selectors from the cached catalogue before the fetch resolves", async () => {
+    readProviderModelsCache.mockReturnValue([
+      {
+        id: "openai",
+        name: "OpenAI",
+        enabled: true,
+        models: [
+          {
+            id: "gpt-5",
+            name: "GPT-5",
+            enabled: true,
+            variants: { low: {}, high: {} },
+          },
+        ],
+      },
+    ]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (
+          url.includes("/api/opencode/provider") ||
+          url.includes("/api/extensions/provider-models")
+        ) {
+          return new Promise(() => {});
+        }
+        return Promise.resolve({ ok: false });
+      }),
+    );
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    // Synchronous assertions: the selectors must exist before the provider
+    // fetches resolve, sourced from the cached catalogue.
+    const model = screen.getByRole("combobox", {
+      name: "モデル",
+    }) as HTMLButtonElement;
+    expect(model.value).toBe("openai::gpt-5");
+    expect(screen.getByLabelText("インテリジェンス")).toBeTruthy();
+  });
+
+  it("caches the fresh provider catalogue for the next mount", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/extensions/provider-models")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              providers: [
+                {
+                  id: "openai",
+                  name: "OpenAI",
+                  enabled: true,
+                  models: [{ id: "gpt-5", name: "GPT-5", enabled: true }],
+                },
+              ],
+            }),
+          });
+        }
+        if (url.includes("/api/opencode/provider")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              all: [
+                {
+                  id: "openai",
+                  name: "OpenAI",
+                  models: { "gpt-5": { name: "GPT-5" } },
+                },
+              ],
+              connected: ["openai"],
+              default: {},
+            }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      }),
+    );
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    await waitFor(() => {
+      expect(writeProviderModelsCache).toHaveBeenCalledWith([
+        expect.objectContaining({ id: "openai" }),
+      ]);
     });
   });
 });

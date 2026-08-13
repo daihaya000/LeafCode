@@ -7,6 +7,7 @@ import { ModelSelect } from "@/components/ModelSelect";
 import { AutoOptimizeSelect } from "@/components/AutoOptimizeSelect";
 import { AutoRouteOverridesEditor } from "@/components/settings/AutoRouteOverridesEditor";
 import { getJson, sendJson } from "@/lib/client";
+import { clearProviderModelsCache } from "@/lib/provider-models-cache";
 import {
   AUTO_OPTIMIZE_SETTING_KEY,
   AUTO_ROUTE_OVERRIDES_SETTING_KEY,
@@ -795,6 +796,7 @@ export function ProviderModelsSettings() {
       setBusyId(key);
       setActionError(null);
       try {
+        clearProviderModelsCache();
         await sendJson(
           "PATCH",
           `/api/extensions/provider-models/${encodeURIComponent(key)}`,
@@ -851,6 +853,7 @@ export function ProviderModelsSettings() {
       setBusyId(key);
       setActionError(null);
       try {
+        clearProviderModelsCache();
         await sendJson("PATCH", `/api/extensions/provider-models/${encodeURIComponent(key)}`, {
           pricing,
         });
@@ -882,6 +885,7 @@ export function ProviderModelsSettings() {
       if (!mountedRef.current) return;
       setActionError(null);
       try {
+        clearProviderModelsCache();
         await sendJson("PATCH", "/api/extensions/provider-models/order", {
           providerOrder: nextProviders.map((provider) => provider.id),
           modelOrder: Object.fromEntries(
@@ -1013,6 +1017,7 @@ export function ProviderModelsSettings() {
     setAddMessage(null);
     setActionError(null);
     try {
+      clearProviderModelsCache();
       const result = await sendJson<{ models?: string[]; visionModels?: string[] }>(
         "POST",
         "/api/ollama/register",
@@ -1081,6 +1086,7 @@ export function ProviderModelsSettings() {
       setDeletingProviderId(provider.id);
       setActionError(null);
       try {
+        clearProviderModelsCache();
         await sendJson(
           "DELETE",
           `/api/extensions/provider-models/${encodeURIComponent(provider.id)}`,
@@ -1114,6 +1120,7 @@ export function ProviderModelsSettings() {
       setActionError(null);
       setAddMessage(null);
       try {
+        clearProviderModelsCache();
         await sendJson(
           "PATCH",
           `/api/extensions/provider-models/${encodeURIComponent(editingProviderId)}`,
@@ -1144,6 +1151,7 @@ export function ProviderModelsSettings() {
     setActionError(null);
     setAddMessage(null);
     try {
+      clearProviderModelsCache();
       const body = {
         id: newProvider.id,
         name: newProvider.name,
