@@ -1,5 +1,5 @@
 import { memoryInjectionFor } from "./memory";
-import type { GoalLoopDto } from "./goal-loop";
+import type { GoalLoopDto } from "./goal-util";
 
 export function buildGoalPromptWithMemory(
   loop: GoalLoopDto,
