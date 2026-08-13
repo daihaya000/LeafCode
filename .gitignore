@@ -1,6 +1,8 @@
 # Any folder whose name starts with a dot is local/tool-scratch state;
 # do not commit it (files like .gitignore / .editorconfig are unaffected).
 .*/
+# Except GitHub Actions workflows (tracked: encoding-check.yml, ci.yml).
+!.github/
 
 node_modules/
 .next/
