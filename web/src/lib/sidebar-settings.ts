@@ -1,8 +1,9 @@
 /**
- * Sidebar geometry (expanded projects, width, archived-section expanded)
- * persisted to the server-side `settings` table via `/api/settings/sidebar` so
- * it survives origin/browser-session changes. The three values are bundled
- * into one JSON string under a single DB row to minimize API calls.
+ * Sidebar geometry (expanded projects, width, archived-section expanded,
+ * archived project groups collapsed) persisted to the server-side `settings`
+ * table via `/api/settings/sidebar` so it survives origin/browser-session
+ * changes. The values are bundled into one JSON string under a single DB row
+ * to minimize API calls.
  *
  * The localStorage copy in `Sidebar.tsx` remains the synchronous source of
  * truth for instant hydration; this module is the durable backup that wins
@@ -17,12 +18,14 @@ export type SidebarState = {
   expanded: string[];
   width: number;
   archivedExpanded: boolean;
+  archivedGroupsExpanded: string[];
 };
 
 export type SidebarStateRead = {
   expanded: string[] | null;
   width: number | null;
   archivedExpanded: boolean | null;
+  archivedGroupsExpanded: string[] | null;
 };
 
 /**
@@ -35,6 +38,7 @@ export async function readSidebarFromServer(): Promise<SidebarStateRead> {
     expanded: null,
     width: null,
     archivedExpanded: null,
+    archivedGroupsExpanded: null,
   };
   if (typeof window === "undefined") return empty;
   try {
@@ -54,6 +58,10 @@ export async function readSidebarFromServer(): Promise<SidebarStateRead> {
       archivedExpanded:
         typeof parsed.archivedExpanded === "boolean"
           ? parsed.archivedExpanded
+          : null,
+      archivedGroupsExpanded:
+        Array.isArray(parsed.archivedGroupsExpanded)
+          ? parsed.archivedGroupsExpanded.map(String)
           : null,
     };
   } catch {

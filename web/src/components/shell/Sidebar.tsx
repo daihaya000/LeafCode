@@ -50,6 +50,8 @@ const WIDTH_KEY = "webui.sidebar.width";
 const ARCHIVED_EXPANDED_KEY = "webui.sidebar.archived_expanded";
 const ARCHIVED_PROJECTS_EXPANDED_KEY =
   "webui.sidebar.archived_projects_expanded";
+const ARCHIVED_GROUPS_COLLAPSED_KEY =
+  "webui.sidebar.archived_groups_collapsed";
 const DEFAULT_WIDTH = 240;
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
@@ -149,6 +151,25 @@ function saveArchivedProjectsExpanded(value: boolean) {
   }
 }
 
+function loadArchivedGroupsCollapsed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(ARCHIVED_GROUPS_COLLAPSED_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveArchivedGroupsCollapsed(ids: Set<string>) {
+  try {
+    localStorage.setItem(ARCHIVED_GROUPS_COLLAPSED_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Compact branch / isolation label for the task list. */
 function sidebarBranchLabel(task: TaskSummary): string {
   if (task.isolation === "temporary_copy") return "一時コピー";
@@ -228,6 +249,7 @@ export function Sidebar({
   const [archivedTaskCount, setArchivedTaskCount] = useState(0);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   const archivedExpandedRef = useRef(false);
+  const [archivedGroupsCollapsed, setArchivedGroupsCollapsed] = useState<Set<string>>(new Set());
   const [engineOk, setEngineOk] = useState(true);
   const [engineUnavailableCount, setEngineUnavailableCount] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -479,10 +501,12 @@ export function Sidebar({
     const localExpanded = loadExpanded();
     const localWidth = loadWidth();
     const localArchivedExpanded = loadArchivedExpanded();
+    const localArchivedGroupsCollapsed = loadArchivedGroupsCollapsed();
     setExpanded(localExpanded);
     setWidth(localWidth);
     archivedExpandedRef.current = localArchivedExpanded;
     setArchivedExpanded(localArchivedExpanded);
+    setArchivedGroupsCollapsed(localArchivedGroupsCollapsed);
     void refresh();
 
     void (async () => {
@@ -491,7 +515,8 @@ export function Sidebar({
       const hasRemote =
         remote.expanded !== null ||
         remote.width !== null ||
-        remote.archivedExpanded !== null;
+        remote.archivedExpanded !== null ||
+        remote.archivedGroupsExpanded !== null;
       if (!hasRemote) {
         // Nothing in the DB yet — push the localStorage value up so future
         // sessions (other browsers/origins) pick it up.
@@ -501,6 +526,7 @@ export function Sidebar({
           expanded: [...localExpanded],
           width: localWidth,
           archivedExpanded: localArchivedExpanded,
+          archivedGroupsExpanded: [...localArchivedGroupsCollapsed],
         });
         return;
       }
@@ -512,15 +538,21 @@ export function Sidebar({
         remote.archivedExpanded !== null
           ? remote.archivedExpanded
           : localArchivedExpanded;
+      const nextArchivedGroupsCollapsed =
+        remote.archivedGroupsExpanded !== null
+          ? new Set(remote.archivedGroupsExpanded)
+          : localArchivedGroupsCollapsed;
       archivedExpandedRef.current = nextArchivedExpanded;
       setExpanded(nextExpanded);
       setWidth(nextWidth);
       setArchivedExpanded(nextArchivedExpanded);
+      setArchivedGroupsCollapsed(nextArchivedGroupsCollapsed);
       // Mirror the DB value back to localStorage so the next paint is instant
       // and synchronous reads stay consistent.
       saveExpanded(nextExpanded);
       saveWidth(nextWidth);
       saveArchivedExpanded(nextArchivedExpanded);
+      saveArchivedGroupsCollapsed(nextArchivedGroupsCollapsed);
       if (nextArchivedExpanded && !localArchivedExpanded) void refresh();
       canPersistRef.current = true;
       setHydrated(true);
@@ -561,9 +593,10 @@ export function Sidebar({
         expanded: [...nextExpanded],
         width: nextWidth,
         archivedExpanded: nextArchivedExpanded,
+        archivedGroupsExpanded: [...archivedGroupsCollapsed],
       });
     },
-    [],
+    [archivedGroupsCollapsed],
   );
 
   useEffect(() => {
@@ -751,6 +784,17 @@ export function Sidebar({
     saveArchivedExpanded(next);
     persistSidebar(expanded, width, next);
     if (next) void refresh();
+  };
+
+  const toggleArchivedGroup = (key: string) => {
+    setArchivedGroupsCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveArchivedGroupsCollapsed(next);
+      persistSidebar(expanded, width, archivedExpanded);
+      return next;
+    });
   };
 
   const restoreArchivedTask = async (
@@ -1455,95 +1499,115 @@ export function Sidebar({
                   アーカイブされたタスクはありません
                 </li>
               ) : (
-                archivedGroups.map((group) => (
-                  <li key={group.key} data-testid="archived-project-group">
-                    <div className="flex items-center justify-between gap-1 px-2 py-1 text-[11px] font-medium text-muted">
-                      <span className="min-w-0 flex-1 truncate">{group.name}</span>
-                      <span className="tabular-nums text-[10px] text-muted">
-                        {group.tasks.length}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`${group.name}のアーカイブを一括削除`}
-                        title="このプロジェクトのアーカイブを一括削除"
-                        aria-busy={actionBusyKey === `destroy-group:${group.key}`}
-                        disabled={actionBusyKey !== null}
-                        onClick={(e) => void destroyArchivedGroup(group, e)}
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-faint hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50 md:h-6 md:w-6"
-                      >
-                        {destroyingGroupKey === group.key ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3 w-3" />
-                        )}
-                      </button>
-                    </div>
-                    <ul className="space-y-0.5">
-                      {group.tasks.map((task) => (
-                        <li key={task.id}>
-                          <div className="flex items-start gap-0.5 rounded-lg text-muted hover:bg-surface-2 hover:text-text">
-                      <button
-                        type="button"
-                        onClick={() => nav(`/task/${task.id}`)}
-                        className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span className="flex h-3 w-3 shrink-0 items-center justify-center">
-                            <span
-                              aria-label={`状態: ${task.status}`}
-                              className="h-1.5 w-1.5 rounded-full bg-success"
-                            />
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                            {task.title}
-                          </span>
-                          <span className="shrink-0 text-[10px] text-muted">
-                            {timeAgo(task.updatedAt)}
-                          </span>
-                        </div>
-                        <div className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-muted">
-                          <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
-                          <span className="min-w-0 truncate font-mono">
-                            {sidebarBranchLabel(task)}
-                          </span>
-                        </div>
-                      </button>
-                      <div className="flex shrink-0 items-center pt-0.5 pr-0.5">
+                archivedGroups.map((group) => {
+                  const groupOpen = !archivedGroupsCollapsed.has(group.key);
+                  return (
+                    <li key={group.key} data-testid="archived-project-group">
+                      <div className="flex items-center gap-0.5">
                         <button
                           type="button"
-                          aria-label={`「${task.title}」を復元`}
-                          title={`「${task.title}」を復元`}
-                          aria-busy={actionBusyKey === `restore:${task.id}`}
-                          disabled={actionBusyKey !== null}
-                          onClick={(e) => void restoreArchivedTask(task, e)}
-                          className={cx(
-                            TASK_ROW_ACTION_BTN,
-                            "text-faint hover:bg-surface-2 hover:text-text",
-                          )}
+                          aria-expanded={groupOpen}
+                          aria-label={`${group.name}を${groupOpen ? "折りたたむ" : "展開"}`}
+                          onClick={() => toggleArchivedGroup(group.key)}
+                          className="flex min-w-0 min-h-9 flex-1 cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1 text-left text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:min-h-6"
                         >
-                          <ArchiveRestore className="h-3 w-3" />
+                          <ChevronRight
+                            className={cx(
+                              "h-3 w-3 shrink-0 transition-transform",
+                              groupOpen && "rotate-90",
+                            )}
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 flex-1 truncate">{group.name}</span>
+                          <span className="tabular-nums text-[10px] text-muted">
+                            {group.tasks.length}
+                          </span>
                         </button>
                         <button
                           type="button"
-                          aria-label={`「${task.title}」を完全に削除`}
-                          title={`「${task.title}」を完全に削除`}
-                          aria-busy={actionBusyKey === `destroy:${task.id}`}
+                          aria-label={`${group.name}のアーカイブを一括削除`}
+                          title="このプロジェクトのアーカイブを一括削除"
+                          aria-busy={actionBusyKey === `destroy-group:${group.key}`}
                           disabled={actionBusyKey !== null}
-                          onClick={(e) => void destroyArchivedTask(task, e)}
-                          className={cx(
-                            TASK_ROW_ACTION_BTN,
-                            "text-muted hover:bg-danger-bg hover:text-danger",
-                          )}
+                          onClick={(e) => void destroyArchivedGroup(group, e)}
+                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-faint hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50 md:h-6 md:w-6"
                         >
-                          <Trash2 className="h-3 w-3" />
+                          {destroyingGroupKey === group.key ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3 w-3" />
+                          )}
                         </button>
                       </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))
+                      {groupOpen && (
+                        <ul className="ml-2 space-y-0.5 border-l border-border pl-1.5">
+                          {group.tasks.map((task) => (
+                            <li key={task.id}>
+                              <div className="flex items-start gap-0.5 rounded-lg text-muted hover:bg-surface-2 hover:text-text">
+                                <button
+                                  type="button"
+                                  onClick={() => nav(`/task/${task.id}`)}
+                                  className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="flex h-3 w-3 shrink-0 items-center justify-center">
+                                      <span
+                                        aria-label={`状態: ${task.status}`}
+                                        className="h-1.5 w-1.5 rounded-full bg-success"
+                                      />
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                                      {task.title}
+                                    </span>
+                                    <span className="shrink-0 text-[10px] text-muted">
+                                      {timeAgo(task.updatedAt)}
+                                    </span>
+                                  </div>
+                                  <div className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-muted">
+                                    <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
+                                    <span className="min-w-0 truncate font-mono">
+                                      {sidebarBranchLabel(task)}
+                                    </span>
+                                  </div>
+                                </button>
+                                <div className="flex shrink-0 items-center pt-0.5 pr-0.5">
+                                  <button
+                                    type="button"
+                                    aria-label={`「${task.title}」を復元`}
+                                    title={`「${task.title}」を復元`}
+                                    aria-busy={actionBusyKey === `restore:${task.id}`}
+                                    disabled={actionBusyKey !== null}
+                                    onClick={(e) => void restoreArchivedTask(task, e)}
+                                    className={cx(
+                                      TASK_ROW_ACTION_BTN,
+                                      "text-faint hover:bg-surface-2 hover:text-text",
+                                    )}
+                                  >
+                                    <ArchiveRestore className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label={`「${task.title}」を完全に削除`}
+                                    title={`「${task.title}」を完全に削除`}
+                                    aria-busy={actionBusyKey === `destroy:${task.id}`}
+                                    disabled={actionBusyKey !== null}
+                                    onClick={(e) => void destroyArchivedTask(task, e)}
+                                    className={cx(
+                                      TASK_ROW_ACTION_BTN,
+                                      "text-muted hover:bg-danger-bg hover:text-danger",
+                                    )}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })
               )}
             </ul>
           )}

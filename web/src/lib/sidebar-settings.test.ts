@@ -28,6 +28,7 @@ describe("sidebar-settings server sync", () => {
         expanded: null,
         width: null,
         archivedExpanded: null,
+        archivedGroupsExpanded: null,
       });
       expect(getJson).toHaveBeenCalledWith("/api/settings/sidebar");
     });
@@ -38,6 +39,7 @@ describe("sidebar-settings server sync", () => {
         expanded: null,
         width: null,
         archivedExpanded: null,
+        archivedGroupsExpanded: null,
       });
     });
 
@@ -46,6 +48,7 @@ describe("sidebar-settings server sync", () => {
         expanded: ["prj1", "prj2"],
         width: 320,
         archivedExpanded: true,
+        archivedGroupsExpanded: ["project:prj1"],
       };
       getJson.mockResolvedValue({ value: JSON.stringify(state) });
       expect(await readSidebarFromServer()).toEqual(state);
@@ -53,12 +56,13 @@ describe("sidebar-settings server sync", () => {
 
     it("coerces expanded entries to strings", async () => {
       getJson.mockResolvedValue({
-        value: JSON.stringify({ expanded: [1, 2], width: 240, archivedExpanded: false }),
+        value: JSON.stringify({ expanded: [1, 2], width: 240, archivedExpanded: false, archivedGroupsExpanded: [3] }),
       });
       expect(await readSidebarFromServer()).toEqual({
         expanded: ["1", "2"],
         width: 240,
         archivedExpanded: false,
+        archivedGroupsExpanded: ["3"],
       });
     });
 
@@ -86,6 +90,7 @@ describe("sidebar-settings server sync", () => {
         expanded: null,
         width: null,
         archivedExpanded: null,
+        archivedGroupsExpanded: null,
       });
     });
 
@@ -95,6 +100,7 @@ describe("sidebar-settings server sync", () => {
         expanded: null,
         width: null,
         archivedExpanded: null,
+        archivedGroupsExpanded: null,
       });
     });
   });
@@ -106,6 +112,7 @@ describe("sidebar-settings server sync", () => {
         expanded: ["prj1"],
         width: 280,
         archivedExpanded: false,
+        archivedGroupsExpanded: [],
       };
       await writeSidebarToServer(state);
       expect(sendJson).toHaveBeenCalledWith("PUT", "/api/settings/sidebar", {
@@ -128,12 +135,14 @@ describe("sidebar-settings server sync", () => {
         expanded: ["prj1"],
         width: 280,
         archivedExpanded: false,
+        archivedGroupsExpanded: [],
       });
       await Promise.resolve();
       const second = writeSidebarToServer({
         expanded: ["prj1", "prj2"],
         width: 360,
         archivedExpanded: true,
+        archivedGroupsExpanded: ["project:prj1"],
       });
       await Promise.resolve();
       expect(sendJson).toHaveBeenCalledTimes(1);
@@ -144,7 +153,7 @@ describe("sidebar-settings server sync", () => {
         2,
         "PUT",
         "/api/settings/sidebar",
-        { value: JSON.stringify({ expanded: ["prj1", "prj2"], width: 360, archivedExpanded: true }) },
+        { value: JSON.stringify({ expanded: ["prj1", "prj2"], width: 360, archivedExpanded: true, archivedGroupsExpanded: ["project:prj1"] }) },
       );
     });
 
@@ -152,7 +161,7 @@ describe("sidebar-settings server sync", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       sendJson.mockRejectedValue(new Error("network"));
       await expect(
-        writeSidebarToServer({ expanded: [], width: 240, archivedExpanded: true }),
+        writeSidebarToServer({ expanded: [], width: 240, archivedExpanded: true, archivedGroupsExpanded: [] }),
       ).resolves.toBeUndefined();
       expect(warn).toHaveBeenCalled();
     });

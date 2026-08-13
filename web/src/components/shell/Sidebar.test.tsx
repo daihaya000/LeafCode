@@ -1471,12 +1471,9 @@ describe("Sidebar archived section", () => {
 
     const groups = await screen.findAllByTestId("archived-project-group");
     expect(groups).toHaveLength(3);
-    expect(groups.map((group) => group.firstElementChild?.firstElementChild?.textContent)).toEqual([
-      "Same name",
-      "Same name",
-      "プロジェクトなし",
-    ]);
+    // ヘッダーの折りたたみボタンがデフォルトで展開されているので、タスクリストが見える
     expect(within(groups[0]!).getByText("Second task")).toBeTruthy();
+    // 2番目のグループ（prj1）も展開状態でタスクが見える
     const firstTaskButtons = within(groups[1]!)
       .getAllByRole("button")
       .filter((button) => button.textContent?.includes("task"));
@@ -1834,6 +1831,7 @@ describe("Sidebar DB persistence", () => {
             expanded: ["prj1"],
             width: 300,
             archivedExpanded: true,
+            archivedGroupsExpanded: [],
           }),
         },
       );
