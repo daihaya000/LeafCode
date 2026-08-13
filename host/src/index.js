@@ -47,6 +47,7 @@ import {
   stronglyLooksLikeHostCommandLine,
 } from './process-info.js';
 import { createHttpWaiter, procRunning } from './health.js';
+import { spawnNpm } from './npm-cli.js';
 import { readPort } from './port-config.js';
 import { isPlaceholderHost, syncCaddySiteAddresses } from './caddy-sites.js';
 import {
@@ -479,7 +480,7 @@ function saveBrowserBridgePairing(value) {
 }
 
 /** @type {string | null} */
-let cachedNpmCli = null;
+
 
 /** Tray self-healing: recreate the icon if the helper process dies unexpectedly. */
 const MAX_TRAY_RESTARTS = 5;
@@ -1244,42 +1245,6 @@ function removeBrokenWebBuild() {
  * Run npm through its JavaScript CLI instead of a .cmd shell shim. This keeps
  * every argument separate and avoids Node's shell:true quoting vulnerability.
  */
-function spawnNpm(args, options) {
-  if (!cachedNpmCli) {
-    const candidates = [
-      process.env.npm_execpath,
-      join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-    ].filter(Boolean);
-
-    try {
-      const npmCommands = execFileSync('where.exe', ['npm.cmd'], {
-        encoding: 'utf8',
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'ignore'],
-      })
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-      for (const npmCommand of npmCommands) {
-        candidates.push(
-          join(dirname(npmCommand), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-        );
-      }
-    } catch {
-      // The normal Node-adjacent candidate above still covers standard installs.
-    }
-
-    cachedNpmCli = candidates.find((candidate) => existsSync(candidate)) || null;
-    if (!cachedNpmCli) {
-      throw new Error('npm-cli.js was not found. Reinstall Node.js with npm included.');
-    }
-  }
-
-  return spawn(process.execPath, [cachedNpmCli, ...args], {
-    ...options,
-    shell: false,
-  });
-}
 
 /**
  * Build the production WebUI when prod mode has no usable or stale BUILD_ID.
