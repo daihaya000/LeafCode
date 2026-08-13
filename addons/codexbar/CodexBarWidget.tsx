@@ -16,6 +16,7 @@ import {
 import { cx, timeAgo } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
 import { useCodexUsage } from "./use-codex-usage";
+import { useCodexProviders } from "./use-codex-providers";
 import {
   clampPercent,
   formatMonthlyTotal,
@@ -440,13 +441,7 @@ export function CodexBarWidget() {
   const [providerCollapsed, setProviderCollapsed] = useState<Record<string, boolean>>(
     {},
   );
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
-  const [settingsLoading, setSettingsLoading] = useState(false);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
-  const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
-  const mounted = useRef(true);
+  const { settingsOpen, providerSettings, settingsLoading, settingsError, settingsStatus, savingProviderId, toggleProviderSettings, toggleProviderEnabled, loadProviderSettings } = useCodexProviders({ refresh });
 
   // First load: expand all providers unless the user already saved a
   // preference (useCodexUsage no longer touches this UI state).
@@ -469,13 +464,6 @@ export function CodexBarWidget() {
   }, [usage]);
 
   // Restore persisted display preferences once on mount.
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
   useEffect(() => {
     setCollapsed(loadCollapsed());
     setTwoColumn(loadTwoColumn());
@@ -510,58 +498,6 @@ export function CodexBarWidget() {
       return next;
     });
   }, []);
-
-  const loadProviderSettings = useCallback(async () => {
-    setSettingsLoading(true);
-    try {
-      const data = await getJson<ProviderSettings>("/api/addons/codexbar/providers");
-      if (!mounted.current) return;
-      setProviderSettings(data);
-      setSettingsError(null);
-      setSettingsStatus("プロバイダー設定を読み込みました");
-    } catch (err) {
-      if (!mounted.current) return;
-      setSettingsError(err instanceof Error ? err.message : "設定の読み込みに失敗しました");
-    } finally {
-      if (mounted.current) setSettingsLoading(false);
-    }
-  }, []);
-
-  const toggleProviderEnabled = useCallback(async (provider: ConfigProvider) => {
-    if (!providerSettings) return;
-    const enabledCount = providerSettings.providers.filter((item) => item.enabled).length;
-    if (provider.enabled && enabledCount <= 1) {
-      setSettingsError("少なくとも 1 つのプロバイダーを有効にしてください");
-      return;
-    }
-
-    setSavingProviderId(provider.id);
-    try {
-      const updated = await sendJson<ProviderSettings>(
-        "PUT",
-        "/api/addons/codexbar/providers",
-        { providerId: provider.id, enabled: !provider.enabled, version: providerSettings.version },
-      );
-      if (!mounted.current) return;
-      setProviderSettings(updated);
-      setSettingsError(null);
-      setSettingsStatus("プロバイダー設定を保存しました");
-      void refresh();
-    } catch (err) {
-      if (!mounted.current) return;
-      setSettingsError(err instanceof Error ? err.message : "設定の保存に失敗しました");
-    } finally {
-      if (mounted.current) setSavingProviderId(null);
-    }
-  }, [providerSettings, refresh]);
-
-  const toggleProviderSettings = () => {
-    setSettingsOpen((open) => {
-      const next = !open;
-      if (next && !providerSettings && !settingsLoading) void loadProviderSettings();
-      return next;
-    });
-  };
 
   const worst = usage ? worstProvider(usage) : null;
   // Tone reflects the busiest provider so urgency isn't hidden, but the shown
