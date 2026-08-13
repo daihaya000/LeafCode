@@ -255,3 +255,101 @@ export function stopWebTreeSync(input) {
   }
   return killed;
 }
+
+/**
+ * @param {number} pid
+ * @param {{ execSync?: typeof import('child_process').execSync }} [deps]
+ */
+export function isProcessAlive(pid, deps = {}) {
+  const id = Number(pid);
+  if (!Number.isInteger(id) || id <= 0) return false;
+  const run = deps.execSync ?? defaultExecSync;
+  try {
+    const output = run(`tasklist /FI "PID eq ${id}" /NH`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return output.includes(String(id));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Prefer dispose + soft kill so Windows does not orphan the listen socket.
+ * Falls back to taskkill /F only if the process is still alive.
+ * @param {number[]} pids
+ * @param {{
+ *   opencodeUrl?: string,
+ *   log?: (message: string) => void,
+ *   sleep?: (ms: number) => Promise<void>,
+ *   isAlive?: (pid: number) => boolean,
+ *   hardKill?: (pid: number) => void,
+ * }} [deps]
+ */
+export async function stopOpencodeProcessTree(pids, deps = {}) {
+  const opencodeUrl = deps.opencodeUrl ?? '';
+  const log = deps.log ?? (() => {});
+  const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const isAlive = deps.isAlive ?? isProcessAlive;
+  const hardKill = deps.hardKill ?? ((id) => hardKillTree(id));
+  const unique = [...new Set(pids.filter(Boolean))];
+  if (unique.length === 0) return;
+
+  const disposed = await disposeOpencodeServer(opencodeUrl);
+  if (disposed) {
+    log('OpenCode /global/dispose acknowledged — waiting for children to release handles');
+    await sleep(750);
+  }
+
+  for (const pid of unique) {
+    if (!isAlive(pid)) continue;
+    const how = await stopProcessTreeGracefully({
+      pid,
+      softKill: softKillTree,
+      hardKill,
+      isAlive,
+      sleep,
+      softWaitMs: 3000,
+      pollMs: 250,
+    });
+    if (how === 'soft') {
+      log(`OpenCode PID ${pid} stopped without force-kill`);
+    } else if (how === 'hard') {
+      log(`OpenCode PID ${pid} required force-kill (/F)`);
+    }
+  }
+}
+
+/**
+ * After crash/force-kill, reap children that may still hold an inherited listen handle.
+ * @param {number | null} exitedPid
+ * @param {{
+ *   port?: number,
+ *   log?: (message: string) => void,
+ *   isAlive?: (pid: number) => boolean,
+ *   hardKill?: (pid: number) => void,
+ *   getListeningPids?: (port: number) => number[],
+ * }} [deps]
+ */
+export function reapOpencodePortHolders(exitedPid, deps = {}) {
+  const port = deps.port ?? 0;
+  const log = deps.log ?? (() => {});
+  const isAlive = deps.isAlive ?? isProcessAlive;
+  const hardKill = deps.hardKill ?? ((id) => hardKillTree(id));
+  const getListeningPids = deps.getListeningPids ?? (() => []);
+  const listeningPids = getListeningPids(port);
+  const killed = reapInheritedHolders({
+    exitedPid,
+    listeningPids,
+    listChildren: listChildPids,
+    isAlive,
+    hardKill,
+  });
+  if (killed.length > 0) {
+    log(
+      `Reaped ${killed.length} leftover process(es) that may hold :${port} (${killed.join(', ')})`,
+    );
+  }
+}
+

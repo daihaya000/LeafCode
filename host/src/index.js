@@ -549,17 +549,6 @@ function error(message) {
   recordLog('host', 'error', message);
 }
 
-function isProcessAlive(pid) {
-  try {
-    const output = execSync(`tasklist /FI "PID eq ${pid}" /NH`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return output.includes(String(pid));
-  } catch {
-    return false;
-  }
-}
 
 /** Run Windows PowerShell without routing the command through cmd.exe quoting.
  *  Bounded by a timeout so a degraded CIM/WMI never hangs the caller — this is
@@ -677,14 +666,14 @@ async function resolveOccupiedPort(port, healthUrl, label, snapshot) {
         await stopProcessTreeGracefully({
           pid,
           softKill: softKillTree,
-          hardKill: killProcessTree,
+          hardKill: hardKillTree,
           isAlive: isProcessAlive,
           sleep,
           softWaitMs: 2000,
           pollMs: 250,
         });
       } else {
-        killProcessTree(pid);
+        hardKillTree(pid);
       }
     }
     for (let i = 0; i < 40; i += 1) {
@@ -709,59 +698,13 @@ async function resolveOccupiedPort(port, healthUrl, label, snapshot) {
   return { port: fallback, reuse: false, fallbackFrom: port, mutated: true };
 }
 
-function killProcessTree(pid) {
-  hardKillTree(pid);
-}
 
 /**
  * Prefer dispose + soft kill so Windows does not orphan the listen socket.
  * Falls back to taskkill /F only if the process is still alive.
  */
-async function stopOpencodeProcessTree(pids) {
-  const unique = [...new Set(pids.filter(Boolean))];
-  if (unique.length === 0) return;
-
-  const disposed = await disposeOpencodeServer(OPENCODE_URL);
-  if (disposed) {
-    log('OpenCode /global/dispose acknowledged — waiting for children to release handles');
-    await sleep(750);
-  }
-
-  for (const pid of unique) {
-    if (!isProcessAlive(pid)) continue;
-    const how = await stopProcessTreeGracefully({
-      pid,
-      softKill: softKillTree,
-      hardKill: killProcessTree,
-      isAlive: isProcessAlive,
-      sleep,
-      softWaitMs: 3000,
-      pollMs: 250,
-    });
-    if (how === 'soft') {
-      log(`OpenCode PID ${pid} stopped without force-kill`);
-    } else if (how === 'hard') {
-      log(`OpenCode PID ${pid} required force-kill (/F)`);
-    }
-  }
-}
 
 /** After crash/force-kill, reap children that may still hold an inherited listen handle. */
-function reapOpencodePortHolders(exitedPid) {
-  const listeningPids = getListeningPids(OPENCODE_PORT);
-  const killed = reapInheritedHolders({
-    exitedPid,
-    listeningPids,
-    listChildren: listChildPids,
-    isAlive: isProcessAlive,
-    hardKill: killProcessTree,
-  });
-  if (killed.length > 0) {
-    log(
-      `Reaped ${killed.length} leftover process(es) that may hold :${OPENCODE_PORT} (${killed.join(', ')})`,
-    );
-  }
-}
 
 function openBrowser(url) {
   spawn('cmd', ['/c', 'start', '', url], {
@@ -1073,7 +1016,13 @@ function spawnOpencode(opencodePath) {
     // listener behind. Planned or stale exits must not trigger recovery work.
     if (exitDecision.shouldReapPortHolders) {
       try {
-        reapOpencodePortHolders(exitedPid);
+        reapOpencodePortHolders(exitedPid, {
+        port: OPENCODE_PORT,
+        log,
+        isAlive: isProcessAlive,
+        hardKill: hardKillTree,
+        getListeningPids,
+      });
       } catch (err) {
         error(
           `OpenCode orphan reap failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -2024,7 +1973,7 @@ async function resolvePortPlan(preCaptured) {
       plan.startWeb = false;
     } else if (decision.takeover) {
       log(`Existing WebUI on :${WEBUI_PORT} is stale; stopping it to rebuild`);
-      for (const pid of decision.takeover) killProcessTree(pid);
+      for (const pid of decision.takeover) hardKillTree(pid);
       const freed = await waitForPortFree(WEBUI_PORT, 40);
       if (!freed) {
         log(`Could not free :${WEBUI_PORT} after stopping the stale WebUI; reusing it as-is`);
@@ -2133,7 +2082,7 @@ async function stopWebOnly({ preserveRestartBudget = false } = {}) {
   webHealthFailures = 0;
 
   if (webBuildProc?.pid) {
-    killProcessTree(webBuildProc.pid);
+    hardKillTree(webBuildProc.pid);
     webBuildProc = null;
   }
 
@@ -2149,7 +2098,7 @@ async function stopWebOnly({ preserveRestartBudget = false } = {}) {
   });
   for (const pid of pids) {
     expectedWebExitPids.add(pid);
-    killProcessTree(pid);
+    hardKillTree(pid);
   }
   webProc = null;
   await waitForPortFree(WEBUI_PORT);
@@ -2186,7 +2135,13 @@ async function stopChildren() {
   });
   for (const pid of opencodePids) expectedOpencodeExitPids.add(pid);
   opencodeProc = null;
-  const opencodeStop = stopOpencodeProcessTree(opencodePids);
+  const opencodeStop = stopOpencodeProcessTree(opencodePids, {
+      opencodeUrl: OPENCODE_URL,
+      log,
+      sleep,
+      isAlive: isProcessAlive,
+      hardKill: hardKillTree,
+    });
 
   // WebUI: union of the owned child and identified port listeners. The owned
   // PID covers listeners still in its tree; identified listeners cover a
@@ -2202,10 +2157,10 @@ async function stopChildren() {
   const otherPids = [webBuildProc?.pid, caddyProc?.pid].filter(Boolean);
   for (const pid of webPids) {
     expectedWebExitPids.add(pid);
-    killProcessTree(pid);
+    hardKillTree(pid);
   }
   for (const pid of otherPids) {
-    killProcessTree(pid);
+    hardKillTree(pid);
   }
   webProc = null;
   webBuildProc = null;
