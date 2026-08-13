@@ -49,6 +49,13 @@ import {
 import { resolveKillPids, resolveWebKillPids } from './restart-targets.js';
 import { getLogEntries, pushLogEntry } from './log-buffer.js';
 import { createLogFileWriter } from './log-file.js';
+import {
+  backfillLockCreationTime,
+  readLock,
+  readLockPid,
+  removeLock,
+  writeLock,
+} from './lock-file.js';
 export { parseCommandLineJson } from './port-scanner.js';
 import {
   disposeOpencodeServer,
@@ -1642,97 +1649,9 @@ function removeLegacyInRepoBuild() {
   }
 }
 
-/**
- * Lock file format: JSON `{ pid, created }` where `created` is the host
- * process creation time (FILETIME). Legacy format was a bare PID string;
- * it is still readable (`created` will be null).
- */
-function readLock() {
-  if (!existsSync(LOCK_FILE)) return null;
-  try {
-    const raw = readFileSync(LOCK_FILE, 'utf8').trim();
-    if (raw.startsWith('{')) {
-      const data = JSON.parse(raw);
-      const pid = Number.parseInt(String(data.pid), 10);
-      if (!Number.isFinite(pid)) return null;
-      return { pid, created: typeof data.created === 'string' ? data.created : null };
-    }
-    const pid = Number.parseInt(raw, 10);
-    return Number.isFinite(pid) ? { pid, created: null } : null;
-  } catch {
-    return null;
-  }
-}
-
-function readLockPid() {
-  return readLock()?.pid ?? null;
-}
-
-/**
- * Claim the single-instance lock.
- *
- * The Win32_Process CreationDate query costs ~850 ms (PowerShell + CIM boot)
- * and used to sit on the critical startup path for no reason: the exclusive
- * 'wx' write is what enforces single-instance, while `created` only guards
- * against PID reuse observed by a *later* instance. So take the lock now and
- * backfill the field in the background. `createdPending` marks a new-format
- * lock whose creation time is still being resolved, so a competing instance
- * keeps using the strict command-line check rather than the looser heuristic
- * reserved for genuinely legacy locks.
- */
-function writeLock() {
-  writeFileSync(
-    LOCK_FILE,
-    JSON.stringify({ pid: process.pid, created: null, createdPending: true }),
-    { encoding: 'utf8', flag: 'wx' },
-  );
-  backfillLockCreationTime();
-}
-
-function backfillLockCreationTime() {
-  execFileAsync(
-    'powershell.exe',
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      `(Get-CimInstance Win32_Process -Filter 'ProcessId=${process.pid}').CreationDate.ToFileTime()`,
-    ],
-    { encoding: 'utf8', windowsHide: true, timeout: 8000 },
-  )
-    .then(({ stdout }) => {
-      const created = String(stdout).trim();
-      if (!/^\d+$/.test(created)) return;
-      // readLock() returns null once removeLock() ran, so a shutdown that beat
-      // the query can never resurrect the lock file here.
-      if (readLock()?.pid !== process.pid) return;
-      writeFileSync(
-        LOCK_FILE,
-        JSON.stringify({ pid: process.pid, created }),
-        'utf8',
-      );
-    })
-    .catch(() => {
-      // Leave the pending lock as is; identity checks fall back to the
-      // command line, exactly as they do when CIM is unavailable.
-    });
-}
-
-function removeLock() {
-  if (!existsSync(LOCK_FILE)) return;
-  try {
-    const lockPid = readLockPid();
-    if (lockPid === process.pid) {
-      unlinkSync(LOCK_FILE);
-      removeControlFile();
-    }
-  } catch {
-    // best effort
-  }
-}
 
 async function handleExistingInstance() {
-  const lock = readLock();
+  const lock = readLock(LOCK_FILE);
   if (lock == null) {
     if (existsSync(LOCK_FILE)) {
       try {
@@ -1747,7 +1666,7 @@ async function handleExistingInstance() {
   const lockPid = lock.pid;
 
   const removeStaleLock = (reason) => {
-    const current = readLock();
+    const current = readLock(LOCK_FILE);
     if (
       current?.pid !== lock.pid ||
       current?.created !== lock.created
@@ -1869,7 +1788,7 @@ async function acquireLock() {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     await handleExistingInstance();
     try {
-      writeLock();
+      writeLock(LOCK_FILE);
       return;
     } catch (err) {
       if (err?.code !== 'EEXIST') throw err;
@@ -2541,7 +2460,7 @@ async function quit() {
     // when `quitting` is true (to avoid a redundant lock removal), so quit()
     // itself must always drop the lock — otherwise a failed quit() would leave
     // a stale one. A rejection still propagates, preserving the exit(1) path.
-    removeLock();
+    removeLock(LOCK_FILE, { removeControlFile });
   }
   try {
     if (systray) {
@@ -2599,7 +2518,7 @@ function stopWebTreeOnExit() {
 function onHostExit() {
   if (quitting) return;
   stopWebTreeOnExit();
-  removeLock();
+  removeLock(LOCK_FILE, { removeControlFile });
 }
 
 function buildTrayMenu() {
@@ -2822,7 +2741,7 @@ async function main() {
     await closeControlServer(controlServer);
     controlServer = null;
     removeControlFile();
-    removeLock();
+    removeLock(LOCK_FILE, { removeControlFile });
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
@@ -2855,7 +2774,7 @@ async function main() {
   try {
     await startTray();
   } catch (err) {
-    removeLock();
+    removeLock(LOCK_FILE, { removeControlFile });
     await stopChildren();
     error(`Tray failed to start: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
@@ -2879,7 +2798,7 @@ async function main() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((err) => {
-    removeLock();
+    removeLock(LOCK_FILE, { removeControlFile });
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   });
