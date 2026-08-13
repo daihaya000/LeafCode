@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   dropRecentlyReplied,
   rememberReplied,
@@ -21,5 +21,31 @@ describe("recently-replied", () => {
     rememberReplied("same-id", "session-a");
     expect(wasRecentlyReplied("same-id", "session-a")).toBe(true);
     expect(wasRecentlyReplied("same-id", "session-b")).toBe(false);
+  });
+
+  it("posts remembered ids to the webui-sync channel", async () => {
+    const postMessage = vi.fn();
+    vi.stubGlobal(
+      "BroadcastChannel",
+      class {
+        name = "webui-sync";
+        postMessage = postMessage;
+        addEventListener = vi.fn();
+      },
+    );
+    try {
+      vi.resetModules();
+      const mod = await import("./recently-replied");
+      mod.rememberReplied("r-sync-channel");
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "recently-replied",
+          key: expect.stringContaining("r-sync-channel"),
+          at: expect.any(Number),
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
