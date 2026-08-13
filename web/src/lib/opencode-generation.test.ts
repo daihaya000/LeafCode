@@ -35,7 +35,9 @@ describe("active generation selectors under v2 flag", () => {
     );
     expect(activePromptPath("ses_1")).toBe("/api/session/ses_1/prompt");
     expect(activeInterruptPath("ses_1")).toBe("/api/session/ses_1/interrupt");
-    expect(activeCompactPath("ses_1")).toBe("/api/session/ses_1/compact");
+    // Compaction is the one migration-target operation that stays on v1: the
+    // v2 compact endpoint is an unimplemented stub (503).
+    expect(activeCompactPath("ses_1")).toBe("/session/ses_1/summarize");
     expect(activeEventPath()).toBe("/api/event");
     expect(activePermissionListPath()).toBe("/api/permission/request");
     expect(activeQuestionListPath()).toBe("/api/question/request");

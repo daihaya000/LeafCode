@@ -181,6 +181,14 @@ export function sessionCommandPath(sessionId: string): string {
   return openCodeSessionPath(sessionId, "command");
 }
 
+/**
+ * Context compaction. Requires `{ providerID, modelID }` — the engine does not
+ * infer the summarizing model on this endpoint.
+ */
+export function sessionSummarizePath(sessionId: string): string {
+  return openCodeSessionPath(sessionId, "summarize");
+}
+
 // ---------------------------------------------------------------------------
 // v1 permission / question — global queue
 // ---------------------------------------------------------------------------
@@ -388,9 +396,22 @@ export function activeInterruptPath(sessionId: string): string {
     : sessionAbortPath(sessionId);
 }
 
-/** Context compaction (client already uses the v2 path; kept for one place). */
+/**
+ * Context compaction.
+ *
+ * Stays on v1 `summarize` in both generations: `POST /api/session/{id}/compact`
+ * is declared in the engine's OpenAPI document but is still a stub —
+ * OpenCode 1.18.18 answers it with
+ * `503 {_tag:"ServiceUnavailableError", message:"Session compact is not
+ * available yet", service:"session.compact"}`. Pointing the WebUI at it made
+ * every compaction fail (manual button, pre-send auto-compact and the goal
+ * loop's auto-compact alike). `POST /session/{id}/summarize` is implemented
+ * (verified: 404 `Session not found` for an unknown id, not 503) and takes
+ * `{ providerID, modelID }`. Switch back to {@link sessionCompactPathV2} once
+ * the engine implements it.
+ */
 export function activeCompactPath(sessionId: string): string {
-  return sessionCompactPathV2(sessionId);
+  return sessionSummarizePath(sessionId);
 }
 
 /** SSE event stream (global). */

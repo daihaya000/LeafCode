@@ -2850,7 +2850,11 @@ export function TaskView({
           autoCompactInFlightRef.current = true;
           autoCompactCooldownRef.current = Date.now();
           try {
-            await compactSession(task?.directory ?? "", sendSessionId);
+            await compactSession(
+              task?.directory ?? "",
+              sendSessionId,
+              stream.messages,
+            );
             // Wait for the compact to settle: the session.compacted SSE event
             // triggers a resync. Request an authoritative refetch here too so
             // the next prompt is not sent against the pre-compact transcript.

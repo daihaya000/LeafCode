@@ -53,6 +53,7 @@ import {
   sessionRevertClearPathV2,
   sessionRevertCommitPathV2,
   sessionRevertStagePathV2,
+  sessionSummarizePath,
 } from "./opencode-paths";
 
 /**
@@ -290,7 +291,13 @@ describe("active generation selectors", () => {
     expect(activeRevertClearPath("ses_1")).toBe("/session/ses_1/unrevert");
   });
 
-  it("compact always uses the v2 path (client has no v1 compact builder)", () => {
-    expect(activeCompactPath("ses_1")).toBe("/api/session/ses_1/compact");
+  /**
+   * `POST /api/session/{id}/compact` is documented but unimplemented — the
+   * engine answers 503 "Session compact is not available yet" — so compaction
+   * must stay on the v1 summarize endpoint in both generations.
+   */
+  it("compact always uses the implemented v1 summarize path", () => {
+    expect(activeCompactPath("ses_1")).toBe("/session/ses_1/summarize");
+    expect(sessionSummarizePath("ses_1")).toBe("/session/ses_1/summarize");
   });
 });

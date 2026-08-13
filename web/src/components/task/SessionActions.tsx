@@ -5,6 +5,7 @@ import { RotateCcw, Shrink } from "lucide-react";
 import { Button } from "@/components/ui";
 import type { ComposerAttachment } from "@/components/Composer";
 import { ocJson } from "@/lib/client";
+import { sessionModelFromMessages } from "@/lib/context-usage";
 import { isImageFilePart } from "@/lib/message-parts";
 import { isV2ApiGeneration } from "@/lib/opencode-generation";
 import {
@@ -80,13 +81,23 @@ export function isAmbiguousCompactionFailure(error: unknown): boolean {
 export async function compactSession(
   directory: string,
   sessionId: string,
+  messages: MessageWithParts[],
 ): Promise<void> {
+  // The engine requires the summarizing model explicitly. Sending `{}` (what
+  // the v2 compact stub accepted before it started answering 503) is rejected
+  // as an invalid request, so refuse early with a readable reason instead.
+  const model = sessionModelFromMessages(messages);
+  if (!model) {
+    throw new Error(
+      "圧縮に使うモデルを特定できません。1回以上応答があるセッションで実行してください。",
+    );
+  }
   const deadline = Date.now() + 10_000;
   for (;;) {
     try {
       await ocJson(activeCompactPath(sessionId), directory, {
         method: "POST",
-        body: {},
+        body: { providerID: model.providerID, modelID: model.modelID },
       });
       return;
     } catch (error) {
@@ -213,10 +224,10 @@ export function useSessionActions({
 
   const compact = useCallback(() => {
     void run("compact", async () => {
-      await compactSession(directory, sessionId);
+      await compactSession(directory, sessionId, messages);
       return "ok" as const;
     });
-  }, [run, directory, sessionId]);
+  }, [run, directory, sessionId, messages]);
 
   const revert = useCallback(() => {
     if (!lastUserMessageId || busyRef.current !== null) return;

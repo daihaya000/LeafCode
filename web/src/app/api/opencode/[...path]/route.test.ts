@@ -135,7 +135,7 @@ function post(body: string, contentType = "application/json") {
 }
 
 function sessionPost(
-  operation: "prompt_async" | "command" | "compact" | "abort",
+  operation: "prompt_async" | "command" | "compact" | "summarize" | "abort",
   body: Record<string, unknown>,
   contentType = "application/json",
   // Matches the literal "C%3A%5C%5Crepo" (two backslashes) used by the other
@@ -192,6 +192,31 @@ describe("POST /api/opencode/session/:id/prompt_async variant validation", () =>
     ]);
     expect(goalLoopHook.compactionLockAcquires).toHaveLength(1);
     expect(goalLoopHook.compactionLockReleases).toHaveLength(1);
+    fetchMock.mockRestore();
+  });
+
+  /**
+   * `summarize` is the compaction endpoint the WebUI actually calls (the v2
+   * `compact` route is an unimplemented 503 stub), so it must take the same
+   * lock and trigger the same post-compact context re-injection.
+   */
+  it("treats summarize as a compaction (lock + context reset)", async () => {
+    goalLoopHook.workspaceIds = ["ws-1"];
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    const response = await sessionPost("summarize", {
+      providerID: "anthropic",
+      modelID: "claude-opus-5",
+    });
+
+    expect(response.status).toBe(200);
+    expect(goalLoopHook.compactionLockAcquires).toHaveLength(1);
+    expect(goalLoopHook.compactionLockReleases).toHaveLength(1);
+    expect(goalLoopHook.compactMarks).toEqual([
+      { workspaceId: "ws-1", sessionId: "session-1" },
+    ]);
     fetchMock.mockRestore();
   });
 

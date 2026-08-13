@@ -10,6 +10,32 @@ export type ContextUsage = {
   pct: number;
 };
 
+/** Provider/model a session is running on. */
+export type SessionModel = { providerID: string; modelID: string };
+
+/**
+ * The model that most recently answered in this session.
+ *
+ * Compaction needs it: the implemented engine endpoint
+ * (`POST /session/{id}/summarize`) requires `{ providerID, modelID }` and does
+ * not infer the summarizing model. The last assistant turn is the same anchor
+ * {@link computeContextUsage} measures, so the model that filled the context
+ * is the model asked to summarize it.
+ *
+ * Returns `null` for a session with no assistant reply carrying model info.
+ */
+export function sessionModelFromMessages(
+  messages: MessageWithParts[],
+): SessionModel | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const info = messages[i]?.info;
+    if (info?.role !== "assistant") continue;
+    if (!info.providerID || !info.modelID) continue;
+    return { providerID: info.providerID, modelID: info.modelID };
+  }
+  return null;
+}
+
 /**
  * Derive context-window usage from the most recent assistant turn's token
  * usage against that model's known context limit.

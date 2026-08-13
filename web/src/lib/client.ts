@@ -119,12 +119,13 @@ async function parseJsonBody<T>(res: Response): Promise<T> {
 /**
  * Human-readable reason for a failed response.
  *
- * Two error shapes reach the browser: the WebUI's own routes answer with
- * `{ error, detail? }`, while the OpenCode engine answers with
- * `{ _tag, message, service? }` and the proxy forwards non-2xx bodies
- * untouched. Reading only `error` therefore discarded every engine message and
- * showed `<path> failed: <status>` instead of the real cause — e.g. a compact
- * rejected with `503 ServiceUnavailableError` told the user nothing.
+ * Three error shapes reach the browser: the WebUI's own routes answer with
+ * `{ error, detail? }`, the engine's v2 surface with `{ _tag, message,
+ * service? }` and its v1 surface with `{ name, data: { message } }` — the proxy
+ * forwards non-2xx bodies untouched. Reading only `error` therefore discarded
+ * every engine message and showed `<path> failed: <status>` instead of the real
+ * cause — e.g. a compact rejected with `503 ServiceUnavailableError` told the
+ * user nothing.
  *
  * An empty body (no JSON at all, e.g. a reverse proxy answering while the BFF
  * is down) keeps the path/status fallback, which is the only information there.
@@ -144,13 +145,19 @@ export function responseErrorMessage(
       detail?: unknown;
       service?: unknown;
       _tag?: unknown;
+      name?: unknown;
+      data?: { message?: unknown } | null;
     };
-    const reason = text(shape.error) ?? text(shape.message) ?? text(shape.detail);
+    const reason =
+      text(shape.error) ??
+      text(shape.message) ??
+      text(shape.data?.message) ??
+      text(shape.detail);
     if (reason) {
       const service = text(shape.service);
       return service ? `${reason} (${service})` : reason;
     }
-    const tag = text(shape._tag);
+    const tag = text(shape._tag) ?? text(shape.name);
     if (tag) return `${tag}: ${path} failed: ${status}`;
   }
   return `${path} failed: ${status}`;

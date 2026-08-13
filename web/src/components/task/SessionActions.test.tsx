@@ -34,6 +34,23 @@ const messages: MessageWithParts[] = [
   },
 ];
 
+/**
+ * Compaction needs the model that last answered: the implemented engine
+ * endpoint (`POST /session/{id}/summarize`) requires `{providerID, modelID}`.
+ */
+const compactableMessages: MessageWithParts[] = [
+  ...messages,
+  {
+    info: {
+      id: "msg-3",
+      role: "assistant",
+      providerID: "anthropic",
+      modelID: "claude-opus-5",
+    },
+    parts: [{ id: "part-3", messageID: "msg-3", type: "text", text: "done" }],
+  },
+];
+
 describe("SessionActions error UX", () => {
   afterEach(() => {
     cleanup();
@@ -48,7 +65,7 @@ describe("SessionActions error UX", () => {
       useSessionActions({
         directory: "/repo",
         sessionId: "ses-1",
-        messages,
+        messages: compactableMessages,
       }),
     );
 
@@ -70,7 +87,7 @@ describe("SessionActions error UX", () => {
       useSessionActions({
         directory: "/repo",
         sessionId: "ses-1",
-        messages,
+        messages: compactableMessages,
       }),
     );
 
@@ -224,7 +241,7 @@ describe("compactSession lock handling", () => {
       )
       .mockResolvedValueOnce(undefined);
 
-    await compactSession("/repo", "ses-1");
+    await compactSession("/repo", "ses-1", compactableMessages);
 
     expect(ocJson).toHaveBeenCalledTimes(2);
   });
@@ -233,8 +250,34 @@ describe("compactSession lock handling", () => {
     const error = Object.assign(new Error("session is busy"), { status: 409 });
     ocJson.mockRejectedValueOnce(error);
 
-    await expect(compactSession("/repo", "ses-1")).rejects.toBe(error);
+    await expect(
+      compactSession("/repo", "ses-1", compactableMessages),
+    ).rejects.toBe(error);
     expect(ocJson).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The engine rejects a summarize without a model, and the v2 compact stub it
+   * replaced answered 503 for every call, so both failure modes used to look
+   * identical. Send the implemented request with the resolved model, and refuse
+   * locally when there is no model to resolve.
+   */
+  it("posts the summarize path with the model that last answered", async () => {
+    ocJson.mockResolvedValueOnce(undefined);
+
+    await compactSession("/repo", "ses-1", compactableMessages);
+
+    expect(ocJson).toHaveBeenCalledWith("/session/ses-1/summarize", "/repo", {
+      method: "POST",
+      body: { providerID: "anthropic", modelID: "claude-opus-5" },
+    });
+  });
+
+  it("refuses to compact a session with no assistant model", async () => {
+    await expect(compactSession("/repo", "ses-1", messages)).rejects.toThrow(
+      /モデルを特定できません/,
+    );
+    expect(ocJson).not.toHaveBeenCalled();
   });
 
   it("distinguishes the WebUI lock conflict from other errors", () => {

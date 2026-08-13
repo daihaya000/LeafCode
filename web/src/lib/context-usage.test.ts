@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeContextUsage } from "./context-usage";
+import { computeContextUsage, sessionModelFromMessages } from "./context-usage";
 import type { MessageWithParts } from "./types";
 import type { ProviderModelMeta } from "./model-variants";
 
@@ -149,5 +149,39 @@ describe("computeContextUsage", () => {
       assistant({ tokens: { total: 100, input: 0, output: 0, reasoning: 0 } }),
     ];
     expect(computeContextUsage(messages, models)).toBeNull();
+  });
+});
+
+/**
+ * Compaction (`POST /session/{id}/summarize`) requires the model explicitly, so
+ * an unresolved model means the request would be rejected as invalid.
+ */
+describe("sessionModelFromMessages", () => {
+  it("returns the newest assistant model", () => {
+    const messages = [
+      assistant({ id: "m1", providerID: "opencode", modelID: "grok-code" }),
+      user("u1"),
+      assistant({ id: "m2" }),
+    ];
+    expect(sessionModelFromMessages(messages)).toEqual({
+      providerID: "anthropic",
+      modelID: "claude-sonnet-5",
+    });
+  });
+
+  it("skips assistant turns that carry no model ids", () => {
+    const messages = [
+      assistant({ id: "m1", providerID: "opencode", modelID: "grok-code" }),
+      assistant({ id: "m2", providerID: undefined, modelID: undefined }),
+    ];
+    expect(sessionModelFromMessages(messages)).toEqual({
+      providerID: "opencode",
+      modelID: "grok-code",
+    });
+  });
+
+  it("returns null when only user messages exist", () => {
+    expect(sessionModelFromMessages([user("u1"), user("u2")])).toBeNull();
+    expect(sessionModelFromMessages([])).toBeNull();
   });
 });

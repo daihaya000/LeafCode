@@ -53,7 +53,9 @@ vi.mock("./oc-server", async () => {
       }
       return h.providerResponse;
     }
-    if (path.endsWith("/compact")) {
+    // `summarize` is the implemented compaction endpoint; `compact` is a v2
+    // stub the engine answers with 503.
+    if (path.endsWith("/summarize")) {
       if (h.compactFailureError) throw h.compactFailureError;
       if (h.compactedMessageResponse) h.messageResponse = h.compactedMessageResponse;
       return {};
@@ -1486,12 +1488,22 @@ describe("goal loop server-side auto compact", () => {
     testDb.prepare("DELETE FROM session_compaction_locks WHERE session_id = ?").run("sess-1");
     h.compactedMessageResponse = [msg("m0", "assistant"), tokenMsg("a0", 20)];
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
-    // The path must carry the real session id. A previous build interpolated
-    // `assertSafeOpenCodeSessionId()` (void) and hit
-    // `/api/session/undefined/compact`, which the engine rejects with 400
-    // "Invalid session ID" — the loop then paused on every resume.
-    const compactCalls = h.ocCalls.filter((call) => call.path.endsWith("/compact"));
-    expect(compactCalls.map((call) => call.path)).toEqual(["/api/session/sess-1/compact"]);
+    // Two regressions are pinned here.
+    // 1. The path must carry the real session id: a previous build interpolated
+    //    `assertSafeOpenCodeSessionId()` (void) and hit
+    //    `/api/session/undefined/compact` → 400 "Invalid session ID".
+    // 2. It must target the implemented endpoint with a model. The v2
+    //    `/api/session/{id}/compact` route answers
+    //    503 "Session compact is not available yet", which paused the loop.
+    const compactCalls = h.ocCalls.filter(
+      (call) => call.path.endsWith("/summarize") || call.path.endsWith("/compact"),
+    );
+    expect(compactCalls).toEqual([
+      {
+        path: "/session/sess-1/summarize",
+        body: { providerID: "provider-1", modelID: "model-1" },
+      },
+    ]);
     expect(h.promptAsyncCount).toBe(1);
   });
 

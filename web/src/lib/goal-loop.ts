@@ -4,7 +4,7 @@ import {
   releaseSessionCompactionLock,
   tryAcquireSessionCompactionLock,
 } from "./db";
-import { computeContextUsage } from "./context-usage";
+import { computeContextUsage, sessionModelFromMessages } from "./context-usage";
 import {
   clampThreshold,
   DEFAULT_TOKEN_SAVING_THRESHOLD,
@@ -87,6 +87,17 @@ export async function autoCompactGoalLoop(
   );
   if (!usage || usage.pct < threshold) return "not_needed";
 
+  // `usage` is non-null only when the last token-bearing assistant turn carried
+  // provider/model ids, so this resolves whenever compaction is warranted; the
+  // loop's own selection is the fallback.
+  const model = sessionModelFromMessages(messages) ??
+    (loop.providerID && loop.modelID
+      ? { providerID: loop.providerID, modelID: loop.modelID }
+      : null);
+  // Without a summarizing model the engine rejects the request; leaving the
+  // context uncompacted is better than pausing the loop on a 400.
+  if (!model) return "not_needed";
+
   const ownerId = `goal-loop:${loop.id}`;
   if (!tryAcquireSessionCompactionLock(loop.sessionId, ownerId, Date.now(), COMPACT_LOCK_TTL_MS)) {
     return "conflict";
@@ -99,7 +110,7 @@ export async function autoCompactGoalLoop(
     // `scheduler_error` and reproduced on every resume.
     await ocServer(directory, activeCompactPath(loop.sessionId), {
       method: "POST",
-      body: {},
+      body: { providerID: model.providerID, modelID: model.modelID },
       timeoutMs: COMPACT_TIMEOUT_MS,
     });
 

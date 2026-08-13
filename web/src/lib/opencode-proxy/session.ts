@@ -77,10 +77,16 @@ export function isImageGuardedWrite(pathname: string): boolean {
   );
 }
 
-/** Match the explicit context-compaction mutation for a session. */
+/**
+ * Match the explicit context-compaction mutation for a session.
+ *
+ * `summarize` is the v1 name and the only implemented one (v2 `compact` is a
+ * 503 stub in OpenCode 1.18.x), so both must take the compaction lock and
+ * trigger the post-compact memory/collaboration re-injection.
+ */
 export function compactSessionId(method: string, pathname: string): string | null {
   if (method !== "POST") return null;
-  const match = /^(?:\/api)?\/session\/([^/]+)\/compact$/.exec(pathname);
+  const match = /^(?:\/api)?\/session\/([^/]+)\/(?:compact|summarize)$/.exec(pathname);
   return match ? match[1] : null;
 }
 
