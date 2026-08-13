@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { copyFileSync, existsSync } from "node:fs";
-import { SCHEMA_SQL } from "./db-schema";
+import { CURRENT_SCHEMA_VERSION, SCHEMA_SQL } from "./db-schema";
 import { isSafeOpenCodeSessionId } from "./opencode-id";
 import { normalizeMemoryKey } from "./memory-key";
 import { dbPath, ensureDataDir } from "./paths";
@@ -145,7 +145,28 @@ export function getDb(): Database.Database {
   // Enforce foreign keys so ON DELETE CASCADE (workspaces/goal_loops/session_bindings
   // → projects/workspaces) actually fires. better-sqlite3 defaults this off.
   db.pragma("foreign_keys = ON");
+  // SCHEMA_SQL is idempotent (CREATE TABLE IF NOT EXISTS / CREATE INDEX IF
+  // NOT EXISTS / DROP TRIGGER + CREATE TRIGGER), so it runs on every open and
+  // creates the full schema for fresh databases. The migration chain below
+  // only runs for databases stamped below CURRENT_SCHEMA_VERSION (a legacy
+  // database has user_version 0); afterwards the version is recorded so later
+  // opens skip the per-column PRAGMA checks (REFACTORING_PLAN P2-d).
   db.exec(SCHEMA_SQL);
+  const schemaVersion = db.pragma("user_version", { simple: true }) as number;
+  if (schemaVersion < CURRENT_SCHEMA_VERSION) {
+    runSchemaMigrations(db);
+    db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
+  }
+  return db;
+}
+
+/**
+ * Upgrade a legacy database to the current schema: add every column that the
+ * current CREATE TABLE definitions carry but this database lacks, then run the
+ * data backfills (scope promotion / primary_session_id / norm keys).
+ * All steps are additive and idempotent (REFACTORING_PLAN P2-e target shape).
+ */
+function runSchemaMigrations(db: Database.Database): void {
   const workspaceColumns = db
     .prepare("PRAGMA table_info(workspaces)")
     .all() as { name: string }[];
@@ -260,7 +281,6 @@ export function getDb(): Database.Database {
   if (!projectColumns.some((column) => column.name === "archived")) {
     db.exec("ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
   }
-  return db;
 }
 
 export function getSetting(key: string): string | null {

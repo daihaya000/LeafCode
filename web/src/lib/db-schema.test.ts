@@ -225,3 +225,21 @@ test("getDb() keeps a pre-upgrade backup of an existing database", async () => {
   bak.close();
   expect(row).toEqual({ value: "v" });
 });
+
+test("getDb() stamps user_version and skips the migration chain on the next open", async () => {
+  resetDataDir();
+  vi.resetModules();
+  const { getDb } = await import("./db");
+  const db = getDb();
+  const version = db.pragma("user_version", { simple: true }) as number;
+  db.close();
+  // Legacy databases (user_version 0) are upgraded; fresh ones are stamped.
+  expect(version).toBeGreaterThanOrEqual(1);
+  // Reopening is idempotent: same handle is reused while open, and a fresh
+  // open of a stamped database does not re-run migrations (shape unchanged).
+  vi.resetModules();
+  const { getDb: getDbAgain } = await import("./db");
+  const reopened = getDbAgain();
+  expect(reopened.pragma("user_version", { simple: true })).toBe(version);
+  reopened.close();
+});

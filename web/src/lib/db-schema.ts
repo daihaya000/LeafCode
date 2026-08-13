@@ -8,6 +8,14 @@
  * Keep this definition in sync with the migration steps: a column added via
  * ALTER TABLE below must exist here too.
  */
+
+/**
+ * Schema version recorded via `PRAGMA user_version`. Databases at a lower
+ * version run the migration steps in getDb() before being stamped with the
+ * current version (REFACTORING_PLAN P2-d/P2-e / IMPROVEMENT 3-2).
+ */
+export const CURRENT_SCHEMA_VERSION = 1;
+
 export const SCHEMA_SQL = `
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
