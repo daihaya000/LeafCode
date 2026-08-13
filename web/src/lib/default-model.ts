@@ -12,13 +12,14 @@
  * table via `/api/settings/default-model` so it survives origin/session changes
  * and is shared across browsers. The localStorage copy remains the source of
  * truth for synchronous reads; the server copy is the durable backup.
+ *
+ * The localStorage + write-queue + server-mirror pattern is shared via
+ * `createSettingSync` (REFACTORING_PLAN P4-d / IMPROVEMENT 2-2).
  */
 
-import { getJson, sendJson } from "./client";
+import { createSettingSync } from "./setting-sync";
 
-const STORAGE_KEY = "webui:default-model";
 export const DEFAULT_MODEL_EVENT = "webui:default-model";
-let defaultModelWriteQueue = Promise.resolve();
 
 /**
  * Reasoning effort paired with the default model. The Home/Task composers
@@ -27,68 +28,36 @@ let defaultModelWriteQueue = Promise.resolve();
  * `IntelligenceVariant` string (e.g. "low", "high") or "" when unset.
  */
 export const DEFAULT_MODEL_EFFORT_SETTING_KEY = "default-model-effort";
-const EFFORT_STORAGE_KEY = "webui:default-model-effort";
 export const DEFAULT_MODEL_EFFORT_EVENT = "webui:default-model-effort";
-let defaultModelEffortWriteQueue = Promise.resolve();
+
+const defaultModelSync = createSettingSync({
+  storageKey: "webui:default-model",
+  serverPath: "/api/settings/default-model",
+  eventName: DEFAULT_MODEL_EVENT,
+});
+
+const effortSync = createSettingSync({
+  storageKey: "webui:default-model-effort",
+  serverPath: `/api/settings/${DEFAULT_MODEL_EFFORT_SETTING_KEY}`,
+  eventName: DEFAULT_MODEL_EFFORT_EVENT,
+});
 
 export function readDefaultModelEffort(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(EFFORT_STORAGE_KEY);
-    if (typeof raw === "string" && raw.length > 0) return raw;
-  } catch {
-    /* ignore */
-  }
-  return null;
+  return effortSync.read();
 }
 
 export function writeDefaultModelEffort(value: string | null): void {
-  try {
-    if (value) {
-      localStorage.setItem(EFFORT_STORAGE_KEY, value);
-    } else {
-      localStorage.removeItem(EFFORT_STORAGE_KEY);
-    }
-    window.dispatchEvent(
-      new CustomEvent(DEFAULT_MODEL_EFFORT_EVENT, { detail: value ?? "" }),
-    );
-  } catch {
-    /* ignore */
-  }
+  effortSync.write(value);
 }
 
 export async function readDefaultModelEffortFromServer(): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-  await defaultModelEffortWriteQueue.catch(() => undefined);
-  try {
-    const data = await getJson<{ value: string | null }>(
-      `/api/settings/${DEFAULT_MODEL_EFFORT_SETTING_KEY}`,
-    );
-    const value = data?.value;
-    return typeof value === "string" && value.length > 0 ? value : null;
-  } catch {
-    return null;
-  }
+  return effortSync.readFromServer();
 }
 
 export async function writeDefaultModelEffortToServer(
   value: string | null,
 ): Promise<void> {
-  if (typeof window === "undefined") return;
-  const operation = defaultModelEffortWriteQueue.then(async () => {
-    try {
-      await sendJson("PUT", `/api/settings/${DEFAULT_MODEL_EFFORT_SETTING_KEY}`, {
-        value,
-      });
-    } catch (err) {
-      console.warn("writeDefaultModelEffortToServer failed", err);
-    }
-  });
-  defaultModelEffortWriteQueue = operation.then(
-    () => undefined,
-    () => undefined,
-  );
-  await operation;
+  await effortSync.writeToServer(value);
 }
 
 /**
@@ -98,33 +67,20 @@ export async function writeDefaultModelEffortToServer(
  * HomeView session, so the composer reuses whatever the user just sent
  * with instead of forcing them to re-pick it every time.
  */
-const LAST_USED_STORAGE_KEY = "webui:last-used-model";
 export const LAST_USED_MODEL_EVENT = "webui:last-used-model";
 
+const lastUsedSync = createSettingSync({
+  storageKey: "webui:last-used-model",
+  serverPath: "/api/settings/default-model",
+  eventName: LAST_USED_MODEL_EVENT,
+});
+
 export function readDefaultModel(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (typeof raw === "string" && raw.length > 0) return raw;
-  } catch {
-    /* ignore */
-  }
-  return null;
+  return defaultModelSync.read();
 }
 
 export function writeDefaultModel(value: string | null): void {
-  try {
-    if (value) {
-      localStorage.setItem(STORAGE_KEY, value);
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-    window.dispatchEvent(
-      new CustomEvent(DEFAULT_MODEL_EVENT, { detail: value ?? "" }),
-    );
-  } catch {
-    /* ignore */
-  }
+  defaultModelSync.write(value);
 }
 
 /**
@@ -137,17 +93,7 @@ export function writeDefaultModel(value: string | null): void {
  * land ahead of an in-flight PUT and resurrect the value it just replaced.
  */
 export async function readDefaultModelFromServer(): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-  await defaultModelWriteQueue.catch(() => undefined);
-  try {
-    const data = await getJson<{ value: string | null }>(
-      "/api/settings/default-model",
-    );
-    const value = data?.value;
-    return typeof value === "string" && value.length > 0 ? value : null;
-  } catch {
-    return null;
-  }
+  return defaultModelSync.readFromServer();
 }
 
 /**
@@ -158,43 +104,13 @@ export async function readDefaultModelFromServer(): Promise<string | null> {
 export async function writeDefaultModelToServer(
   value: string | null,
 ): Promise<void> {
-  if (typeof window === "undefined") return;
-  const operation = defaultModelWriteQueue.then(async () => {
-    try {
-      await sendJson("PUT", "/api/settings/default-model", { value });
-    } catch (err) {
-      console.warn("writeDefaultModelToServer failed", err);
-    }
-  });
-  defaultModelWriteQueue = operation.then(
-    () => undefined,
-    () => undefined,
-  );
-  await operation;
+  await defaultModelSync.writeToServer(value);
 }
 
 export function readLastUsedModel(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(LAST_USED_STORAGE_KEY);
-    if (typeof raw === "string" && raw.length > 0) return raw;
-  } catch {
-    /* ignore */
-  }
-  return null;
+  return lastUsedSync.read();
 }
 
 export function writeLastUsedModel(value: string | null): void {
-  try {
-    if (value) {
-      localStorage.setItem(LAST_USED_STORAGE_KEY, value);
-    } else {
-      localStorage.removeItem(LAST_USED_STORAGE_KEY);
-    }
-    window.dispatchEvent(
-      new CustomEvent(LAST_USED_MODEL_EVENT, { detail: value ?? "" }),
-    );
-  } catch {
-    /* ignore */
-  }
+  lastUsedSync.write(value);
 }
