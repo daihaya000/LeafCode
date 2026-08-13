@@ -30,6 +30,14 @@ const memoryCache = new Map<string, CacheEntry>();
 
 // Prefix matching (first match wins). `exclude` lists more specific prefixes
 // that must stay dynamic even though they start with a cached prefix.
+/**
+ * 標準的な BFF 読み取りキャッシュの鮮度（REFACTORING_PLAN P4-c / IMPROVEMENT 9-1）。
+ * 30 秒 fresh / 10 分 stale が大半の policy の値で、二重管理を避けるためここに
+ * 集約する。個別の TTL が必要な path だけ明示値を書く。
+ */
+const DEFAULT_FRESH_MS = 30_000;
+const DEFAULT_STALE_MS = 600_000;
+
 const CACHE_POLICIES: Array<{
   prefix: string;
   policy: StaleCachePolicy;
@@ -37,19 +45,19 @@ const CACHE_POLICIES: Array<{
 }> = [
   {
     prefix: "/api/projects",
-    policy: { freshMs: 30_000, staleMs: 600_000, persist: true },
+    policy: { freshMs: DEFAULT_FRESH_MS, staleMs: DEFAULT_STALE_MS, persist: true },
   },
   {
     prefix: "/api/tasks/archived",
-    policy: { freshMs: 30_000, staleMs: 600_000, persist: true },
+    policy: { freshMs: DEFAULT_FRESH_MS, staleMs: DEFAULT_STALE_MS, persist: true },
   },
   {
     prefix: "/api/workspaces",
-    policy: { freshMs: 30_000, staleMs: 600_000, persist: true },
+    policy: { freshMs: DEFAULT_FRESH_MS, staleMs: DEFAULT_STALE_MS, persist: true },
   },
   {
     prefix: "/api/roots",
-    policy: { freshMs: 30_000, staleMs: 600_000, persist: true },
+    policy: { freshMs: DEFAULT_FRESH_MS, staleMs: DEFAULT_STALE_MS, persist: true },
   },
   {
     prefix: "/api/analytics/model-ranking",
@@ -57,11 +65,11 @@ const CACHE_POLICIES: Array<{
   },
   {
     prefix: "/api/settings/",
-    policy: { freshMs: 30_000, staleMs: 600_000, persist: true },
+    policy: { freshMs: DEFAULT_FRESH_MS, staleMs: DEFAULT_STALE_MS, persist: true },
   },
   {
     prefix: "/api/profiles",
-    policy: { freshMs: 30_000, staleMs: 600_000, persist: true },
+    policy: { freshMs: DEFAULT_FRESH_MS, staleMs: DEFAULT_STALE_MS, persist: true },
     exclude: ["/api/profiles/jobs/"],
   },
   {
@@ -78,7 +86,7 @@ const CACHE_POLICIES: Array<{
   },
   {
     prefix: "/api/extensions/",
-    policy: { freshMs: 30_000, staleMs: 600_000, persist: true },
+    policy: { freshMs: DEFAULT_FRESH_MS, staleMs: DEFAULT_STALE_MS, persist: true },
     exclude: ["/api/extensions/agent-files"],
   },
   {
