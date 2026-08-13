@@ -252,3 +252,20 @@ export type HealthDto = {
   opencode: { ok: boolean; version?: string; error?: string };
   workflowModeEnabled?: boolean;
 };
+
+export type UpdateTarget = "webui" | "opencode" | "nextjs";
+
+export type UpdateState =
+  | { target: UpdateTarget; kind: "running"; detail?: string }
+  | { target: UpdateTarget; kind: "success"; message: string; detail?: string }
+  | { target: UpdateTarget; kind: "error"; message: string; detail?: string }
+  | null;
+
+export type UpdateAvailability = {
+  available: boolean;
+  current?: string;
+  latest?: string;
+  currentDate?: string;
+  latestDate?: string;
+  error?: string;
+};
