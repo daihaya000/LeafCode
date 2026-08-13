@@ -146,8 +146,8 @@ import {
 
 import { copyText } from "@/lib/clipboard";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
-import { estimateOpenAIApiCost } from "@/lib/openai-pricing";
-import { lookupModelPricing, setModelPricingRegistry } from "@/lib/model-pricing-registry";
+import { costBreakdownByModel, costBreakdownLines } from "@/lib/cost-breakdown";
+import { setModelPricingRegistry } from "@/lib/model-pricing-registry";
 import {
   readProviderModelsCache,
   writeProviderModelsCache,
@@ -917,28 +917,25 @@ export function TaskView({
       ),
     [streamMessages],
   );
+  const costEntries = useMemo(
+    () => costBreakdownByModel(streamMessages),
+    [streamMessages],
+  );
   const cumulativeCost = useMemo(() => {
     const reportedTotal = task?.cost ?? 0;
     if (reportedTotal > 0) return reportedTotal;
-
-    let total = 0;
-    for (const message of streamMessages) {
-      if (message.info.role !== "assistant") continue;
-      const reported = message.info.cost ?? 0;
-      if (reported > 0) {
-        total += reported;
-        continue;
-      }
-      const estimate = estimateOpenAIApiCost(
-        message.info,
-        lookupModelPricing(message.info.providerID, message.info.modelID),
-      );
-      if (estimate !== null) {
-        total += estimate;
-      }
-    }
+    const total = costEntries.reduce((sum, entry) => sum + entry.cost, 0);
     return total > 0 ? total : null;
-  }, [streamMessages, task?.cost]);
+  }, [costEntries, task?.cost]);
+  /** Cumulative cost tooltip, with a per-model breakdown when we can attribute it. */
+  const cumulativeCostTitle = useMemo(() => {
+    const heading = "このセッションの累計コスト";
+    if (!cumulativeCost) return heading;
+    const lines = costBreakdownLines(costEntries, cumulativeCost, (cost) =>
+      formatCostValue(cost, costPrefs),
+    );
+    return lines.length > 0 ? `${heading}\n${lines.join("\n")}` : heading;
+  }, [costEntries, cumulativeCost, costPrefs]);
 
   useEffect(() => {
     const previous = prevSessionErrorRef.current;
@@ -4245,10 +4242,7 @@ export function TaskView({
             {cumulativeCost && (
               <>
                 <span className="mx-1">·</span>
-                <span
-                  className="shrink-0"
-                  title="このセッションの累計コスト"
-                >
+                <span className="shrink-0" title={cumulativeCostTitle}>
                   {formatCostValue(cumulativeCost, costPrefs)}
                 </span>
               </>

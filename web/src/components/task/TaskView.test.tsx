@@ -649,7 +649,79 @@ describe("TaskView", () => {
     await flushTaskLoad();
 
     expect(screen.getByText("$0.3200")).toBeTruthy();
-    expect(screen.getByTitle("このセッションの累計コスト")).toBeTruthy();
+    expect(screen.getByTitle(/^このセッションの累計コスト/)).toBeTruthy();
+  });
+
+  it("breaks the cumulative cost down by model on hover", async () => {
+    taskResponseCosts = [0];
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      messages: [
+        {
+          info: {
+            id: "assistant-1",
+            role: "assistant",
+            providerID: "anthropic",
+            modelID: "claude-opus-5",
+            cost: 0.2,
+          },
+          parts: [{ id: "text-1", type: "text", text: "回答" }],
+        },
+        {
+          info: {
+            id: "assistant-2",
+            role: "assistant",
+            providerID: "openai",
+            modelID: "gpt-5",
+            cost: 0.5,
+          },
+          parts: [{ id: "text-2", type: "text", text: "回答" }],
+        },
+        {
+          info: {
+            id: "assistant-3",
+            role: "assistant",
+            providerID: "anthropic",
+            modelID: "claude-opus-5",
+            cost: 0.1,
+          },
+          parts: [{ id: "text-3", type: "text", text: "回答" }],
+        },
+      ],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.getByTitle(/^このセッションの累計コスト/).title).toBe(
+      "このセッションの累計コスト\ngpt-5: $0.5000\nclaude-opus-5: $0.3000",
+    );
+  });
+
+  it("attributes the unexplained remainder of the reported cost to その他", async () => {
+    taskResponseCosts = [1];
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      messages: [
+        {
+          info: {
+            id: "assistant-1",
+            role: "assistant",
+            providerID: "openai",
+            modelID: "gpt-5",
+            cost: 0.4,
+          },
+          parts: [{ id: "text-1", type: "text", text: "回答" }],
+        },
+      ],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.getByTitle(/^このセッションの累計コスト/).title).toBe(
+      "このセッションの累計コスト\ngpt-5: $0.4000\nその他: $0.6000",
+    );
   });
 
   it("does not poll when the current task is idle", async () => {
