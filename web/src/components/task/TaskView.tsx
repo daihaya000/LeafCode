@@ -2565,6 +2565,18 @@ export function TaskView({
     [stream.messages, task?.directory],
   );
 
+  // Visible file count from DiffPane (respects type + session filters).
+  // Falls back to the dirstat-based `task.filesChanged` when DiffPane has not
+  // reported yet (e.g. tab not active).
+  const [filteredFilesCount, setFilteredFilesCount] = useState<number | null>(null);
+  const badgeCount = filteredFilesCount ?? (task?.filesChanged ?? 0);
+
+  // Reset the DiffPane-reported count when switching tasks so a stale count
+  // from the previous task does not flash in the badge.
+  useEffect(() => {
+    setFilteredFilesCount(null);
+  }, [task?.id]);
+
   // Context window usage, derived from the most recent assistant turn's
   // token usage against that model's known context limit (see
   // computeContextUsage for why this uses the last turn, not a sum).
@@ -4603,7 +4615,7 @@ export function TaskView({
             {
               key: "diff" as const,
               label:
-                task.filesChanged > 0 ? `変更 (${task.filesChanged})` : "変更",
+                badgeCount > 0 ? `変更 (${badgeCount})` : "変更",
               panel: "diff" as const,
             },
             { key: "diff" as const, label: "ファイル", panel: "files" as const },
@@ -5476,6 +5488,7 @@ export function TaskView({
                 focusFile={focusFile}
                 onFocusHandled={() => setFocusFile(null)}
                 onMutated={() => void refreshTask()}
+                onFilesCountChange={setFilteredFilesCount}
                 touchedPaths={sessionTouchedPaths}
               />
             </div>
