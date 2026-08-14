@@ -13,8 +13,8 @@ import {
 import type { HealthDto, UpdateAvailability, UpdateState, UpdateTarget } from "@/lib/types";
 
 const RESTART_LABELS = {
-  webui: "WebUI（フロントエンド）",
-  opencode: "LeafCode（バックエンド）",
+  webui: "LeafCode（フロントエンド）",
+  opencode: "OpenCode（バックエンド）",
   all: "すべて",
 } as const;
 const RESTART_HEALTH_MAX_ATTEMPTS = 180;
@@ -35,13 +35,13 @@ function restartHealthTimeoutMessage(
   lastHealth: HealthDto | null,
 ) {
   if (target === "all" && lastHealth?.webui?.ok === true) {
-    return "WebUI は復帰しましたが、LeafCode の起動確認が完了しませんでした。設定の接続状態またはトレイログを確認してください。";
+    return "LeafCode は復帰しましたが、OpenCode の起動確認が完了しませんでした。設定の接続状態またはトレイログを確認してください。";
   }
   if (target === "webui") {
-    return "WebUI の再起動要求は受理されましたが、3分以内にヘルスチェックへ復帰しませんでした。ページを再読み込みし、続く場合はトレイログを確認してください。";
+    return "LeafCode の再起動要求は受理されましたが、3分以内にヘルスチェックへ復帰しませんでした。ページを再読み込みし、続く場合はトレイログを確認してください。";
   }
   if (target === "opencode") {
-    return "LeafCode の再起動要求は受理されましたが、3分以内に起動確認が完了しませんでした。トレイログを確認してください。";
+    return "OpenCode の再起動要求は受理されましたが、3分以内に起動確認が完了しませんでした。トレイログを確認してください。";
   }
   return "再起動要求は受理されましたが、3分以内にヘルスチェックへ復帰しませんでした。ページを再読み込みし、続く場合はトレイログを確認してください。";
 }
@@ -215,11 +215,11 @@ export function EngineSettingsTab({
       const message =
         target === "webui"
           ? data.mode === "release"
-            ? "WebUI の最新版リリースを取得しました。必要に応じてビルド/再起動してください。"
-            : "WebUI のリモート更新を取得しました。必要に応じてビルド/再起動してください。"
+            ? "LeafCode の最新版リリースを取得しました。必要に応じてビルド/再起動してください。"
+            : "LeafCode のリモート更新を取得しました。必要に応じてビルド/再起動してください。"
           : target === "opencode"
-            ? `LeafCode CLI を更新しました${typeof data.result?.version === "string" ? `（${data.result.version}）` : ""}。反映には LeafCode の再起動が必要です。`
-            : `Next.js を更新しました${typeof data.version === "string" ? `（${data.version}）` : ""}。反映には WebUI の再起動が必要です。`;
+            ? `OpenCode CLI を更新しました${typeof data.result?.version === "string" ? `（${data.result.version}）` : ""}。反映には OpenCode の再起動が必要です。`
+            : `Next.js を更新しました${typeof data.version === "string" ? `（${data.version}）` : ""}。反映には LeafCode の再起動が必要です。`;
       setUpdateState({ target, kind: "success", message, detail: detail || undefined });
       await refresh();
     } catch (err) {
@@ -240,15 +240,15 @@ export function EngineSettingsTab({
             <div>
               <h3 className="text-sm font-semibold text-text">接続状態</h3>
               <p className="mt-1 text-xs text-faint">
-                LeafCode {health?.opencode.version ?? ""}
+                OpenCode {health?.opencode.version ?? ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone={health?.webui?.ok ? "success" : "danger"}>
-                {health?.webui?.ok ? "WebUI 接続中" : "WebUI 停止"}
+                {health?.webui?.ok ? "LeafCode 接続中" : "LeafCode 停止"}
               </Badge>
               <Badge tone={health?.opencode?.ok ? "success" : "danger"}>
-                {health?.opencode?.ok ? "LeafCode 接続中" : "LeafCode 停止"}
+                {health?.opencode?.ok ? "OpenCode 接続中" : "OpenCode 停止"}
               </Badge>
             </div>
           </div>
@@ -272,7 +272,7 @@ export function EngineSettingsTab({
                   disabled={hostOk !== true || restarting !== null}
                   onClick={() => requestRestart("webui")}
                 >
-                  WebUI を再起動
+                  LeafCode を再起動
                 </Button>
                 <Button
                   type="button"
@@ -282,7 +282,7 @@ export function EngineSettingsTab({
                   disabled={hostOk !== true || restarting !== null}
                   onClick={() => requestRestart("opencode")}
                 >
-                  LeafCode を再起動
+                  OpenCode を再起動
                 </Button>
                 <Button
                   type="button"
@@ -336,7 +336,7 @@ export function EngineSettingsTab({
               <div>
                 <h3 className="text-xs font-semibold text-muted">アップデート</h3>
                 <p className="mt-1 text-xs text-faint">
-                  WebUI は <code>git pull --ff-only</code>、LeafCode CLI は upgrade API、Next.js は{" "}
+                  LeafCode は <code>git pull --ff-only</code>、OpenCode CLI は upgrade API、Next.js は{" "}
                   <code>npm install next@latest</code> を実行します（いずれも手動操作。起動時には自動実行されません）。
                 </p>
               </div>
@@ -345,12 +345,12 @@ export function EngineSettingsTab({
                   <p className="font-medium">現在のバージョン</p>
                   <ul className="mt-0.5 list-disc pl-4">
                     <li>
-                      WebUI: コミット {updateAvailability.webui.current ?? "不明"}
+                      LeafCode: コミット {updateAvailability.webui.current ?? "不明"}
                       {updateAvailability.webui.currentDate
                         ? `（${updateAvailability.webui.currentDate}）`
                         : ""}
                     </li>
-                    <li>LeafCode CLI: バージョン {updateAvailability.opencode.current ?? "不明"}</li>
+                    <li>OpenCode CLI: バージョン {updateAvailability.opencode.current ?? "不明"}</li>
                     <li>Next.js: バージョン {updateAvailability.nextjs.current ?? "不明"}</li>
                   </ul>
                 </div>
@@ -368,12 +368,12 @@ export function EngineSettingsTab({
                   <ul className="mt-0.5 list-disc pl-4">
                     {updateAvailability.webui.available && (
                       <li>
-                        WebUI: コミット {updateAvailability.webui.current ?? "不明"}（{updateAvailability.webui.currentDate ?? "日時不明"}） → {updateAvailability.webui.latest ?? "不明"}（{updateAvailability.webui.latestDate ?? "日時不明"}）
+                        LeafCode: コミット {updateAvailability.webui.current ?? "不明"}（{updateAvailability.webui.currentDate ?? "日時不明"}） → {updateAvailability.webui.latest ?? "不明"}（{updateAvailability.webui.latestDate ?? "日時不明"}）
                       </li>
                     )}
                     {updateAvailability.opencode.available && (
                       <li>
-                        LeafCode CLI: バージョン {updateAvailability.opencode.current ?? "不明"} → {updateAvailability.opencode.latest ?? "不明"}
+                        OpenCode CLI: バージョン {updateAvailability.opencode.current ?? "不明"} → {updateAvailability.opencode.latest ?? "不明"}
                       </li>
                     )}
                     {updateAvailability.nextjs.available && (
@@ -393,7 +393,7 @@ export function EngineSettingsTab({
                   disabled={updating !== null || restarting !== null}
                   onClick={() => void updateService("webui")}
                 >
-                  WebUI を更新
+                  LeafCode を更新
                 </Button>
                 <Button
                   type="button"
@@ -403,7 +403,7 @@ export function EngineSettingsTab({
                   disabled={updating !== null || restarting !== null || health?.opencode?.ok !== true}
                   onClick={() => void updateService("opencode")}
                 >
-                  LeafCode CLI を更新
+                  OpenCode CLI を更新
                 </Button>
                 <Button
                   type="button"
@@ -433,9 +433,9 @@ export function EngineSettingsTab({
                     {updateState.kind === "running"
                       ? `${
                           updateState.target === "webui"
-                            ? "WebUI"
+                            ? "LeafCode"
                             : updateState.target === "opencode"
-                              ? "LeafCode CLI"
+                              ? "OpenCode CLI"
                               : "Next.js"
                         } をアップデートしています…`
                       : updateState.message}
@@ -455,12 +455,12 @@ export function EngineSettingsTab({
               <div>
                 <h3 className="text-xs font-semibold text-muted">API 世代</h3>
                 <p className="mt-1 text-xs text-faint">
-                  WebUI が LeafCode エンジンを呼ぶ際に使う API 世代です。エンジンが v1 と v2
+                  LeafCode が OpenCode エンジンを呼ぶ際に使う API 世代です。エンジンが v1 と v2
                   （beta）を併存公開している間は切り替えて比較できます。切り替えはブラウザに
                   即時反映され、サーバにも保存されます。
                 </p>
               </div>
-              <div role="radiogroup" aria-label="LeafCode API 世代" className="flex flex-col gap-2">
+              <div role="radiogroup" aria-label="OpenCode API 世代" className="flex flex-col gap-2">
                 <label className="flex items-start gap-3 text-sm text-muted">
                   <input
                     type="radio"

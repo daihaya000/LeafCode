@@ -40,5 +40,5 @@ export async function restartOpencodeAndWait(): Promise<void> {
       // still starting up
     }
   }
-  throw new Error("LeafCode の再起動を確認できませんでした");
+  throw new Error("OpenCode の再起動を確認できませんでした");
 }

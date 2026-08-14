@@ -413,8 +413,8 @@ const statusOpencodeItem = {
 };
 
 const statusWebuiItem = {
-  title: 'WebUI: …',
-  tooltip: 'Next.js WebUI status',
+  title: 'LeafCode: …',
+  tooltip: 'Next.js LeafCode status',
   checked: false,
   enabled: false,
 };
@@ -741,12 +741,12 @@ async function autoRestartOpencodeAfterCrash() {
         process.env.OPENCODE_PORT = String(OPENCODE_PORT);
         process.env.OPENCODE_BASE_URL = OPENCODE_URL;
         log(
-          `OpenCode port changed ${previousPort} → ${OPENCODE_PORT}; restarting WebUI to follow…`,
+          `OpenCode port changed ${previousPort} → ${OPENCODE_PORT}; restarting LeafCode to follow…`,
         );
         await stopWebOnly();
         await sleep(500);
         await spawnWeb();
-        const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+        const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'LeafCode', 60, {
           proc: () => webProc,
         });
         if (!webReady) {
@@ -1064,8 +1064,8 @@ function buildWebProductionInternal(reason = 'missing') {
     removeBrokenWebBuild(WEB_DIST_DIR, { log });
     const reasonText =
       reason === 'stale'
-        ? 'Production WebUI build is stale (sources newer than BUILD_ID); rebuilding before start…'
-        : 'Production WebUI build is missing; rebuilding before start…';
+        ? 'Production LeafCode build is stale (sources newer than BUILD_ID); rebuilding before start…'
+        : 'Production LeafCode build is missing; rebuilding before start…';
     log(reasonText);
     mkdirSync(WEB_DIST_DIR, { recursive: true });
     // Syncs the hard-link mirror and builds there; see scripts/build-web.mjs.
@@ -1097,14 +1097,14 @@ function buildWebProductionInternal(reason = 'missing') {
     child.on('error', (err) => finish(err));
     child.on('close', (code) => {
       if (code !== 0) {
-        finish(new Error(`WebUI production build failed (code=${code})`));
+        finish(new Error(`LeafCode production build failed (code=${code})`));
         return;
       }
       if (!existsSync(join(WEB_DIST_DIR, 'BUILD_ID'))) {
-        finish(new Error('WebUI production build finished without BUILD_ID'));
+        finish(new Error('LeafCode production build finished without BUILD_ID'));
         return;
       }
-      log('Production WebUI build completed');
+      log('Production LeafCode build completed');
       finish();
     });
   });
@@ -1139,7 +1139,7 @@ async function spawnWeb() {
       hasBuild = existsSync(join(WEB_DIST_DIR, 'BUILD_ID'));
       if (rebuildReason === 'stale' && hasBuild) {
         error(
-          `WebUI stale rebuild failed; continuing with the existing production build (${err instanceof Error ? err.message : String(err)})`,
+          `LeafCode stale rebuild failed; continuing with the existing production build (${err instanceof Error ? err.message : String(err)})`,
         );
       } else {
         throw err;
@@ -1150,11 +1150,11 @@ async function spawnWeb() {
     plan = getPostBuildLaunchPlan(process.env.LEAFCODE_MODE, hasBuild, buildStale);
     if (plan.staleAfterBuild) {
       log(
-        'Sources changed while the WebUI build ran; starting the fresh build anyway (the next restart will rebuild)',
+        'Sources changed while the LeafCode build ran; starting the fresh build anyway (the next restart will rebuild)',
       );
     }
   }
-  if (plan.needsBuild) throw new Error('WebUI production build is unavailable');
+  if (plan.needsBuild) throw new Error('LeafCode production build is unavailable');
   const useProd = plan.useProd;
 
   // Production serves the mirrored project, so `next start` is invoked
@@ -1162,7 +1162,7 @@ async function spawnWeb() {
   const serveDir = useProd ? WEB_MIRROR_DIR : WEB_DIR;
   const serverArgs = ['--hostname', WEBUI_HOST, '--port', String(WEBUI_PORT)];
 
-  log(`Starting WebUI (${useProd ? 'production' : 'dev'}) on ${WEBUI_HOST}:${WEBUI_PORT} in ${serveDir}`);
+  log(`Starting LeafCode (${useProd ? 'production' : 'dev'}) on ${WEBUI_HOST}:${WEBUI_PORT} in ${serveDir}`);
   const spawnServer = (options) =>
     useProd
       ? spawn(
@@ -1219,7 +1219,7 @@ async function spawnWeb() {
   armWebStableReset(child);
 
   child.on('error', (err) => {
-    error(`WebUI spawn error: ${err.message}`);
+    error(`LeafCode spawn error: ${err.message}`);
   });
 
   child.stdout?.on('data', (chunk) => {
@@ -1234,7 +1234,7 @@ async function spawnWeb() {
     const expected = child.pid ? expectedWebExitPids.delete(child.pid) : false;
     const wasCurrent = webProc === child;
     if (!quitting) {
-      log(`WebUI exited (code=${code}, signal=${signal ?? 'none'})`);
+      log(`LeafCode exited (code=${code}, signal=${signal ?? 'none'})`);
     }
     if (wasCurrent) {
       webProc = null;
@@ -1262,13 +1262,13 @@ async function checkWebHealth() {
     webHealthFailures = decision.consecutiveFailures;
     if (!decision.shouldRestart || webProc == null) return;
 
-    error(`WebUI health check failed ${webHealthFailures} times; recovering the hung process`);
+    error(`LeafCode health check failed ${webHealthFailures} times; recovering the hung process`);
     restartingServices = true;
     try {
       await stopWebOnly({ preserveRestartBudget: true });
       scheduleWebRestart();
     } catch (err) {
-      error(`WebUI hang recovery failed: ${err instanceof Error ? err.message : String(err)}`);
+      error(`LeafCode hang recovery failed: ${err instanceof Error ? err.message : String(err)}`);
       scheduleWebRestart();
     } finally {
       restartingServices = false;
@@ -1282,7 +1282,7 @@ function startWebWatchdog() {
   if (webWatchdogTimer) return;
   webWatchdogTimer = setInterval(() => {
     void checkWebHealth().catch((err) => {
-      error(`WebUI health check failed: ${err instanceof Error ? err.message : String(err)}`);
+      error(`LeafCode health check failed: ${err instanceof Error ? err.message : String(err)}`);
     });
   }, WEB_WATCHDOG_INTERVAL_MS);
   webWatchdogTimer.unref?.();
@@ -1300,11 +1300,11 @@ function scheduleWebRestart() {
   // thing that can bring the WebUI back, so we never give up.
   if (coolingDown && !webCoolDownAnnounced) {
     log(
-      `WebUI restart burst exhausted (${MAX_WEB_RESTARTS}); entering 60s cool-down retry loop (never gives up)`,
+      `LeafCode restart burst exhausted (${MAX_WEB_RESTARTS}); entering 60s cool-down retry loop (never gives up)`,
     );
     webCoolDownAnnounced = true;
   } else if (!coolingDown) {
-    log(`Restarting WebUI in ${delay}ms (attempt ${webRestarts}/${MAX_WEB_RESTARTS})…`);
+    log(`Restarting LeafCode in ${delay}ms (attempt ${webRestarts}/${MAX_WEB_RESTARTS})…`);
   }
   webRestartTimer = setTimeout(() => {
     webRestartTimer = null;
@@ -1322,7 +1322,7 @@ function scheduleWebRestart() {
         await spawnWeb();
         await refreshStatusMenu();
       } catch (err) {
-        error(`WebUI restart failed: ${err instanceof Error ? err.message : String(err)}`);
+        error(`LeafCode restart failed: ${err instanceof Error ? err.message : String(err)}`);
         scheduleWebRestart();
       }
     })();
@@ -1571,7 +1571,7 @@ async function resolvePortPlan(preCaptured) {
   const webui = await resolveOccupiedPort(
     WEBUI_PORT,
     WEBUI_URL,
-    'WebUI',
+    'LeafCode',
     opencode.mutated ? null : netstat,
   );
   if (webui.port !== WEBUI_PORT) {
@@ -1778,8 +1778,8 @@ async function refreshStatusMenu() {
 
   statusOpencodeItem.title = formatServiceStatus('OpenCode', procRunning(opencodeProc), opencodeUp);
   statusWebuiItem.title = procRunning(webBuildProc)
-    ? 'WebUI: building…'
-    : formatServiceStatus('WebUI', procRunning(webProc), webUp);
+    ? 'LeafCode: building…'
+    : formatServiceStatus('LeafCode', procRunning(webProc), webUp);
 
   // Only push updates to a tray helper whose process is still alive. Once the
   // helper exits, `systray` may linger until the restart lands; sending to it
@@ -1834,8 +1834,8 @@ async function runServiceRestart({ label, logPrefix, throwIfBusy = false, operat
 
 async function restartWeb() {
   await runServiceRestart({
-    label: 'WebUI restart',
-    logPrefix: 'Restarting WebUI',
+    label: 'LeafCode restart',
+    logPrefix: 'Restarting LeafCode',
     operation: async () => {
       await stopWebOnly();
       await sleep(500);
@@ -1858,12 +1858,12 @@ async function restartWeb() {
  */
 async function stopWebForBuild() {
   await runServiceRestart({
-    label: 'WebUI stop',
-    logPrefix: 'Stopping WebUI on build request',
+    label: 'LeafCode stop',
+    logPrefix: 'Stopping LeafCode on build request',
     throwIfBusy: true,
     operation: async () => {
       await stopWebOnly();
-      log('WebUI stopped for build');
+      log('LeafCode stopped for build');
     },
   });
 }
@@ -1913,12 +1913,12 @@ async function restartOpencode() {
       // WebUI bakes OPENCODE_BASE_URL at spawn time — follow port changes.
       if (OPENCODE_PORT !== previousPort) {
         log(
-          `OpenCode port changed ${previousPort} → ${OPENCODE_PORT}; restarting WebUI to follow…`,
+          `OpenCode port changed ${previousPort} → ${OPENCODE_PORT}; restarting LeafCode to follow…`,
         );
         await stopWebOnly();
         await sleep(500);
         await spawnWeb();
-        const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+        const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'LeafCode', 60, {
           proc: () => webProc,
         });
         if (!webReady) {
@@ -2079,7 +2079,7 @@ function stopWebTreeOnExit() {
       hardKill: hardKillTree,
     });
     if (killed.length > 0) {
-      log(`Exit cleanup stopped WebUI process(es): ${killed.join(', ')}`);
+      log(`Exit cleanup stopped LeafCode process(es): ${killed.join(', ')}`);
     }
   } catch {
     // best effort — never throw from an exit handler
@@ -2128,7 +2128,7 @@ function buildTrayMenu() {
           : [statusOpencodeItem, statusWebuiItem],
       },
       {
-        title: 'Restart WebUI',
+        title: 'Restart LeafCode',
         tooltip: 'Restart Next.js frontend only',
         checked: false,
         enabled: true,
@@ -2151,7 +2151,7 @@ function buildTrayMenu() {
       },
       {
         title: 'Restart all',
-        tooltip: 'Restart OpenCode and WebUI',
+        tooltip: 'Restart OpenCode and LeafCode',
         checked: false,
         enabled: true,
         click: () => {
@@ -2340,7 +2340,7 @@ async function main() {
       refreshStatusMenu().catch(() => {});
     }, 5000);
     const browserUrl = startResolvingBrowserUrl();
-    const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+    const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'LeafCode', 60, {
       proc: () => webProc,
     });
     await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
@@ -2366,7 +2366,7 @@ async function main() {
   }, 5000);
   await refreshStatusMenu();
   const browserUrl = startResolvingBrowserUrl();
-  const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+  const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'LeafCode', 60, {
     proc: () => webProc,
   });
   await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {

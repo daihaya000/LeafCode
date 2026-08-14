@@ -1137,7 +1137,7 @@ export function Sidebar({
         >
           {engineUnavailableCount < ENGINE_UNAVAILABLE_CONFIRMATIONS
             ? "エンジン接続を確認中です。起動直後のため自動で再試行しています。"
-            : "エンジン未接続。自動で再確認中です。続く場合は設定またはトレイから LeafCode を再起動してください。"}
+            : "エンジン未接続。自動で再確認中です。続く場合は設定またはトレイから OpenCode を再起動してください。"}
         </div>
       )}
 

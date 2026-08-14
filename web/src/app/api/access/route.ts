@@ -157,7 +157,7 @@ export async function GET(req: Request) {
     addresses: [...caddyAddresses, ...addresses],
     hint:
       host === "127.0.0.1"
-        ? "WebUI が localhost のみ待ち受け中です。スマホから使うには LEAFCODE_HOST=0.0.0.0 で再起動してください。"
+        ? "LeafCode が localhost のみ待ち受け中です。スマホから使うには LEAFCODE_HOST=0.0.0.0 で再起動してください。"
         : "スマホは VPN 接続後、下の URL（VPN 優先）を開いてください。Windows ファイアウォールでポート 3000 を許可する必要がある場合があります。",
   });
 }

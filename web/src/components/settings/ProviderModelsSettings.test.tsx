@@ -635,7 +635,7 @@ describe("ProviderModelsSettings", () => {
         models: [{ id: "custom-model", name: "Custom Model" }],
       },
     ));
-    expect(await screen.findByText(/LeafCode の再起動後/)).toBeTruthy();
+    expect(await screen.findByText(/OpenCode の再起動後/)).toBeTruthy();
   });
 
   it("registers the local Ollama provider through the dedicated API", async () => {

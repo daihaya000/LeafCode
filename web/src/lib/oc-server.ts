@@ -50,7 +50,7 @@ export async function ocServer<T>(
     isBlockedOpencodeWrite(method, resolved)
   ) {
     throw new OcError(
-      "OpenCode config/auth/mcp writes are disabled in WebUI",
+      "OpenCode config/auth/mcp writes are disabled in LeafCode",
       403,
     );
   }

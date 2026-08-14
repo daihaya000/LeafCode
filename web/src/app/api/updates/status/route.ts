@@ -79,7 +79,7 @@ async function checkWebUiWithoutGit(cwd: string): Promise<UpdateStatus> {
       latest: remoteHead.commit.slice(0, 7),
     };
   } catch (err) {
-    return { available: false, error: err instanceof Error ? err.message : "WebUIの更新確認に失敗しました" };
+    return { available: false, error: err instanceof Error ? err.message : "LeafCodeの更新確認に失敗しました" };
   }
 }
 
@@ -108,7 +108,7 @@ async function checkWebUi(): Promise<UpdateStatus> {
       latestDate,
     };
   } catch (err) {
-    return { available: false, error: err instanceof Error ? err.message : "WebUIの更新確認に失敗しました" };
+    return { available: false, error: err instanceof Error ? err.message : "LeafCodeの更新確認に失敗しました" };
   }
 }
 

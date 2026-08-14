@@ -1027,7 +1027,7 @@ export function ProviderModelsSettings() {
       const total = result.models?.length ?? 0;
       const vision = result.visionModels?.length ?? 0;
       setAddMessage(
-        `ローカルOllamaの${total}件のモデルを登録しました（画像対応${vision}件）。LeafCode の再起動後に利用できます。`,
+        `ローカルOllamaの${total}件のモデルを登録しました（画像対応${vision}件）。OpenCode の再起動後に利用できます。`,
       );
       await load();
     } catch (err) {
@@ -1172,8 +1172,8 @@ export function ProviderModelsSettings() {
       if (!mountedRef.current) return;
       setAddMessage(
         editingProviderId
-          ? "更新しました。LeafCode の再起動後に反映されます。"
-          : "登録しました。LeafCode の再起動後に利用できます。",
+          ? "更新しました。OpenCode の再起動後に反映されます。"
+          : "登録しました。OpenCode の再起動後に利用できます。",
       );
       resetProviderForm();
       await load();
@@ -1396,7 +1396,7 @@ export function ProviderModelsSettings() {
           プロバイダー/モデル
         </h2>
         <p className="mb-3 text-xs text-faint">
-          利用可能な AI プロバイダーとモデルの表示を切り替えます。LeafCode
+          利用可能な AI プロバイダーとモデルの表示を切り替えます。OpenCode
           設定ファイルに新規プロバイダーを追加できます。
         </p>
         {orderSaving && (
@@ -1548,7 +1548,7 @@ export function ProviderModelsSettings() {
             <p id="provider-delete-confirm-description">
               プロバイダー「{deleteConfirmProvider.name}」を削除しますか？
               <br />
-              opencode.jsoncから削除され、LeafCodeの再起動後に反映されます。
+              opencode.jsoncから削除され、OpenCodeの再起動後に反映されます。
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button

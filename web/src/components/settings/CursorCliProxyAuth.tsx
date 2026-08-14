@@ -39,7 +39,7 @@ export function CursorCliProxyAuth({ showHeading = true }: { showHeading?: boole
               {state !== "loading" && state !== "error" && <Badge tone={connected ? "success" : "neutral"}>{connected ? "接続済み" : "未接続"}</Badge>}
             </div>
             <p className="mt-1 text-xs text-faint">
-              Cursor CLIをローカルプロキシ経由で使用します。認証情報はCursor CLI側で管理されるため、WebUIでAPIキーを入力・保存する必要はありません。
+              Cursor CLIをローカルプロキシ経由で使用します。認証情報はCursor CLI側で管理されるため、LeafCodeでAPIキーを入力・保存する必要はありません。
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">

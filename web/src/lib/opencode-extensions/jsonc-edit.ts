@@ -58,9 +58,9 @@ export function readConfigContent(filePath: string): string {
     return fs.readFileSync(filePath, "utf8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new ExtensionsError("config", "LeafCode の設定ファイルが見つかりません");
+      throw new ExtensionsError("config", "OpenCode の設定ファイルが見つかりません");
     }
-    throw new ExtensionsError("config", "LeafCode の設定ファイルを読み込めません");
+    throw new ExtensionsError("config", "OpenCode の設定ファイルを読み込めません");
   }
 }
 
@@ -89,7 +89,7 @@ export async function atomicWriteFile(
 export function parseJsoncConfig(content: string): Record<string, unknown> {
   const parsed = parse(content) as unknown;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new ExtensionsError("config", "LeafCode の設定ファイルが不正です");
+    throw new ExtensionsError("config", "OpenCode の設定ファイルが不正です");
   }
   return parsed as Record<string, unknown>;
 }

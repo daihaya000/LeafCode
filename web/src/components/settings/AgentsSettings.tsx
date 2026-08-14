@@ -616,7 +616,7 @@ export function AgentsSettings() {
         }
       }
       if (!success) {
-        throw new Error("LeafCode の再起動を確認できませんでした");
+        throw new Error("OpenCode の再起動を確認できませんでした");
       }
       if (mountedRef.current) setRestartNeeded(false);
       await reload();
@@ -714,7 +714,7 @@ export function AgentsSettings() {
         className="space-y-3 rounded-xl border border-danger/30 bg-danger-bg px-4 py-4 text-sm text-danger"
       >
         <p className="text-muted">
-          エージェントを取得できませんでした。LeafCode
+          エージェントを取得できませんでした。OpenCode
           サーバーが起動しているか確認してください。
         </p>
         {actionError && (
@@ -741,7 +741,7 @@ export function AgentsSettings() {
           className="space-y-2 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3"
         >
           <p className="text-sm text-warning">
-            変更を反映するには LeafCode の再起動が必要です。
+            変更を反映するには OpenCode の再起動が必要です。
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -751,7 +751,7 @@ export function AgentsSettings() {
               disabled={hostOk !== true || busyName !== null}
               onClick={() => void restartOpencode()}
             >
-              LeafCode を再起動
+              OpenCode を再起動
             </Button>
             {hostOk === false && (
               <span className="text-xs text-faint">
@@ -1038,11 +1038,11 @@ export function AgentsSettings() {
                       ? "プロジェクト側"
                       : selected.scope === "global"
                         ? "opencode.jsonc"
-                        : "LeafCode 本体"}
+                        : "OpenCode 本体"}
                     で定義されています。モデルと effort は{" "}
                     <code>agent.{selected.name}</code> として opencode.jsonc
                     に書き込まれ、再起動後に反映されます。解除すると
-                    LeafCode の既定に戻ります。
+                    OpenCode の既定に戻ります。
                   </p>
                   <div className="mt-3 flex justify-end">
                     <Button

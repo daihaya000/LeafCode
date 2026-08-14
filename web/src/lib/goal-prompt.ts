@@ -23,7 +23,7 @@ export function buildGoalPromptWithMemory(
  * One prompt = one loop turn. The agent cannot see the loop counter from
  * inside the session, so without it being stated explicitly agents compress
  * every remaining step into a single turn (and even narrate turns that never
- * ran) instead of letting the WebUI drive the next iteration.
+ * ran) instead of letting the LeafCode drive the next iteration.
  */
 export function buildGoalPrompt(loop: GoalLoopDto, turnNumber: number, maxTurns: number): string {
   const acceptance = loop.acceptance.length
@@ -38,15 +38,15 @@ export function buildGoalPrompt(loop: GoalLoopDto, turnNumber: number, maxTurns:
   if (loop.forceFullRun) {
     return `<!-- webui-goal-loop-prompt -->
 
-You are running a WebUI native persistent goal loop in full-run mode. The WebUI will always run exactly ${maxTurns} goal turns — do not declare the goal complete early.
+You are running a LeafCode native persistent goal loop in full-run mode. The LeafCode will always run exactly ${maxTurns} goal turns — do not declare the goal complete early.
 
-This is turn ${turnNumber} of exactly ${maxTurns}. ${turnNumber - 1} loop turn(s) completed before this one. The WebUI sends the next prompt automatically after this turn ends.
+This is turn ${turnNumber} of exactly ${maxTurns}. ${turnNumber - 1} loop turn(s) completed before this one. The LeafCode sends the next prompt automatically after this turn ends.
 
 Rules:
-- One turn = one iteration. Do the smallest useful increment, then end this turn and let the WebUI prompt you again. Do not chain the remaining steps to finish the whole goal in a single turn.
+- One turn = one iteration. Do the smallest useful increment, then end this turn and let the LeafCode prompt you again. Do not chain the remaining steps to finish the whole goal in a single turn.
 - Report only work you actually performed in this turn. Never simulate, narrate, or count future turns as if they already happened.
-- Write a brief human-readable summary before the JSON block. Do not make the JSON block your only output; the WebUI hides that internal block in the chat.
-- Continue until all ${maxTurns} turns have been executed, or you are blocked / paused / stopped by the WebUI. Never claim the goal is complete; early completion claims are ignored.
+- Write a brief human-readable summary before the JSON block. Do not make the JSON block your only output; the LeafCode hides that internal block in the chat.
+- Continue until all ${maxTurns} turns have been executed, or you are blocked / paused / stopped by the LeafCode. Never claim the goal is complete; early completion claims are ignored.
 - Do not ask the user questions unless truly blocked.
 - Keep changes incremental and reviewable.
 - Follow repository safety instructions and avoid destructive operations.
@@ -68,15 +68,15 @@ The very last thing you output this turn must be a single fenced JSON block:
   }
   return `<!-- webui-goal-loop-prompt -->
 
-You are running a WebUI native persistent goal loop. Work on the next smallest useful step toward the goal. Prefer code changes, tests, typechecks, builds, and concrete evidence over discussion.
+You are running a LeafCode native persistent goal loop. Work on the next smallest useful step toward the goal. Prefer code changes, tests, typechecks, builds, and concrete evidence over discussion.
 
-This is turn ${turnNumber} of at most ${maxTurns}. ${turnNumber - 1} loop turn(s) completed before this one. The WebUI sends the next prompt automatically after this turn ends.
+This is turn ${turnNumber} of at most ${maxTurns}. ${turnNumber - 1} loop turn(s) completed before this one. The LeafCode sends the next prompt automatically after this turn ends.
 
 Rules:
-- One turn = one iteration. Do the smallest useful increment, then end this turn and let the WebUI prompt you again. Do not chain the remaining steps to finish the whole goal in a single turn.
+- One turn = one iteration. Do the smallest useful increment, then end this turn and let the LeafCode prompt you again. Do not chain the remaining steps to finish the whole goal in a single turn.
 - Report only work you actually performed in this turn. Never simulate, narrate, or count future turns as if they already happened.
-- Write a brief human-readable summary before the JSON block. Do not make the JSON block your only output; the WebUI hides that internal block in the chat.
-- Continue autonomously until the goal is completed, blocked, paused, or stopped by the WebUI.
+- Write a brief human-readable summary before the JSON block. Do not make the JSON block your only output; the LeafCode hides that internal block in the chat.
+- Continue autonomously until the goal is completed, blocked, paused, or stopped by the LeafCode.
 - Do not ask the user questions unless truly blocked.
 - Do not claim completion unless the goal and acceptance criteria are satisfied. A completed claim will be independently verified before the loop ends.
 - Keep changes incremental and reviewable.
@@ -127,7 +127,7 @@ export function buildGoalContinuationPrompt(
   if (loop.forceFullRun) {
     return `<!-- webui-goal-loop-prompt -->
 
-Continue the WebUI native persistent goal loop in full-run mode. Work on exactly one smallest useful step, then end this turn. The WebUI will run exactly ${maxTurns} turns — never declare the goal complete.
+Continue the LeafCode native persistent goal loop in full-run mode. Work on exactly one smallest useful step, then end this turn. The LeafCode will run exactly ${maxTurns} turns — never declare the goal complete.
 
 This is turn ${turnNumber} of exactly ${maxTurns}. Report only work actually performed in this turn. Do not simulate future work. Do not claim completion.
 
@@ -144,7 +144,7 @@ Use exactly one status: progress or blocked. Do not use status "completed". summ
   }
   return `<!-- webui-goal-loop-prompt -->
 
-Continue the WebUI native persistent goal loop. Work on exactly one smallest useful step toward the goal, then end this turn for the WebUI to continue.
+Continue the LeafCode native persistent goal loop. Work on exactly one smallest useful step toward the goal, then end this turn for the LeafCode to continue.
 
 This is turn ${turnNumber} of at most ${maxTurns}. Report only work actually performed in this turn. Do not simulate future work or claim completion without concrete evidence.
 
@@ -178,7 +178,7 @@ Only ${turnsExecuted} loop turn(s) of at most ${maxTurns} have actually been exe
 Rules:
 - Verify each acceptance criterion above and report whether the claim is actually true.
 - Check the claim against the real transcript and repository state, not against the claim's own narration. Reject it (return progress) if it reports more turns, iterations, or work than the ${turnsExecuted} executed turn(s) could contain, or if the evidence is simulated rather than observable.
-- Write a brief human-readable verification summary before the JSON block. Do not make the JSON block your only output; the WebUI hides that internal block in the chat.
+- Write a brief human-readable verification summary before the JSON block. Do not make the JSON block your only output; the LeafCode hides that internal block in the chat.
 - If the claim is fully verified, return verified_completed.
 - If the claim is not fully verified or more work is needed, return progress.
 - If you are blocked from verifying, return blocked.

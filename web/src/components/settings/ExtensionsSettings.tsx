@@ -608,7 +608,7 @@ export function ExtensionsSettings({
         }
       }
       if (!success) {
-        throw new Error("LeafCode の再起動を確認できませんでした");
+        throw new Error("OpenCode の再起動を確認できませんでした");
       }
       if (mountedRef.current) setRestartNeeded(false);
       await reloadAll();
@@ -673,8 +673,8 @@ export function ExtensionsSettings({
       if (!mountedRef.current) return;
       setPluginFormMessage(
         editingPluginId
-          ? "更新しました。LeafCode の再起動後に反映されます。"
-          : "登録しました。LeafCode の再起動後に利用できます。",
+          ? "更新しました。OpenCode の再起動後に反映されます。"
+          : "登録しました。OpenCode の再起動後に利用できます。",
       );
       resetPluginForm();
       setRestartNeeded(true);
@@ -697,7 +697,7 @@ export function ExtensionsSettings({
           className="space-y-2 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3"
         >
           <p className="text-sm text-warning">
-            変更を反映するには LeafCode の再起動が必要です。
+            変更を反映するには OpenCode の再起動が必要です。
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -707,7 +707,7 @@ export function ExtensionsSettings({
               disabled={hostOk !== true}
               onClick={() => void restartOpencode()}
             >
-              LeafCode を再起動
+              OpenCode を再起動
             </Button>
             {hostOk === false && (
               <span className="text-xs text-faint">
@@ -922,7 +922,7 @@ export function ExtensionsSettings({
               <p id="plugin-delete-confirm-description">
                 プラグイン「{deleteConfirmPlugin.name}」を一覧から削除しますか？
                 <br />
-                WebUI管理の保存状態とオプションが失われ、後から有効化しても復元できません。
+                LeafCode管理の保存状態とオプションが失われ、後から有効化しても復元できません。
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
@@ -985,7 +985,7 @@ export function ExtensionsSettings({
                         <Badge tone="neutral">オプション付き</Badge>
                       )}
                       {p.managedByWebui && (
-                        <Badge tone="warning">WebUI 管理</Badge>
+                        <Badge tone="warning">LeafCode 管理</Badge>
                       )}
                     </div>
                     {p.description && (
@@ -995,7 +995,7 @@ export function ExtensionsSettings({
                     )}
                     {p.managedByWebui && (
                       <p className="mt-0.5 text-[11px] text-faint">
-                        無効状態と元設定は WebUI のローカル管理情報です。状態を一覧から削除すると元設定（オプションを含む）は失われ、再有効化しても復元できません。
+                        無効状態と元設定は LeafCode のローカル管理情報です。状態を一覧から削除すると元設定（オプションを含む）は失われ、再有効化しても復元できません。
                       </p>
                     )}
                   </div>

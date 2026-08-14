@@ -274,7 +274,7 @@ describe("AgentsSettings", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("LeafCode を再起動")).toBeTruthy();
+      expect(screen.getByText("OpenCode を再起動")).toBeTruthy();
     });
 
     const patchCall = fetchMock.mock.calls.find((call) =>
@@ -324,7 +324,7 @@ describe("AgentsSettings", () => {
     expect(lastProviderBody).toEqual({ providerID: "openai", enabled: false });
 
     await waitFor(() => {
-      expect(screen.getByText("LeafCode を再起動")).toBeTruthy();
+      expect(screen.getByText("OpenCode を再起動")).toBeTruthy();
     });
   });
 
@@ -649,7 +649,7 @@ describe("AgentsSettings", () => {
 
     // Built-ins get the model/effort override form instead of the
     // "not editable" notice.
-    expect(screen.getByText(/LeafCode 本体/)).toBeTruthy();
+    expect(screen.getByText(/OpenCode 本体/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
     fireEvent.click(await screen.findByRole("option", { name: "GPT-5" }));

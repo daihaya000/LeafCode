@@ -188,7 +188,7 @@ export function ConnectivitySettingsTab() {
                   Caddy HTTPS用ルートCA証明書
                 </p>
                 <p className="mt-0.5 text-[11px] text-faint">
-                  このWebUIへHTTPS接続する端末で証明書警告を消すには、端末ごとに
+                  このLeafCodeへHTTPS接続する端末で証明書警告を消すには、端末ごとに
                   ルートCA証明書をダウンロードしてインストールしてください。
                 </p>
               </div>

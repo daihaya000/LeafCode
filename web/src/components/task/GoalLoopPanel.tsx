@@ -42,7 +42,7 @@ const PAUSE_REASON_HINT: Record<Exclude<GoalLoopDto["pauseReason"], "">, string>
   verification_rejected:
     "完了報告が検証で否認されました。再開すると却下回数をリセットして作業を続けます。",
   scheduler_error:
-    "LeafCode の呼び出しに失敗しました。再開すると同じ位置から再試行します。",
+    "OpenCode の呼び出しに失敗しました。再開すると同じ位置から再試行します。",
 };
 
 /** badge class for each status */

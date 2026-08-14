@@ -301,7 +301,7 @@ describe("goalLoopTestSeams", () => {
       const second = goalLoopTestSeams.buildGoalPromptWithMemory(loop, 2, 10);
       expect(second).toContain("<!-- webui-goal-loop-prompt -->");
       expect(second).not.toContain("<workspace-memory>");
-      expect(second).toContain("Continue the WebUI native persistent goal loop");
+      expect(second).toContain("Continue the LeafCode native persistent goal loop");
       expect(second).not.toContain("- One turn = one iteration.");
       expect(second).toContain("implemented the first step");
       expect(second).toContain("run the focused tests");

@@ -54,7 +54,7 @@ describe("ProfileAgentsSyncSettings", () => {
   it("renders the master row and the AGENTS.md editor after loading", async () => {
     render(<ProfileAgentsSyncSettings />);
     expect(
-      await screen.findByText("マスター (LeafCode)"),
+      await screen.findByText("マスター (OpenCode)"),
     ).toBeTruthy();
     expect(screen.getByLabelText("現在のプロファイルのAGENTS.md")).toHaveProperty(
       "value",
@@ -66,7 +66,7 @@ describe("ProfileAgentsSyncSettings", () => {
 
   it("saves the AGENTS.md content", async () => {
     render(<ProfileAgentsSyncSettings />);
-    await screen.findByText("マスター (LeafCode)");
+    await screen.findByText("マスター (OpenCode)");
 
     fireEvent.change(screen.getByLabelText("現在のプロファイルのAGENTS.md"), {
       target: { value: "updated content" },
@@ -90,7 +90,7 @@ describe("ProfileAgentsSyncSettings", () => {
       hermes: { updated: 1, skipped: 0, errors: [] },
     });
     render(<ProfileAgentsSyncSettings />);
-    await screen.findByText("マスター (LeafCode)");
+    await screen.findByText("マスター (OpenCode)");
 
     fireEvent.click(screen.getByRole("button", { name: /同期を実行/ }));
     await waitFor(() => {
@@ -112,7 +112,7 @@ describe("ProfileAgentsSyncSettings", () => {
       hermes: { updated: 0, skipped: 0, errors: [] },
     });
     render(<ProfileAgentsSyncSettings />);
-    await screen.findByText("マスター (LeafCode)");
+    await screen.findByText("マスター (OpenCode)");
 
     fireEvent.click(screen.getByRole("button", { name: /同期を実行/ }));
     expect((await screen.findByRole("alert")).textContent).toContain(

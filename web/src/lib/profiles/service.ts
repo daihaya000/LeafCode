@@ -300,7 +300,7 @@ export function installDependencies(id: string): InstallDependenciesResult {
   try {
     return { ok: true, installed: installWebUiDependencies(profile.path, readProfileSetupSettings()) };
   } catch (error) {
-    return { status: 409, error: error instanceof Error ? error.message : "WebUI依存の適用に失敗しました。" };
+    return { status: 409, error: error instanceof Error ? error.message : "LeafCode依存の適用に失敗しました。" };
   }
 }
 
@@ -328,7 +328,7 @@ export function installDependenciesOnStartup(): StartupInstallResult {
   try {
     return { ok: true, installed: installWebUiDependencies(active.path, settings) };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "WebUI依存の適用に失敗しました。" };
+    return { ok: false, error: error instanceof Error ? error.message : "LeafCode依存の適用に失敗しました。" };
   }
 }
 

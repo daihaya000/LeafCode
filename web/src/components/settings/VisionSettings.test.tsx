@@ -59,7 +59,7 @@ describe("VisionSettings", () => {
     ).toBeTruthy();
     expect(screen.getByText(/現在の状態: 有効/)).toBeTruthy();
     expect(screen.getByLabelText("画像事前解析を有効化")).toBeTruthy();
-    expect(screen.getByLabelText("LeafCode登録モデル（画像対応）")).toBeTruthy();
+    expect(screen.getByLabelText("OpenCode登録モデル（画像対応）")).toBeTruthy();
   });
 
   it("saves the settings when the enable checkbox is toggled and the save button is clicked", async () => {
@@ -67,7 +67,7 @@ describe("VisionSettings", () => {
     await screen.findByRole("heading", { name: "画像事前解析" });
 
     fireEvent.click(screen.getByLabelText("画像事前解析を有効化"));
-    fireEvent.change(screen.getByLabelText("LeafCode登録モデル（画像対応）"), {
+    fireEvent.change(screen.getByLabelText("OpenCode登録モデル（画像対応）"), {
       target: { value: "provider::model-1" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -93,7 +93,7 @@ describe("VisionSettings", () => {
     await screen.findByRole("heading", { name: "画像事前解析" });
 
     fireEvent.click(screen.getByLabelText("画像事前解析を有効化"));
-    fireEvent.change(screen.getByLabelText("LeafCode登録モデル（画像対応）"), {
+    fireEvent.change(screen.getByLabelText("OpenCode登録モデル（画像対応）"), {
       target: { value: "provider::model-1" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));

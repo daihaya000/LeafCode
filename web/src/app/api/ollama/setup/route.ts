@@ -58,7 +58,7 @@ export async function POST(req: Request) {
 
     const registered = await registerOllamaProvider();
     steps.push(
-      `LeafCodeに ${registered.models.length} 件のモデルを登録しました（provider: ${registered.providerID}）`,
+      `OpenCodeに ${registered.models.length} 件のモデルを登録しました（provider: ${registered.providerID}）`,
     );
 
     return NextResponse.json({

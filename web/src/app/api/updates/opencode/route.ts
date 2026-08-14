@@ -38,8 +38,8 @@ export async function POST(req: Request) {
         ok: false,
         error:
           err instanceof Error
-            ? `LeafCode CLI のアップデートに失敗しました: ${err.message}`
-            : "LeafCode CLI のアップデートに失敗しました",
+            ? `OpenCode CLI のアップデートに失敗しました: ${err.message}`
+            : "OpenCode CLI のアップデートに失敗しました",
       },
       { status: 502 },
     );

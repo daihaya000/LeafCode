@@ -265,7 +265,7 @@ export function BrowserBridgeSettings() {
               )}
             >
               <p className="text-xs text-faint">
-                WebUIの設定 → 拡張機能で、このペアリング要求を承認してください。コードの入力は不要です。
+                LeafCodeの設定 → 拡張機能で、このペアリング要求を承認してください。コードの入力は不要です。
               </p>
               <div className="mt-3">
                 <label htmlFor={`${hintId}-url`} className="text-xs font-medium text-muted">

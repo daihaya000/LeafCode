@@ -415,13 +415,13 @@ export function ProfilesSettings() {
       setActionSuccess(
         result.installed.length > 0
           ? profile.active
-            ? "WebUI依存を追加しました。LeafCode hostを再起動してください。"
-            : "WebUI依存を追加しました。"
-          : "WebUI依存は既に適用済みです。",
+            ? "LeafCode依存を追加しました。OpenCode hostを再起動してください。"
+            : "LeafCode依存を追加しました。"
+          : "LeafCode依存は既に適用済みです。",
       );
     } catch (err) {
       if (!mountedRef.current) return;
-      setActionError(err instanceof Error ? err.message : "WebUI依存の適用に失敗しました");
+      setActionError(err instanceof Error ? err.message : "LeafCode依存の適用に失敗しました");
     } finally {
       if (actionBusyRef.current === operation) {
         actionBusyRef.current = null;
@@ -573,7 +573,7 @@ export function ProfilesSettings() {
       {/* Host unavailable notice */}
       {hostOk === false && (
         <p className="mb-4 text-xs text-faint">
-          トレイホストが利用できないため、切替後の LeafCode 自動再起動は行われません。手動で再起動してください。
+          トレイホストが利用できないため、切替後の OpenCode 自動再起動は行われません。手動で再起動してください。
         </p>
       )}
 
@@ -584,7 +584,7 @@ export function ProfilesSettings() {
         >
           <legend className="px-1 text-sm font-semibold text-text">新規作成時のセットアップ</legend>
           <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">
-            新規作成・複製時にWebUI連携用の依存ファイルと設定を自動配置します。
+            新規作成・複製時にLeafCode連携用の依存ファイルと設定を自動配置します。
           </p>
           <div className="mt-3 grid gap-2 lg:grid-cols-4">
             {([
@@ -624,7 +624,7 @@ export function ProfilesSettings() {
               />
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-text">起動時自動配布</span>
-                <span className="block text-xs text-muted">WebUI 起動時にアクティブプロファイルへ連携依存を自動適用します。</span>
+                <span className="block text-xs text-muted">LeafCode 起動時にアクティブプロファイルへ連携依存を自動適用します。</span>
               </span>
             </label>
           </div>
@@ -710,7 +710,7 @@ export function ProfilesSettings() {
                           variant="ghost"
                           size="sm"
                           className="justify-center"
-                          aria-label={`${p.name}にWebUI依存を適用`}
+                          aria-label={`${p.name}にLeafCode依存を適用`}
                           busy={actionBusy === `dependencies:${p.id}`}
                           disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => void applyDependencies(p)}
@@ -822,7 +822,7 @@ export function ProfilesSettings() {
                     variant="ghost"
                     size="sm"
                     className="justify-center"
-                    aria-label={`${p.name}にWebUI依存を適用`}
+                    aria-label={`${p.name}にLeafCode依存を適用`}
                     busy={actionBusy === `dependencies:${p.id}`}
                     disabled={jobRunning || actionBusy !== null || busyId !== null}
                     onClick={() => void applyDependencies(p)}
@@ -970,8 +970,8 @@ export function ProfilesSettings() {
               「{switchConfirm.name}」に切り替えますか？
             </h3>
             <p className="mt-2 text-sm text-muted">
-              LeafCode が再起動され、<strong className="text-text">進行中のタスクは中断されます</strong>。
-              切替は WebUI・エンジン・ターミナルのすべてに影響します。
+              OpenCode が再起動され、<strong className="text-text">進行中のタスクは中断されます</strong>。
+              切替は LeafCode・エンジン・ターミナルのすべてに影響します。
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" disabled={busyId !== null} onClick={() => setSwitchConfirm(null)}>キャンセル</Button>
@@ -1016,7 +1016,7 @@ export function ProfilesSettings() {
       {restarting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" aria-live="assertive">
           <div className="rounded-2xl border border-border bg-surface px-8 py-6 text-center shadow-xl">
-            <p className="text-sm text-muted" aria-busy="true">LeafCode を再起動しています…</p>
+            <p className="text-sm text-muted" aria-busy="true">OpenCode を再起動しています…</p>
           </div>
         </div>
       )}

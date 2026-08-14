@@ -147,7 +147,7 @@ export function HostLogPanel() {
       <h2 className="mb-3 text-sm font-semibold text-muted">ホストログ</h2>
       <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
         <p className="text-xs text-faint">
-          トレイホストの直近ログ（LeafCode / WebUI / Caddy / ビルド）を表示します。生のコンソールを開かなくても診断できます。
+          トレイホストの直近ログ（OpenCode / LeafCode / Caddy / ビルド）を表示します。生のコンソールを開かなくても診断できます。
         </p>
         {fetchError && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2">
