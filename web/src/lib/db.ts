@@ -187,8 +187,10 @@ function runSchemaMigrations(db: Database.Database): void {
         db.exec(step.sql);
       }
       if (migration.sql) db.exec(migration.sql);
+      // Stamp inside the same transaction so an interrupted migration never
+      // leaves the SQL applied without the version marker (or vice versa).
+      db.pragma(`user_version = ${migration.version}`);
     })();
-    db.pragma(`user_version = ${migration.version}`);
   }
   backfillMemoryNormKeys(db);
 }
