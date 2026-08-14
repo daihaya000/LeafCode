@@ -22,7 +22,7 @@
 | BR-10 | 中 | ✅ 修正済み | workflow.integration の mock 未更新 |
 | **BR-11** | 高 | ✅ **修正済み（`9a641a5c`・別セッション）** | instrumentation.ts の register() から起動処理 7 種が消失 — 7 処理全て復元 + env shim 維持 + NEXT_RUNTIME チェック（0dc01130^ と同一構造・推奨方針どおり） |
 | **BR-12** | 中 | ✅ **修正済み（ソケット検証追加）** | Host ヘッダ偽装による control-plane のセッションなし admin 昇格 — isLocalHostRequest に実ソケット remoteAddress 検証を追加（LEAFCODE_HOST=0.0.0.0 時も偽装不可） |
-| **BR-13** | 低 | ⬜ **未修正** | README のビルドミラーパス記述が旧名のまま |
+| **BR-13** | 低 | ✅ **修正済み** | README のビルドミラーパス → %LOCALAPPDATA%\leafcode\build に修正 + 「改名移行中」の矛盾表現を明確化（残る旧名は互換説明のみ） |
 | **BR-14** | 低 | ✅ **修正済み** | ProfilesSettings の「OpenCode host」（二重置換の取り違え・1 箇所のみ）→「LeafCode host」 |
 | **BR-15** | 中 | ✅ **修正済み（レジストリ + DB の読み取り時正規化）** | dataDir rename 後の絶対パス残存 — readState / getWorkspace / listWorkspaces で旧 dataDir 配下のパスを新名に正規化（external は維持） |
 | **BR-16** | 低 | ⬜ **未修正** | docs/specs の 5 仕様書がデータディレクトリを `%APPDATA%\opencode-webui` と記載したまま |

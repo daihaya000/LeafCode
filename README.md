@@ -10,7 +10,7 @@ CLI エージェント [OpenCode](https://opencode.ai) をブラウザから操�
 
 WebUI と OpenCode は既定で `127.0.0.1` のみを待ち受けます。LAN や VPN への公開は、後述の設定を明示的に行った場合にだけ有効になります。
 
-> **改名移行中**: 表示名は LeafCode です。環境変数は `LEAFCODE_*` に改名済みですが、旧 `OPENCODE_WEBUI_*` も引き続き有効です（新名優先、未設定時のみ旧名を採用）。実行ファイル名（`LeafCode.exe`）とデータ保存先 `%APPDATA%\opencode-webui`（初回起動時に `%APPDATA%\leafcode` へ自動移行）は互換性のため移行前の名称を引き継ぎます。
+> **改名移行中**: 表示名は LeafCode です。環境変数は `LEAFCODE_*` に改名済みですが、旧 `OPENCODE_WEBUI_*` も引き続き有効です（新名優先、未設定時のみ旧名を採用）。実行ファイルは `LeafCode.exe` に変更済みです。データ保存先は初回起動時に `%APPDATA%\opencode-webui` から `%APPDATA%\leafcode` へ自動移行され、以降は `%APPDATA%\leafcode` が正です（移行前に作成されたファイルは旧名のまま残ることがあります）。
 
 ## 動作条件
 
@@ -220,7 +220,7 @@ npm test
 
 ### production build のミラー
 
-production build はリポジトリ内では実行されません。`scripts/web-build-mirror.mjs` がインストール全体をハードリンクでミラーし（既定 `%LOCALAPPDATA%\opencode-webui\build\<インストール名>-<ハッシュ>`）、`next build` と `next start` はそのミラー内で動作します。
+production build はリポジトリ内では実行されません。`scripts/web-build-mirror.mjs` がインストール全体をハードリンクでミラーし（既定 `%LOCALAPPDATA%\leafcode\build\<インストール名>-<ハッシュ>`）、`next build` と `next start` はそのミラー内で動作します。
 
 理由は 2 つあります。OneDrive の同期がビルド中・配信中の出力に触れると HTML とチャンクの世代が混在して `ChunkLoadError` になること、そして Turbopack がプロジェクト外を指す `distDir` を拒否するため、出力だけでなくプロジェクトごと同期対象の外へ置く必要があることです。
 
