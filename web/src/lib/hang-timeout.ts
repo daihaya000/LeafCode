@@ -1,4 +1,4 @@
-import { getJson, sendJson } from "./client";
+import { createSettingSync } from "./setting-sync";
 
 export const HANG_TIMEOUT_SETTING_KEY = "hang-timeout";
 export const HANG_TIMEOUT_EVENT = "webui:hang-timeout";
@@ -6,6 +6,12 @@ export const DEFAULT_HANG_TIMEOUT_MS = 5 * 60_000;
 export const MIN_HANG_TIMEOUT_MS = 10_000;
 export const MAX_HANG_TIMEOUT_MS = 30 * 60_000;
 const STORAGE_KEY = "webui:hang-timeout";
+
+const hangTimeoutSync = createSettingSync({
+  storageKey: STORAGE_KEY,
+  serverPath: `/api/settings/${HANG_TIMEOUT_SETTING_KEY}`,
+  eventName: HANG_TIMEOUT_EVENT,
+});
 
 export function clampHangTimeoutMs(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_HANG_TIMEOUT_MS;
@@ -54,26 +60,14 @@ export function subscribeHangTimeout(listener: () => void): () => void {
 }
 
 export async function syncHangTimeoutToServer(value: number): Promise<void> {
-  try {
-    await sendJson("PUT", `/api/settings/${HANG_TIMEOUT_SETTING_KEY}`, {
-      value: String(clampHangTimeoutMs(value)),
-    });
-  } catch {
-    // localStorage remains the synchronous source of truth.
-  }
+  await hangTimeoutSync.writeToServer(String(clampHangTimeoutMs(value)));
 }
 
 export async function readHangTimeoutFromServer(): Promise<number | null> {
-  try {
-    const data = await getJson<{ value: string | null }>(
-      `/api/settings/${HANG_TIMEOUT_SETTING_KEY}`,
-    );
-    if (!data.value) return null;
-    const value = Number(data.value);
-    return Number.isFinite(value) ? clampHangTimeoutMs(value) : null;
-  } catch {
-    return null;
-  }
+  const raw = await hangTimeoutSync.readFromServer();
+  if (raw === null) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? clampHangTimeoutMs(value) : null;
 }
 
 /** Reconcile the client display with the server-side watchdog setting. */
