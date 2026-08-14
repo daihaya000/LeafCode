@@ -6,7 +6,7 @@ import { tmpdir } from 'os';
 import { isWindowsAuthEnabled, readAuthConfig, writeAuthConfig } from './auth-config.js';
 
 const TEST_DIR = join(tmpdir(), `ocw-auth-config-${process.pid}`);
-const CONFIG = join(TEST_DIR, 'opencode-webui', 'auth-config.json');
+const CONFIG = join(TEST_DIR, 'leafcode', 'auth-config.json');
 
 function withTestDir(fn) {
   const original = process.env.APPDATA;
@@ -63,7 +63,7 @@ test('writeAuthConfig can turn the flag back off', () => {
 test('readAuthConfig falls back to the default for corrupt json', () => {
   reset();
   withTestDir(() => {
-    mkdirSync(join(TEST_DIR, 'opencode-webui'), { recursive: true });
+    mkdirSync(join(TEST_DIR, 'leafcode'), { recursive: true });
     writeFileSync(CONFIG, 'not json at all', 'utf8');
     assert.deepEqual(readAuthConfig(), { windowsAuth: false });
   });
@@ -73,7 +73,7 @@ test('readAuthConfig falls back to the default for corrupt json', () => {
 test('readAuthConfig ignores a non-boolean windowsAuth', () => {
   reset();
   withTestDir(() => {
-    mkdirSync(join(TEST_DIR, 'opencode-webui'), { recursive: true });
+    mkdirSync(join(TEST_DIR, 'leafcode'), { recursive: true });
     // A truthy string must not silently enable Windows logins.
     writeFileSync(CONFIG, JSON.stringify({ windowsAuth: 'yes' }), 'utf8');
     assert.equal(readAuthConfig().windowsAuth, false);
@@ -84,7 +84,7 @@ test('readAuthConfig ignores a non-boolean windowsAuth', () => {
 test('readAuthConfig ignores a json array', () => {
   reset();
   withTestDir(() => {
-    mkdirSync(join(TEST_DIR, 'opencode-webui'), { recursive: true });
+    mkdirSync(join(TEST_DIR, 'leafcode'), { recursive: true });
     writeFileSync(CONFIG, '[1,2,3]', 'utf8');
     assert.deepEqual(readAuthConfig(), { windowsAuth: false });
   });

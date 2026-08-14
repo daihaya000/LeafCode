@@ -17,7 +17,7 @@
 # directory instead of touching the real Desktop / %APPDATA%.
 param(
     [string]$DesktopDir = [Environment]::GetFolderPath("Desktop"),
-    [string]$IconOutputDir = (Join-Path $env:APPDATA "opencode-webui")
+    [string]$IconOutputDir = (Join-Path $env:APPDATA "leafcode")
 )
 
 $ErrorActionPreference = "Stop"

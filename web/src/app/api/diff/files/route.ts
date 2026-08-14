@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { parseUnifiedDiff, untrackedHunk } from "@/lib/diffparse";
 import { runGit } from "@/lib/git";
+import { isProjectMetaPath } from "@/lib/project-meta";
 import type { DiffFile, DiffFilesPayload } from "@/lib/types";
 import { requireAuthorized } from "@/lib/api-guard";
 
@@ -163,12 +164,7 @@ export async function GET(req: NextRequest) {
         // Avoid duplicating paths already present from unified diff
         const norm = rel.replace(/\\/g, "/");
         // Hide our own metadata dirs from the diff view.
-        if (
-          norm === ".opencode-webui" ||
-          norm.startsWith(".opencode-webui/") ||
-          norm === ".webui-worktrees" ||
-          norm.startsWith(".webui-worktrees/")
-        ) {
+        if (isProjectMetaPath(norm)) {
           continue;
         }
         if (files.some((f) => f.path === norm)) continue;

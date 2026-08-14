@@ -29,7 +29,7 @@ test('writeBrowserConfig persists the setting', () => {
   withTestDir(() => {
     assert.deepEqual(writeBrowserConfig({ autoOpenBrowser: true }), { autoOpenBrowser: true });
     assert.deepEqual(readBrowserConfig(), { autoOpenBrowser: true });
-    assert.ok(existsSync(join(TEST_DIR, 'opencode-webui', 'browser-config.json')));
+    assert.ok(existsSync(join(TEST_DIR, 'leafcode', 'browser-config.json')));
   });
   rmSync(TEST_DIR, { recursive: true, force: true });
 });

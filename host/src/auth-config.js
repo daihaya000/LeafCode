@@ -5,7 +5,7 @@ import { writeSecretFile } from './secure-file.js';
 
 /**
  * Persisted authentication options, stored next to users.json in
- * %APPDATA%\opencode-webui\auth-config.json.
+ * %APPDATA%\leafcode\auth-config.json.
  *
  * Windows-account login is opt-in on purpose: enabling it means a LAN client
  * can send the operator's real Windows password to this machine, and every

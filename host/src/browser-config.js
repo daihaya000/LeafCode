@@ -1,14 +1,12 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { dataDir } from '../../scripts/lib/data-dir.mjs';
 import { writeSecretFile } from './secure-file.js';
 
 const DEFAULTS = { autoOpenBrowser: false };
 
 function configFile() {
-  const base =
-    process.env.APPDATA ||
-    join(process.env.USERPROFILE || process.env.HOME || '.', 'AppData', 'Roaming');
-  return join(base, 'opencode-webui', 'browser-config.json');
+  return join(dataDir(), 'browser-config.json');
 }
 
 /** @returns {{ autoOpenBrowser: boolean }} */

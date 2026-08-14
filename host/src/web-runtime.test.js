@@ -141,7 +141,7 @@ test('webHealthDecision tolerates startup failures and restarts after repeated f
 });
 
 test('isWebBuildStale is false when BUILD_ID is missing', () => {
-  const distDir = join('C:', 'appdata', 'opencode-webui', 'web-build');
+  const distDir = join('C:', 'appdata', 'leafcode', 'web-build');
   assert.equal(
     isWebBuildStale('/web', distDir, {
       existsSync: () => false,
@@ -152,7 +152,7 @@ test('isWebBuildStale is false when BUILD_ID is missing', () => {
 
 test('isWebBuildStale is true when a watched source is newer than BUILD_ID', () => {
   const webDir = join('C:', 'web');
-  const distDir = join('C:', 'appdata', 'opencode-webui', 'web-build');
+  const distDir = join('C:', 'appdata', 'leafcode', 'web-build');
   const buildMs = Date.parse('2026-07-19T06:00:00.000Z');
   const sourceMs = Date.parse('2026-07-19T14:00:00.000Z');
   const files = new Map([
@@ -183,7 +183,7 @@ test('isWebBuildStale is true when a watched source is newer than BUILD_ID', () 
 
 test('isWebBuildStale is false when sources are older than BUILD_ID', () => {
   const webDir = join('C:', 'web');
-  const distDir = join('C:', 'appdata', 'opencode-webui', 'web-build');
+  const distDir = join('C:', 'appdata', 'leafcode', 'web-build');
   const buildMs = Date.parse('2026-07-19T14:00:00.000Z');
   const sourceMs = Date.parse('2026-07-19T06:00:00.000Z');
   const files = new Map([

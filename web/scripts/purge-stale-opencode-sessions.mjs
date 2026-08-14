@@ -14,7 +14,7 @@ const includeOther = process.argv.includes("--all-missing");
 const useSql = process.argv.includes("--sql");
 const baseUrl = process.env.OPENCODE_BASE_URL ?? "http://127.0.0.1:4096";
 
-const WEBUI_DIR_RE = /opencode-webui[/\\]worktrees|\.webui-worktrees/i;
+const WEBUI_DIR_RE = /opencode-webui[/\\]worktrees|leafcode[/\\]worktrees|\.webui-worktrees/i;
 
 /** True when every char is in U+0000–U+00FF and no CR/LF/NUL is present. */
 function isHeaderSafeValue(value) {

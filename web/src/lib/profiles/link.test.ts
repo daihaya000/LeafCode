@@ -29,7 +29,7 @@ beforeEach(() => {
   previousAppData = process.env.APPDATA;
   process.env.APPDATA = path.join(sandbox, "appdata");
   homeSpy = vi.spyOn(os, "homedir").mockReturnValue(sandbox);
-  fs.mkdirSync(path.join(sandbox, "appdata", "opencode-webui", "profiles"), {
+  fs.mkdirSync(path.join(sandbox, "appdata", "leafcode", "profiles"), {
     recursive: true,
   });
 });
@@ -172,7 +172,7 @@ describe("cleanupStaleArtifacts", () => {
     const profilesDir = path.join(
       sandbox,
       "appdata",
-      "opencode-webui",
+      "leafcode",
       "profiles",
     );
     const pending = path.join(profilesDir, `${PENDING_COPY_PREFIX}abc`);
@@ -193,7 +193,7 @@ describe("cleanupStaleArtifacts", () => {
     const profilesDir = path.join(
       sandbox,
       "appdata",
-      "opencode-webui",
+      "leafcode",
       "profiles",
     );
     const published = makeConfigDir(path.join(profilesDir, "work"), "W");

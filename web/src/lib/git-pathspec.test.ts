@@ -13,8 +13,17 @@ describe("gitPathspecError", () => {
   });
 
   it("rejects WebUI metadata only when asked", () => {
-    expect(gitPathspecError(".opencode-webui/x")).toBeNull();
-    expect(gitPathspecError(".opencode-webui/x", { rejectWebuiMeta: true })).toMatch(
+    expect(gitPathspecError(".leafcode/x")).toBeNull();
+    expect(gitPathspecError(".leafcode/x", { rejectWebuiMeta: true })).toMatch(
+      /excluded/,
+    );
+  });
+
+  it("still excludes pre-rebrand metadata names", () => {
+    expect(
+      gitPathspecError(".opencode-webui/sessions.json", { rejectWebuiMeta: true }),
+    ).toMatch(/excluded/);
+    expect(gitPathspecError(".webui-worktrees/wt1", { rejectWebuiMeta: true })).toMatch(
       /excluded/,
     );
   });

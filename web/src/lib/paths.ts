@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { dataDir } from "../../../scripts/lib/data-dir.mjs";
+import { dataDir, migrateLegacyDataDir } from "../../../scripts/lib/data-dir.mjs";
 
 export { dataDir };
 
@@ -9,5 +9,6 @@ export function dbPath(): string {
 }
 
 export function ensureDataDir(): void {
+  migrateLegacyDataDir();
   fs.mkdirSync(dataDir(), { recursive: true });
 }

@@ -26,15 +26,15 @@ function withTestDir(fn) {
 
 function clearUsersFile() {
   try {
-    rmSync(TEST_DIR + '\\opencode-webui\\users.json', { force: true });
+    rmSync(TEST_DIR + '\\leafcode\\users.json', { force: true });
   } catch {
     // ignore
   }
 }
 
 function ensureClean() {
-  if (existsSync(TEST_DIR + '\\opencode-webui')) {
-    rmSync(TEST_DIR + '\\opencode-webui', { recursive: true, force: true });
+  if (existsSync(TEST_DIR + '\\leafcode')) {
+    rmSync(TEST_DIR + '\\leafcode', { recursive: true, force: true });
   }
 }
 
@@ -150,9 +150,9 @@ test('upsertUser preserves an existing role across a password change', () => {
     upsertUser('Alice', 'old-password');
     // Simulate a demotion to a plain user, then confirm a later password
     // change does not silently promote them back to admin.
-    const users = JSON.parse(readFileSync(TEST_DIR + '\\opencode-webui\\users.json', 'utf8'));
+    const users = JSON.parse(readFileSync(TEST_DIR + '\\leafcode\\users.json', 'utf8'));
     users[0].role = 'user';
-    writeFileSync(TEST_DIR + '\\opencode-webui\\users.json', JSON.stringify(users, null, 2), 'utf8');
+    writeFileSync(TEST_DIR + '\\leafcode\\users.json', JSON.stringify(users, null, 2), 'utf8');
 
     upsertUser('Alice', 'new-password');
     assert.equal(isAdmin('Alice'), false);
@@ -163,9 +163,9 @@ test('upsertUser preserves an existing role across a password change', () => {
 test('a legacy users.json record with no role field is treated as admin', () => {
   withTestDir(() => {
     // Records written before the role field existed must not lose access.
-    mkdirSync(TEST_DIR + '\\opencode-webui', { recursive: true });
+    mkdirSync(TEST_DIR + '\\leafcode', { recursive: true });
     writeFileSync(
-      TEST_DIR + '\\opencode-webui\\users.json',
+      TEST_DIR + '\\leafcode\\users.json',
       JSON.stringify([
         {
           username: 'Legacy',
@@ -183,9 +183,9 @@ test('a legacy users.json record with no role field is treated as admin', () => 
 
 test('an unrecognised role value falls back to admin rather than locking everyone out', () => {
   withTestDir(() => {
-    mkdirSync(TEST_DIR + '\\opencode-webui', { recursive: true });
+    mkdirSync(TEST_DIR + '\\leafcode', { recursive: true });
     writeFileSync(
-      TEST_DIR + '\\opencode-webui\\users.json',
+      TEST_DIR + '\\leafcode\\users.json',
       JSON.stringify([
         {
           username: 'Weird',
@@ -204,7 +204,7 @@ test('an unrecognised role value falls back to admin rather than locking everyon
 test('file mode is 0o600', () => {
   withTestDir(() => {
     upsertUser('Alice', 'secret-password');
-    const mode = statSync(TEST_DIR + '\\opencode-webui\\users.json').mode;
+    const mode = statSync(TEST_DIR + '\\leafcode\\users.json').mode;
     // Windows does not have POSIX mode bits; skip on non-Windows.
     if (process.platform !== 'win32') {
       assert.equal(mode & 0o777, 0o600);

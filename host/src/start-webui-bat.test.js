@@ -53,7 +53,7 @@ function createSandbox(options = {}) {
 
   if (options.webNodeModules) mkdirSync(join(root, "web", "node_modules"), { recursive: true });
   if (options.webBuildId) {
-    const distDir = join(root, "appdata", "opencode-webui", "web-build");
+    const distDir = join(root, "appdata", "leafcode", "web-build");
     mkdirSync(distDir, { recursive: true });
     writeFileSync(join(distDir, "BUILD_ID"), "preexisting-build\r\n");
   }
@@ -192,7 +192,7 @@ function createSandbox(options = {}) {
     OPENCODE_WEBUI_CADDY: options.caddyDisabled ? "0" : "",
     SETUP_TEST_WINGET_CADDY_EXIT: String(options.wingetCaddyExit ?? 0),
     SETUP_TEST_WINGET_UV_EXIT: String(options.wingetUvExit ?? 0),
-    SETUP_TEST_WEB_DIST_DIR: join(root, "appdata", "opencode-webui", "web-build"),
+    SETUP_TEST_WEB_DIST_DIR: join(root, "appdata", "leafcode", "web-build"),
     SETUP_TEST_ROOT: root,
     SETUP_TEST_LOG: log,
     SETUP_TEST_NODE_MAJOR: String(options.nodeMajor ?? 22),
@@ -279,7 +279,7 @@ test("start-webui.bat installs winget/Node.js/OpenCode/Caddy/deps on a fresh mac
     assert.equal(existsSync(join(sandbox.root, "opencode-winget-installed")), true);
     assert.equal(existsSync(join(sandbox.root, "opencode-npm-installed")), false);
     assert.equal(existsSync(join(sandbox.root, "caddy-winget-installed")), true, "expected Caddy to be auto-installed too");
-    assert.equal(existsSync(join(sandbox.root, "appdata", "opencode-webui", "web-build", "BUILD_ID")), true);
+    assert.equal(existsSync(join(sandbox.root, "appdata", "leafcode", "web-build", "BUILD_ID")), true);
     assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
     const log = readFileSync(sandbox.log, "utf8");
     assert.match(log, /install --id OpenJS\.NodeJS\.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
@@ -468,7 +468,7 @@ test("start-webui.bat skips the first-run build when a WebUI is already running 
     assert.match(result.stdout, /skipping the first-run build/);
     // The build is deferred to the host tail (reuse a healthy WebUI / take
     // over a stale one), so the batch itself must not produce a BUILD_ID.
-    assert.equal(existsSync(join(sandbox.root, "appdata", "opencode-webui", "web-build", "BUILD_ID")), false);
+    assert.equal(existsSync(join(sandbox.root, "appdata", "leafcode", "web-build", "BUILD_ID")), false);
     assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
   } finally { sandbox.cleanup(); }
 });

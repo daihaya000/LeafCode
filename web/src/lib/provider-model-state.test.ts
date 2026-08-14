@@ -50,7 +50,7 @@ describe("readProviderModelState defaults", () => {
   });
 
   it("migrates legacy state while preserving explicit pricing", () => {
-    const statePath = path.join(appData, "opencode-webui", "provider-model-state.json");
+    const statePath = path.join(appData, "leafcode", "provider-model-state.json");
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
     fs.writeFileSync(
       statePath,
@@ -84,7 +84,7 @@ describe("readProviderModelState defaults", () => {
   });
 
   it("also falls back to the defaults for malformed state", () => {
-    const statePath = path.join(appData, "opencode-webui", "provider-model-state.json");
+    const statePath = path.join(appData, "leafcode", "provider-model-state.json");
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
     fs.writeFileSync(statePath, "{broken", "utf8");
 

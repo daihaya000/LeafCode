@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { PROJECT_META_DIRS } from "@/lib/project-meta";
 import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
@@ -13,9 +14,9 @@ const SKIP_DIRS = new Set([
   ".next",
   "dist",
   "build",
-  ".webui-worktrees",
   "coverage",
   ".turbo",
+  ...PROJECT_META_DIRS,
 ]);
 
 // Hard ceilings so a synchronous scan of a huge repo cannot block the BFF

@@ -3,6 +3,7 @@ import { assertAllowedDirectory } from "@/lib/allowlist";
 import { resolveCommitIdentity } from "@/lib/commit-identity";
 import { invalidateDirStat } from "@/lib/dirstat";
 import { runGit } from "@/lib/git";
+import { PROJECT_META_DIRS } from "@/lib/project-meta";
 import { commitPathError } from "./path-guard";
 import { requireAuthorized } from "@/lib/api-guard";
 
@@ -51,10 +52,10 @@ export async function POST(req: NextRequest) {
       "-A",
       "--",
       ".",
-      ":(exclude).opencode-webui",
-      ":(exclude).opencode-webui/**",
-      ":(exclude).webui-worktrees",
-      ":(exclude).webui-worktrees/**",
+      ...PROJECT_META_DIRS.flatMap((dir) => [
+        `:(exclude)${dir}`,
+        `:(exclude)${dir}/**`,
+      ]),
     ]);
     if (add.code !== 0) {
       return NextResponse.json(

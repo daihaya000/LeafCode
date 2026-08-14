@@ -50,7 +50,7 @@ describe("POST /api/files/open", () => {
   it("returns 400 for paths that would touch WebUI metadata", async () => {
     const res = await post({
       directory: tmpDir,
-      path: ".opencode-webui/sessions.json",
+      path: ".leafcode/sessions.json",
     });
     expect(res.status).toBe(400);
     expect(h.openInEditor).not.toHaveBeenCalled();

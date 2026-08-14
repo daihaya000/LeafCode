@@ -496,7 +496,7 @@ export function ProfilesSettings() {
               </div>
               <p className="mt-1 text-xs leading-5 text-muted">
                 現在の設定（約 {formatBytes(migration.estimatedBytes)}）を{" "}
-                <code className="font-mono">%APPDATA%\opencode-webui\profiles\default</code>{" "}
+                <code className="font-mono">%APPDATA%\leafcode\profiles\default</code>{" "}
                 に移し、リンクを切り替えます。
               </p>
               <label className="mt-2 flex items-center gap-2 text-xs text-muted">

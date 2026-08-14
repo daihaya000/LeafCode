@@ -13,15 +13,12 @@ const cache = new Map<string, { at: number; stat: DirStat }>();
 
 const EMPTY: DirStat = { git: false, branch: null, additions: 0, deletions: 0, files: 0 };
 
+import { isProjectMetaPath } from "./project-meta";
+
 /** True for a `git status --porcelain` line that refers to our own metadata. */
 function isMetaPath(p: string): boolean {
   const norm = p.replace(/^"|"$/g, "").replace(/\\/g, "/");
-  return (
-    norm === ".opencode-webui" ||
-    norm.startsWith(".opencode-webui/") ||
-    norm === ".webui-worktrees" ||
-    norm.startsWith(".webui-worktrees/")
-  );
+  return isProjectMetaPath(norm);
 }
 
 /** True for a `git status --porcelain` line that refers to our own metadata. */

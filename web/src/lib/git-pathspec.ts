@@ -2,6 +2,8 @@
  * Shared pathspec safety for git add / show file arguments.
  * Returns an error message, or null when the path is ok.
  */
+import { isProjectMetaPath } from "./project-meta";
+
 export function gitPathspecError(
   p: string,
   opts?: { rejectWebuiMeta?: boolean },
@@ -29,12 +31,7 @@ export function gitPathspecError(
   }
   if (opts?.rejectWebuiMeta) {
     const norm = p.replace(/\\/g, "/").replace(/^\.\//, "");
-    if (
-      norm === ".opencode-webui" ||
-      norm.startsWith(".opencode-webui/") ||
-      norm === ".webui-worktrees" ||
-      norm.startsWith(".webui-worktrees/")
-    ) {
+    if (isProjectMetaPath(norm)) {
       return `excluded path: ${p}`;
     }
   }

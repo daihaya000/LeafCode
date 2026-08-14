@@ -51,7 +51,9 @@ browser-bridge/.screenshots/
 # cursor-acp materialized image attachments (for cursor-agent Read)
 .opencode-cursor-attachments/
 
-# OpenCode WebUI runtime state (per-session, machine-local)
+# LeafCode runtime state (per-session, machine-local). The legacy
+# `.opencode-webui/` name stays excluded so pre-rebrand clones never leak it.
+.leafcode/
 .opencode-webui/
 
 # Superpowers agent scratch state

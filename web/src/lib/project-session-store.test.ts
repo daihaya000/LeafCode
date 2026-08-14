@@ -121,7 +121,7 @@ describe("fs round trip", () => {
       path.join(h.dataDir, "projects", projectKey(root), MANIFEST_FILE),
     );
     expect(fs.existsSync(manifestPath(root))).toBe(true);
-    expect(fs.existsSync(path.join(root, ".opencode-webui"))).toBe(false);
+    expect(fs.existsSync(path.join(root, ".leafcode"))).toBe(false);
 
     const back = readProjectManifest(root);
     expect(back).not.toBeNull();
@@ -141,7 +141,7 @@ describe("fs round trip", () => {
     expect(back!.workspaces[0].sessions[0].opencodeSessionId).toBe("ses_a");
 
     expect(fs.existsSync(manifestPath(root))).toBe(true);
-    expect(fs.existsSync(path.join(root, ".opencode-webui"))).toBe(false);
+    expect(fs.existsSync(path.join(root, ".leafcode"))).toBe(false);
   });
 
   it("leaves an unparsable legacy file untouched", () => {

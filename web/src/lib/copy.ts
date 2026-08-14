@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { PROJECT_META_DIRS } from "./project-meta";
 import { dataDir, ensureDataDir } from "./paths";
 
 const SKIP = new Set([
@@ -8,11 +9,9 @@ const SKIP = new Set([
   ".next",
   "dist",
   "build",
-  ".webui-worktrees",
-  ".webui-copies",
-  ".opencode-webui",
   "coverage",
   ".turbo",
+  ...PROJECT_META_DIRS,
 ]);
 
 export function temporaryCopyRoot(): string {

@@ -72,16 +72,16 @@ describe("temporary copy isolation", () => {
     expect(lstatSync).toHaveBeenCalledWith(path.join(dest, "escape-link"));
   });
 
-  it("skips .opencode-webui directory to avoid bloating the copy", () => {
-    // Create a .opencode-webui directory in the source root
-    const webuiDir = path.join(sourceRoot, ".opencode-webui");
+  it("skips .leafcode directory to avoid bloating the copy", () => {
+    // Create a .leafcode directory in the source root
+    const webuiDir = path.join(sourceRoot, ".leafcode");
     fs.mkdirSync(webuiDir, { recursive: true });
     fs.writeFileSync(path.join(webuiDir, "data.json"), "should not be copied");
 
     const dest = createTemporaryCopy(sourceRoot, "test-copy-skip-webui");
 
     expect(fs.existsSync(path.join(dest, "regular.txt"))).toBe(true);
-    expect(fs.existsSync(path.join(dest, ".opencode-webui"))).toBe(false);
+    expect(fs.existsSync(path.join(dest, ".leafcode"))).toBe(false);
   });
 
   it("rolls back only the exact destination when fs.cpSync fails", () => {

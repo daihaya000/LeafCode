@@ -38,7 +38,7 @@ function makeConfigDir(dir: string, marker: string): string {
 }
 
 function profilesDir(): string {
-  return path.join(sandbox, "appdata", "opencode-webui", "profiles");
+  return path.join(sandbox, "appdata", "leafcode", "profiles");
 }
 
 function waitForJob(jobId: string, timeoutMs = 5000): Promise<void> {
@@ -116,13 +116,13 @@ describe("listProfiles", () => {
     const second = makeConfigDir(path.join(profilesDir(), "work"), "W");
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
     state.profiles.push({ id: "work-id", name: "work", path: second });
     fs.writeFileSync(
-      path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+      path.join(sandbox, "appdata", "leafcode", "profiles.json"),
       JSON.stringify(state),
     );
 
@@ -138,7 +138,7 @@ describe("listProfiles", () => {
     await listProfiles();
 
     const second = makeConfigDir(path.join(profilesDir(), "work"), "W");
-    const registryPath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    const registryPath = path.join(sandbox, "appdata", "leafcode", "profiles.json");
     const state = JSON.parse(fs.readFileSync(registryPath, "utf8"));
     state.profiles.unshift({ id: "work-id", name: "work", path: second });
     fs.writeFileSync(registryPath, JSON.stringify(state));
@@ -184,13 +184,13 @@ describe("listProfiles", () => {
     );
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
     state.profiles.push({ id: "work-id", name: "work", path: second });
     fs.writeFileSync(
-      path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+      path.join(sandbox, "appdata", "leafcode", "profiles.json"),
       JSON.stringify(state),
     );
 
@@ -257,7 +257,7 @@ describe("activate", () => {
     seedRegistry();
 
     // Register B manually
-    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    const statePath = path.join(sandbox, "appdata", "leafcode", "profiles.json");
     const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
     state.profiles.push({ id: "b-id", name: "B", path: b });
     fs.writeFileSync(statePath, JSON.stringify(state));
@@ -290,7 +290,7 @@ describe("activate", () => {
 
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -313,7 +313,7 @@ describe("activate", () => {
     setupLink(a);
     seedRegistry();
 
-    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    const statePath = path.join(sandbox, "appdata", "leafcode", "profiles.json");
     const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
     state.profiles.push({ id: "ghost", name: "ghost", path: path.join(sandbox, "ghost") });
     fs.writeFileSync(statePath, JSON.stringify(state));
@@ -361,7 +361,7 @@ describe("createProfile", () => {
 
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -379,7 +379,7 @@ describe("createProfile", () => {
     // .git is excluded from duplicates
     const freshState = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -422,7 +422,7 @@ describe("migrateDefault", () => {
     // Registry has both: old (backup) and new (default)
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -456,7 +456,7 @@ describe("migrateDefault", () => {
 
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -481,7 +481,7 @@ describe("migrateDefault", () => {
 
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -513,7 +513,7 @@ describe("renameProfile", () => {
 
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -525,7 +525,7 @@ describe("renameProfile", () => {
 
     const updated = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -540,7 +540,7 @@ describe("renameProfile", () => {
 
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -553,7 +553,7 @@ describe("renameProfile", () => {
     setupLink(inside);
     seedRegistry();
 
-    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    const statePath = path.join(sandbox, "appdata", "leafcode", "profiles.json");
     let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
     const id = state.profiles[0].id;
 
@@ -578,7 +578,7 @@ describe("renameProfile", () => {
     seedRegistry();
     const inside = makeConfigDir(path.join(profilesDir(), "work"), "W");
 
-    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    const statePath = path.join(sandbox, "appdata", "leafcode", "profiles.json");
     let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
     state.profiles.push({ id: "work-id", name: "work", path: inside });
     fs.writeFileSync(statePath, JSON.stringify(state));
@@ -601,7 +601,7 @@ describe("renameProfile", () => {
 
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -613,7 +613,7 @@ describe("renameProfile", () => {
 
     const updated = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -626,7 +626,7 @@ describe("renameProfile", () => {
     setupLink(inside);
     seedRegistry();
 
-    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    const statePath = path.join(sandbox, "appdata", "leafcode", "profiles.json");
     let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
     const id = state.profiles[0].id;
 
@@ -682,7 +682,7 @@ describe("deleteProfile", () => {
     setupLink(a);
     seedRegistry();
 
-    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    const statePath = path.join(sandbox, "appdata", "leafcode", "profiles.json");
     let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
     state.profiles.push({ id: "b-id", name: "B", path: b });
     fs.writeFileSync(statePath, JSON.stringify(state));
@@ -712,7 +712,7 @@ describe("deleteProfile", () => {
     setupLink(a);
     seedRegistry();
 
-    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    const statePath = path.join(sandbox, "appdata", "leafcode", "profiles.json");
     let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
     state.profiles.push({ id: "b-id", name: "B", path: b });
     fs.writeFileSync(statePath, JSON.stringify(state));
@@ -735,7 +735,7 @@ describe("deleteProfile", () => {
 
     const state = JSON.parse(
       fs.readFileSync(
-        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        path.join(sandbox, "appdata", "leafcode", "profiles.json"),
         "utf8",
       ),
     );
@@ -751,7 +751,7 @@ describe("deleteProfile", () => {
 
 describe("installDependenciesOnStartup", () => {
   function writeSetupSettings(settings: Record<string, unknown>): void {
-    const dir = path.join(sandbox, "appdata", "opencode-webui");
+    const dir = path.join(sandbox, "appdata", "leafcode");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "profile-setup-settings.json"), JSON.stringify(settings), "utf8");
   }

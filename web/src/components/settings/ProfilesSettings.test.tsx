@@ -39,7 +39,7 @@ const BASE_LIST = {
     {
       id: "work-id",
       name: "work",
-      path: "C:\\Users\\x\\AppData\\Roaming\\opencode-webui\\profiles\\work",
+      path: "C:\\Users\\x\\AppData\\Roaming\\leafcode\\profiles\\work",
       active: false,
       exists: true,
     },

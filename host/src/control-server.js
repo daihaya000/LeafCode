@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import http from 'http';
+import { dataDir } from '../../scripts/lib/data-dir.mjs';
 import { createAuditLog } from './audit-log.js';
 import { writeSecretFile } from './secure-file.js';
 import { createLoginThrottle } from './windows-auth.js';
@@ -207,8 +208,7 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const REVOKE_FILE = 'revoked-sessions.json';
 
 function revokeFilePath() {
-  const base = process.env.APPDATA || join(process.env.USERPROFILE || process.env.HOME || '.', 'AppData', 'Roaming');
-  return join(base, 'opencode-webui', REVOKE_FILE);
+  return join(dataDir(), REVOKE_FILE);
 }
 
 /**
@@ -250,7 +250,7 @@ function writeRevokedJtis(map) {
  * would grow without bound, never pruning old entries.
  *
  * `persist: false` keeps everything in memory only — used by tests so they do
- * not read or write the real %APPDATA%\opencode-webui\revoked-sessions.json.
+ * not read or write the real %APPDATA%\leafcode\revoked-sessions.json.
  * @param {{ persist?: boolean }} [options]
  */
 // Test-only export (used by control-server.test.js).

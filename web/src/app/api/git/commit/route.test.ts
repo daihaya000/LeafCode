@@ -129,9 +129,14 @@ describe("commitPathError", () => {
   });
 
   it("rejects WebUI metadata paths", () => {
-    expect(commitPathError(".opencode-webui")).toMatch(/excluded/);
-    expect(commitPathError(".opencode-webui/sessions.json")).toMatch(/excluded/);
+    expect(commitPathError(".leafcode")).toMatch(/excluded/);
+    expect(commitPathError(".leafcode/sessions.json")).toMatch(/excluded/);
     expect(commitPathError(".webui-worktrees\\wt1")).toMatch(/excluded/);
+  });
+
+  it("rejects pre-rebrand metadata paths", () => {
+    expect(commitPathError(".opencode-webui/sessions.json")).toMatch(/excluded/);
+    expect(commitPathError(".opencode-webui")).toMatch(/excluded/);
   });
 
   it("allows ordinary file paths", () => {
@@ -145,7 +150,7 @@ describe("POST /api/git/commit paths", () => {
     const res = await post({
       directory: "C:\\repo",
       message: "x",
-      paths: [".opencode-webui/sessions.json"],
+      paths: [".leafcode/sessions.json"],
     });
     expect(res.status).toBe(400);
     expect(h.runGit).not.toHaveBeenCalled();

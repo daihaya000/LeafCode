@@ -1,14 +1,14 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { dataDir } from '../../scripts/lib/data-dir.mjs';
 import { writeSecretFile } from './secure-file.js';
 
 const DEVICE_TOKEN_BYTES = 32;
 const DEVICE_LIFETIME_MS = 90 * 24 * 60 * 60 * 1000;
 
 function defaultFile() {
-  const base = process.env.APPDATA || join(process.env.USERPROFILE || process.env.HOME || '.', 'AppData', 'Roaming');
-  return join(base, 'opencode-webui', 'trusted-devices.json');
+  return join(dataDir(), 'trusted-devices.json');
 }
 
 function tokenHash(token) {

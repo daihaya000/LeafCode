@@ -71,7 +71,7 @@ const noopHandlers = {
   onRestartOpencode: () => {},
   onRestartAll: () => {},
   // Without this every test that logs in would append to
-  // %APPDATA%\opencode-webui\audit.log on the developer's machine.
+  // %APPDATA%\leafcode\audit.log on the developer's machine.
   auditLog: fakeAuditLog(),
 };
 
@@ -1250,7 +1250,7 @@ test('createRevocationStore (persisted) does not reset an older jti timestamp wh
     const a = createRevocationStore();
     a.revoke('old-jti');
     const fileBefore = readFileSync(
-      join(testDir, 'opencode-webui', 'revoked-sessions.json'),
+      join(testDir, 'leafcode', 'revoked-sessions.json'),
       'utf8',
     );
     const tsBefore = JSON.parse(fileBefore).find((e) => e.jti === 'old-jti').ts;
@@ -1260,7 +1260,7 @@ test('createRevocationStore (persisted) does not reset an older jti timestamp wh
     // would never prune old entries.
     a.revoke('new-jti');
     const fileAfter = readFileSync(
-      join(testDir, 'opencode-webui', 'revoked-sessions.json'),
+      join(testDir, 'leafcode', 'revoked-sessions.json'),
       'utf8',
     );
     const tsAfter = JSON.parse(fileAfter).find((e) => e.jti === 'old-jti').ts;

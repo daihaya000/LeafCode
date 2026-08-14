@@ -108,7 +108,7 @@ import {
   ServiceError,
 } from "./workspace-service";
 
-const WT = "C:\\Users\\testuser\\AppData\\Roaming\\opencode-webui\\worktrees\\p1\\task-1";
+const WT = "C:\\Users\\testuser\\AppData\\Roaming\\leafcode\\worktrees\\p1\\task-1";
 
 function gitWorktreeRow(overrides: Record<string, unknown> = {}) {
   return {

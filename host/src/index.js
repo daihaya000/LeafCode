@@ -14,7 +14,7 @@ import { randomBytes } from 'crypto';
 import { networkInterfaces } from 'os';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { dataDir } from '../../scripts/lib/data-dir.mjs';
+import { dataDir, migrateLegacyDataDir } from '../../scripts/lib/data-dir.mjs';
 import SysTrayImport from 'systray2';
 import { WebSocketServer } from 'ws';
 import { formatServiceStatus } from './service-status.js';
@@ -1328,6 +1328,7 @@ function scheduleWebRestart() {
 }
 
 function ensureDataDir() {
+  migrateLegacyDataDir();
   if (!existsSync(DATA_DIR)) {
     mkdirSync(DATA_DIR, { recursive: true });
   }
@@ -1337,7 +1338,7 @@ function ensureDataDir() {
  * One-time best-effort cleanup of the legacy in-repo `web/.next` production
  * build output. Dev uses `.next-dev` and e2e uses `.next-e2e`, so `web/.next`
  * is unambiguously legacy production output once the build lives elsewhere
- * (default: %APPDATA%\opencode-webui\web-build). Only removed when the new
+ * (default: %APPDATA%\leafcode\web-build). Only removed when the new
  * distDir actually differs from web/.next; errors are swallowed.
  *
  * Called from spawnWeb() only: by then resolvePortPlan has either found the

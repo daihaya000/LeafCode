@@ -119,7 +119,7 @@ type TableInfo = Record<string, string[]>;
 
 /** Remove the whole data dir so every test starts from a clean slate. */
 function resetDataDir(): void {
-  rmSync(path.join(testDataDir, "opencode-webui"), { recursive: true, force: true });
+  rmSync(path.join(testDataDir, "leafcode"), { recursive: true, force: true });
 }
 
 /** Column names per table (sqlite_master, excluding internal tables). */
@@ -149,7 +149,7 @@ async function openFreshDb(): Promise<TableInfo> {
 
 async function openUpgradedLegacyDb(): Promise<TableInfo> {
   resetDataDir();
-  const dataDir = path.join(testDataDir, "opencode-webui");
+  const dataDir = path.join(testDataDir, "leafcode");
   mkdirSync(dataDir, { recursive: true });
   const legacy = new Database(path.join(dataDir, "webui.db"));
   legacy.exec(LEGACY_SQL);
@@ -209,7 +209,7 @@ test("legacy database upgraded by getDb() has the same shape as a fresh one", as
 
 test("getDb() keeps a pre-upgrade backup of an existing database", async () => {
   resetDataDir();
-  const dataDir = path.join(testDataDir, "opencode-webui");
+  const dataDir = path.join(testDataDir, "leafcode");
   mkdirSync(dataDir, { recursive: true });
   const legacy = new Database(path.join(dataDir, "webui.db"));
   legacy.exec(
@@ -246,7 +246,7 @@ test("getDb() stamps user_version and skips the migration chain on the next open
 
 test("a fully shaped database at version 0 is upgraded without errors", async () => {
   resetDataDir();
-  const dataDir = path.join(testDataDir, "opencode-webui");
+  const dataDir = path.join(testDataDir, "leafcode");
   mkdirSync(dataDir, { recursive: true });
   const { SCHEMA_SQL } = await import("./db-schema");
   const full = new Database(path.join(dataDir, "webui.db"));

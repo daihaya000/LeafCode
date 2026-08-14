@@ -18,7 +18,7 @@ describe("resolveNextDistDir", () => {
   });
 
   it("rejects a directory outside the app: Turbopack refuses to build there", () => {
-    const outside = join("C:", "Users", "u", "AppData", "Roaming", "opencode-webui", "web-build");
+    const outside = join("C:", "Users", "u", "AppData", "Roaming", "leafcode", "web-build");
     expect(() => resolveNextDistDir({ NEXT_DIST_DIR: outside }, appDir)).toThrow(
       /must be inside the web app/,
     );

@@ -10,18 +10,18 @@ import { join } from "node:path";
  * - `scripts/production-webui-build-guard.mjs` (CLI / Node ESM)
  *
  * Order: `OPENCODE_WEBUI_HOST_CONTROL_URL` env → `host-control.json` in the
- * machine-local data dir (win32: `%APPDATA%/opencode-webui/`, else
- * `~/.opencode-webui/`, per REFACTORING_PLAN D2 / data-dir.mjs) → default
+ * machine-local data dir (win32: `%APPDATA%/leafcode/`, else
+ * `~/.leafcode/`, per data-dir.mjs) → default
  * port. Non-loopback URLs are rejected at every step so restart/voice-input
  * cannot be redirected off-box (D2 / 6-2).
  */
 export const DEFAULT_CONTROL_URL = "http://127.0.0.1:18765";
 
-/** Machine-local data dir, aligned with scripts/lib/data-dir.mjs (D2). */
+/** Machine-local data dir, aligned with scripts/lib/data-dir.mjs. */
 export function hostControlDataDir(env = process.env) {
   const appData = env.APPDATA;
-  if (appData) return join(appData, "opencode-webui");
-  return join(env.HOME ?? homedir(), ".opencode-webui");
+  if (appData) return join(appData, "leafcode");
+  return join(env.HOME ?? homedir(), ".leafcode");
 }
 
 export function isLoopbackControlUrl(raw) {

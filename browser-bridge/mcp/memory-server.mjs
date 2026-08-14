@@ -47,8 +47,8 @@ function resolveDataDir(env) {
   if (typeof env.OPENCODE_WEBUI_DATA_DIR === 'string' && env.OPENCODE_WEBUI_DATA_DIR.trim() !== '') {
     return path.resolve(env.OPENCODE_WEBUI_DATA_DIR);
   }
-  // Shared D2 resolution (win32: %APPDATA%\opencode-webui, else
-  // ~/.opencode-webui), aligned with scripts/lib/data-dir.mjs.
+  // Shared data-dir resolution (win32: %APPDATA%\leafcode, else
+  // ~/.leafcode), aligned with scripts/lib/data-dir.mjs.
   return dataDir();
 }
 

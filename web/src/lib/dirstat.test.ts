@@ -144,6 +144,13 @@ describe("dirStat cache invalidation", () => {
 
 describe("dirStat webui-metadata filtering", () => {
   it("excludes an untracked metadata path from the file count", async () => {
+    h.statusStdout = "## main\n?? .leafcode/state.json\n?? src/new.ts\n";
+    h.diffStdout = "";
+    const stat = await dirStat(DIR);
+    expect(stat.files).toBe(1);
+  });
+
+  it("excludes pre-rebrand metadata names from the file count", async () => {
     h.statusStdout = "## main\n?? .opencode-webui/state.json\n?? src/new.ts\n";
     h.diffStdout = "";
     const stat = await dirStat(DIR);
@@ -153,11 +160,11 @@ describe("dirStat webui-metadata filtering", () => {
   it("excludes a rename into the metadata dir from the file count", async () => {
     // Regression: a numstat rename entry is "add<TAB>del<TAB>orig => new" (or
     // the brace-compressed form) — checking the whole field against
-    // ".opencode-webui/..." never matches, so renames into/out of it leak into
+    // ".leafcode/..." never matches, so renames into/out of it leak into
     // the visible count.
     h.statusStdout = "## main\n";
     h.diffStdout =
-      "0\t0\tsrc/foo.ts => .opencode-webui/foo.ts\n1\t1\tsrc/bar.ts\n";
+      "0\t0\tsrc/foo.ts => .leafcode/foo.ts\n1\t1\tsrc/bar.ts\n";
     const stat = await dirStat(DIR);
     expect(stat.files).toBe(1);
   });
@@ -165,14 +172,14 @@ describe("dirStat webui-metadata filtering", () => {
   it("excludes a rename out of the metadata dir from the file count", async () => {
     h.statusStdout = "## main\n";
     h.diffStdout =
-      "0\t0\t.opencode-webui/foo.ts => src/foo.ts\n1\t1\tsrc/bar.ts\n";
+      "0\t0\t.leafcode/foo.ts => src/foo.ts\n1\t1\tsrc/bar.ts\n";
     const stat = await dirStat(DIR);
     expect(stat.files).toBe(1);
   });
 
   it("excludes a brace-compressed rename into the metadata dir", async () => {
     h.statusStdout = "## main\n";
-    h.diffStdout = "0\t0\t{src => .opencode-webui}/foo.ts\n1\t1\tsrc/bar.ts\n";
+    h.diffStdout = "0\t0\t{src => .leafcode}/foo.ts\n1\t1\tsrc/bar.ts\n";
     const stat = await dirStat(DIR);
     expect(stat.files).toBe(1);
   });

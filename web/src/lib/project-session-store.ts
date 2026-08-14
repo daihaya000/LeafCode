@@ -3,11 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { isSafeOpenCodeSessionId } from "./opencode-id";
 import { dataDir } from "./paths";
+import { PROJECT_META_DIR, PROJECT_META_DIRS } from "./project-meta";
 
 /**
  * Machine-local persistence of session metadata.
  *
- * The global SQLite DB ({APPDATA}/opencode-webui/webui.db) is the runtime source
+ * The global SQLite DB ({APPDATA}/leafcode/webui.db) is the runtime source
  * of truth. So that workspace/session bindings survive a DB reset, we mirror
  * them into a machine-local manifest at
  * `<dataDir>/projects/<sha1(rootPath)>/sessions.json`. On (re)opening a project
@@ -16,11 +17,11 @@ import { dataDir } from "./paths";
  * Session metadata is intentionally never written into the repository
  * (spec change 2026-07-25): bindings survive a DB reset, but intentionally not
  * a machine change/clone. Legacy in-repo manifests
- * (`<root>/.opencode-webui/sessions.json`) are migrated on read and deleted
+ * (`<root>/.leafcode/sessions.json`, pre-rebrand `<root>/.opencode-webui/`) are migrated on read and deleted
  * best-effort.
  */
 
-export const MANIFEST_DIR = ".opencode-webui";
+export const MANIFEST_DIR = PROJECT_META_DIR;
 export const MANIFEST_FILE = "sessions.json";
 export const MANIFEST_VERSION = 1 as const;
 
@@ -164,7 +165,13 @@ export function legacyManifestDir(rootPath: string): string {
   return path.join(rootPath, MANIFEST_DIR);
 }
 
+/** Any in-repo manifest location under the pre-rebrand name, if it still exists. */
 export function legacyManifestPath(rootPath: string): string {
+  for (const dir of PROJECT_META_DIRS) {
+    if (dir === PROJECT_META_DIR) continue;
+    const candidate = path.join(rootPath, dir, MANIFEST_FILE);
+    if (fs.existsSync(candidate)) return candidate;
+  }
   return path.join(legacyManifestDir(rootPath), MANIFEST_FILE);
 }
 
@@ -201,14 +208,14 @@ export function readProjectManifest(
   if (!parsed) return null;
 
   // Best-effort migration: copy to the machine-local location, then remove the
-  // in-repo dir. Failures must never break the read itself.
+  // in-repo dir (wherever it was found). Failures must never break the read.
   try {
     writeProjectManifest(rootPath, parsed);
   } catch {
     /* best effort */
   }
   try {
-    fs.rmSync(legacyManifestDir(rootPath), { recursive: true, force: true });
+    fs.rmSync(path.dirname(legacyFile), { recursive: true, force: true });
   } catch {
     /* best effort */
   }

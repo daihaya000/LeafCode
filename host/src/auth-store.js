@@ -7,7 +7,7 @@ import { writeSecretFile } from './secure-file.js';
 /**
  * Disk-backed user authentication store for the WebUI login feature.
  *
- * Credentials live in %APPDATA%\opencode-webui\users.json with hashed
+ * Credentials live in %APPDATA%\leafcode\users.json with hashed
  * passwords (sha256 + salt, not suitable for production web apps but
  * acceptable for a localhost-only BFF). Passwords themselves are never
  * stored; only hashes are returned or persisted.

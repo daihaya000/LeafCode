@@ -26,7 +26,7 @@ beforeEach(() => {
   previousAppData = process.env.APPDATA;
   process.env.APPDATA = path.join(sandbox, "appdata");
   homeSpy = vi.spyOn(os, "homedir").mockReturnValue(sandbox);
-  fs.mkdirSync(path.join(sandbox, "appdata", "opencode-webui", "profiles"), {
+  fs.mkdirSync(path.join(sandbox, "appdata", "leafcode", "profiles"), {
     recursive: true,
   });
 });
@@ -84,7 +84,7 @@ describe("makeProfile", () => {
 
     const inside = makeProfile(
       "work",
-      path.join(sandbox, "appdata", "opencode-webui", "profiles", "work"),
+      path.join(sandbox, "appdata", "leafcode", "profiles", "work"),
     );
     expect(inside.external).toBeUndefined();
   });
