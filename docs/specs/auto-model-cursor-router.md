@@ -1,5 +1,7 @@
 # WebUI Auto モード: Cursor Router 相当への拡張
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/auto-model.ts` / `model-options.ts`）
+
 ## 背景
 
 現行の Auto（`docs/specs/auto-model-selection.md` および

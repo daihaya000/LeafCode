@@ -1,5 +1,7 @@
 # setup.bat を廃止して start-webui.bat へ統合する
 
+> 実装ステータス: ✅ 実装済み（参照: `scripts/start-webui.bat` / `host/src/bat-encoding.test.js`）
+
 ## 背景・目的
 
 現状は「初回のみ `setup.bat`」「2回目以降は `start-webui.bat`」という2ファイル・2ステップの

@@ -1,5 +1,7 @@
 # WebUI Auto モデル選択: TaskView follow-up 対応（追補）
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/auto-model.ts` / `TaskView.tsx`）
+
 ## 背景
 
 `docs/specs/auto-model-selection.md`（承認済み）は TaskView follow-up

@@ -1,5 +1,7 @@
 # メモリ層(セッション横断の永続記憶)
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/db.ts` / `web/src/lib/memory.ts` / `browser-bridge/mcp/memory-server.mjs`）
+
 Hermes Agent 相当の「永続メモリ + 自動抽出 + 検索注入」を、既存のDB(SQLite)とMCP配線の上に載せる。
 
 ## 背景

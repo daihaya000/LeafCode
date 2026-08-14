@@ -1,5 +1,7 @@
 # Browser Bridge 共有タブのクリーンアップ仕様
 
+> 実装ステータス: ✅ 実装済み（参照: `browser-bridge/extension/background.mjs` / `browser-bridge/test/extension-background.test.mjs`）
+
 ## 背景
 
 Browser Bridge は、ユーザーが明示的に共有したブラウザタブを拡張機能が Broker に

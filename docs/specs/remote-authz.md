@@ -1,5 +1,7 @@
 # リモート認証・認可基盤
 
+> 実装ステータス: ✅ 実装済み（検証済みセッション + HMAC 署名 cookie、参照: `web/src/lib/api-guard.ts` / `auth` 関連 route）
+
 > **改訂（host-only API の方針変更）**
 >
 > 本仕様の当初版は「host-only API は認証済みリモート主体にも開かない」と定めていたが、

@@ -1,5 +1,7 @@
 # PTY 対話ターミナル
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/components/task/PtyPanel.tsx` / `web/src/app/api/opencode/[...path]/route.ts`）
+
 ## 背景
 
 現行の `PtyPanel.tsx` は OpenCode engine の `GET /pty`（PTY 一覧）だけを呼び出す

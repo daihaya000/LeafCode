@@ -1,5 +1,7 @@
 # OpenCode エンジン API v2 (beta) への移行準備
 
+> 実装ステータス: ✅ 実装済み（v1/v2 併用で移行完了、参照: `web/src/lib/opencode-paths.ts` / `opencode-events.ts`）
+
 ## 背景
 
 OpenCode エンジンは現在 **2 世代の API を同時に公開**している。

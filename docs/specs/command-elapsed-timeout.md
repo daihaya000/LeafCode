@@ -1,5 +1,7 @@
 # コマンド実行の経過時間表示とタイムアウト仕様
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/app/api/opencode/[...path]/route.ts` / `useSessionStream.ts`）
+
 ## 背景
 
 `bash` ツール等でコマンドを実行した際、OpenCode engine が `start /MIN ...` のような

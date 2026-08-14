@@ -1,5 +1,7 @@
 # 非 Latin-1 文字（日本語など）を含むワークスペースパスの対応
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/db.ts` / `web/src/app/api/opencode/[...path]/route.ts`）
+
 ## 背景・問題
 
 ワークスペースの絶対パス（`directory`）を HTTP ヘッダー `x-opencode-directory` に生の文字列で設定している箇所があり、パスに Latin-1 (U+0000–U+00FF) 外の文字が含まれると `Headers.set()` / `fetch()` が例外を投げる。

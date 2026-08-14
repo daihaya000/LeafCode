@@ -1,5 +1,7 @@
 # WebUI Auto モデル選択モード（コスト最適・コーディング特化）
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/auto-model.ts` / `auto-settings.ts`）
+
 ## 背景
 
 HomeView の composer はユーザーが `${providerID}::${modelID}` 形式で

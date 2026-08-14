@@ -1,5 +1,7 @@
 # グローバル OpenCode 設定のプロファイル切替
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/profiles/` / `web/src/components/settings/ProfilesSettings.tsx`）
+
 ## 目的
 
 `~/.config/opencode`（グローバル設定ディレクトリ）の実体を複数用意し、設定画面から切り替えられるようにする。エージェント・スキル・プラグイン・`opencode.jsonc` を丸ごと入れ替えた「用途別の設定一式」を、再セットアップなしで往復できる状態にする。

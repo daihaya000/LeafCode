@@ -1,5 +1,7 @@
 # Workflow Graph Editor 仕様
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/workflow-graph-react-flow.ts` / `workflow-graph-react-flow.test.ts`）
+
 ## 1. 文書の位置付け
 
 本仕様は、既存の `docs/specs/node-workflow-mode.md` に定義されたWorkflow実行基盤へ、`@xyflow/react`を用いたノードベースUIと将来のNode追加機構を導入するための追加仕様である。

@@ -1,5 +1,7 @@
 # リモートプロジェクトフォルダ選択
 
+> 実装ステータス: ⬜ 未実装（前提: remote-authz の認証プロキシ導入）
+
 ## 背景
 
 LAN/VPN の URL で WebUI を使うと、`/api/browse/folder` と

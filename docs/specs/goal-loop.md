@@ -1,5 +1,7 @@
 # ループ 状態機械の定義と監査是正
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/goal-loop.ts` / `goal-loop.test.ts`）
+
 ## 背景
 
 ループ（`web/src/lib/goal-loop.ts`、約1280行）は本リポジトリで最も複雑な状態機械だが、

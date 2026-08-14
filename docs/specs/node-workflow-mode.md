@@ -1,5 +1,7 @@
 # ノードワークフローモード仕様
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/workflow-graph-runtime.ts` / `web/src/components/workflow/`）
+
 ## 1. 背景
 
 現行の OpenCodeWebUI は、`Project → Workspace（UI上のTask）→ OpenCode Session` を中心に、会話、差分、承認、質問、Goal Loop、子Session表示を提供している。

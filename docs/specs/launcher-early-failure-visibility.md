@@ -1,5 +1,7 @@
 # exe早期失敗時の可視化と動作条件の明文化
 
+> 実装ステータス: ✅ 実装済み（参照: `host/src/launcher-exe.test.js` / `scripts/launcher/Launcher.cs`）
+
 ## 背景・目的
 
 別環境で `OpenCodeWebUI.exe` を実行すると「コンソールが一瞬表示されて閉じる・何も起きない」

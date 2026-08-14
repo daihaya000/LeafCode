@@ -1,5 +1,7 @@
 # 新規セッションのアクティブモデルを最後に使用したモデルにする
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/default-model.ts` / `default-model.test.ts`）
+
 ## 背景
 
 `HomeView`（新規タスク作成）と `TaskView`（既存タスク続き）の composer は、

@@ -1,5 +1,7 @@
 # 設定のエージェントタブでエージェントの有効化/無効化
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/app/api/extensions/agents/route.ts` / `AgentsSettings.tsx`）
+
 ## 目的
 
 設定画面の「エージェント」タブから、OpenCode の各エージェントを有効・無効に切り替えられるようにする。

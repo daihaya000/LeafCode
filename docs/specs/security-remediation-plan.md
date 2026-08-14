@@ -1,5 +1,7 @@
 # セキュリティ修正計画
 
+> 実装ステータス: ✅ 実装済み（Phase 1〜5 完了、参照: `web/src/lib/api-guard.ts` / `api-guard-coverage.test.ts`）
+
 作成: 2026-08-06 / 調査時コミット: `2b3dad5`
 
 ## 進捗

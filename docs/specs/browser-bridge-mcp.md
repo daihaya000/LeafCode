@@ -1,5 +1,7 @@
 # Browser Bridge MCP 仕様
 
+> 実装ステータス: ✅ 実装済み（参照: `browser-bridge/mcp/browser-bridge/index.mjs` / `browser-bridge/broker/server.mjs`）
+
 ## 背景
 
 OpenCodeWebUI から、ユーザーが普段使っている Chrome / Brave のタブ情報を取得し、

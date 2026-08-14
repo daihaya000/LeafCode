@@ -1,5 +1,7 @@
 # 並行セッション相互認識
 
+> 実装ステータス: ✅ 実装済み（参照: `web/src/lib/collaboration-context.ts` / `collaboration-context.test.ts`）
+
 ## 目的
 
 同じワークスペースで同時に動くセッションへ、他セッションの存在と編集対象を伝え、意図しない上書きや巻き戻しを減らす。
