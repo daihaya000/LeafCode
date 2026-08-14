@@ -22,13 +22,11 @@ import {
   getPostBuildLaunchPlan,
   isWebBuildStale,
   decideWebReuseOnStale,
-  webRestartDelay,
   webRestartSchedule,
   webHealthDecision,
   pullLatestGitSource,
   removeBrokenWebBuild,
 } from './web-runtime.js';
-import { parseListeningPids } from './port-plan.js';
 import {
   captureNetstat,
   captureNetstatAsync,
@@ -36,8 +34,6 @@ import {
   getListeningPids,
   isPortInUse,
   makeOwnedWebListenerPredicate,
-  runNetstat,
-  runPowerShell,
 } from './port-scanner.js';
 import {
   getProcessCommandLine,
@@ -53,8 +49,6 @@ import { createBrowserBridgeManager } from './browser-bridge.js';
 import { spawnNpm } from './npm-cli.js';
 import { readPort } from './port-config.js';
 import {
-  CADDY_LOOPBACK_URL_RE,
-  isPlaceholderHost,
   parseCaddyLoopbackUrl,
   parseCaddyPublicUrl,
   parseCaddySiteUrls,
@@ -70,9 +64,7 @@ import { resolveKillPids, resolveWebKillPids } from './restart-targets.js';
 import { getLogEntries, pushLogEntry } from './log-buffer.js';
 import { createLogFileWriter } from './log-file.js';
 import {
-  backfillLockCreationTime,
   readLock,
-  readLockPid,
   removeLock,
   writeLock,
 } from './lock-file.js';
@@ -84,8 +76,6 @@ import {
   disposeOpencodeServer,
   hardKillTree,
   isProcessAlive,
-  listChildPids,
-  reapInheritedHolders,
   reapOpencodePortHolders,
   softKillTree,
   stopOpencodeProcessTree,
@@ -114,11 +104,6 @@ import {
   createThrottleStore,
   verifyWindowsCredentials,
 } from './windows-auth.js';
-import {
-  isWindowsPeExecutable,
-  npmOpencodeSiblingExe,
-  pickOpencodePath,
-} from './opencode-path.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
