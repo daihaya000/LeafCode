@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
@@ -8,11 +9,20 @@ import { join } from "node:path";
  * - `web/src/lib/host-control.ts` (web / TypeScript, via `host-control.d.ts`)
  * - `scripts/production-webui-build-guard.mjs` (CLI / Node ESM)
  *
- * Order: `OPENCODE_WEBUI_HOST_CONTROL_URL` env → `%APPDATA%/opencode-webui/
- * host-control.json` → default port. Non-loopback URLs are rejected at every
- * step so restart/voice-input cannot be redirected off-box (D2 / 6-2).
+ * Order: `OPENCODE_WEBUI_HOST_CONTROL_URL` env → `host-control.json` in the
+ * machine-local data dir (win32: `%APPDATA%/opencode-webui/`, else
+ * `~/.opencode-webui/`, per REFACTORING_PLAN D2 / data-dir.mjs) → default
+ * port. Non-loopback URLs are rejected at every step so restart/voice-input
+ * cannot be redirected off-box (D2 / 6-2).
  */
 export const DEFAULT_CONTROL_URL = "http://127.0.0.1:18765";
+
+/** Machine-local data dir, aligned with scripts/lib/data-dir.mjs (D2). */
+export function hostControlDataDir(env = process.env) {
+  const appData = env.APPDATA;
+  if (appData) return join(appData, "opencode-webui");
+  return join(env.HOME ?? homedir(), ".opencode-webui");
+}
 
 export function isLoopbackControlUrl(raw) {
   try {
@@ -45,22 +55,19 @@ export function resolveHostControlUrl({
     if (isLoopbackControlUrl(cleaned)) return cleaned;
   }
 
-  const appData = env.APPDATA;
-  if (appData) {
-    const file = join(appData, "opencode-webui", "host-control.json");
-    if (exists(file)) {
-      try {
-        const data = JSON.parse(read(file, "utf8"));
-        if (typeof data.url === "string" && data.url.trim()) {
-          const cleaned = data.url.trim().replace(/\/+$/, "");
-          if (isLoopbackControlUrl(cleaned)) return cleaned;
-        }
-        if (typeof data.port === "number" && Number.isFinite(data.port)) {
-          return `http://127.0.0.1:${data.port}`;
-        }
-      } catch {
-        // fall through to the default
+  const file = join(hostControlDataDir(env), "host-control.json");
+  if (exists(file)) {
+    try {
+      const data = JSON.parse(read(file, "utf8"));
+      if (typeof data.url === "string" && data.url.trim()) {
+        const cleaned = data.url.trim().replace(/\/+$/, "");
+        if (isLoopbackControlUrl(cleaned)) return cleaned;
       }
+      if (typeof data.port === "number" && Number.isFinite(data.port)) {
+        return `http://127.0.0.1:${data.port}`;
+      }
+    } catch {
+      // fall through to the default
     }
   }
 
