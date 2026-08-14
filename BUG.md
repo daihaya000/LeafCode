@@ -38,8 +38,11 @@
 > スコープ: `5c17cc20`〜`ec47229c` の rebrand 8 コミット（UI 文言・User-Agent・SW キャッシュ・npm 名・
 > データディレクトリ移行・env リネーム shim・ランチャー/FW/MCP 名・GitHub 参照）+ auth 2 コミット
 > （`af543e20` ログイン強制 / `ec47229c` ループバック admin）+ next 16.3.1 更新。
-> 検証: web vitest **327 files / 3943 tests 全 PASS** / host `node --test` **474 本 PASS** /
+> 検証: web vitest **327 files / 3943 tests 全 PASS** / host `node --test` **480 本 PASS** /
 > browser-bridge **91 本 PASS** / `tsc --noEmit` クリーン。本ラウンドは**発見記録のみ・修正しない**。
+> **最終検証（ターン 18・HEAD `5d592919` 時点の再実行）**: web 327 files / 3943 tests PASS（1 skipped・52s）/
+> host 480 本 PASS（fail 0・63s）/ browser-bridge 91 本 PASS。調査によるソース変更は BUG.md のみで、
+> 全スイートがクリーンなことを再確認。
 
 | ID | 優先度 | 要約 | 根拠 / 影響 |
 |----|--------|------|-------------|
