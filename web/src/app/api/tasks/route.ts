@@ -4,12 +4,12 @@ import {
   classifyPrompt,
   DEFAULT_AUTO_OPTIMIZE_MODE,
   isAutoOptimizeMode,
-  normalizeRouteOverrides,
+  normalizeAutoRouteConfig,
   type AutoCandidateProvider,
   type AutoDecision,
   type AutoOptimizeMode,
   type AutoProviderUsage,
-  type RouteOverrides,
+  type AutoRouteConfig,
 } from "@/lib/auto-model";
 import { bindSession, touchProjectOpened } from "@/lib/db";
 import { armHangWatch, disarmHangWatch } from "@/lib/hang-watchdog";
@@ -202,7 +202,7 @@ async function resolveAutoModel(
   files: readonly unknown[],
   mode: AutoOptimizeMode,
   usage?: AutoProviderUsage,
-  overrides?: RouteOverrides,
+  config?: AutoRouteConfig,
 ): Promise<AutoDecision | null> {
   const hasImages = files.length > 0;
   // `/provider` fetch failures propagate to the caller (as `OcError` or a
@@ -230,7 +230,7 @@ async function resolveAutoModel(
     }),
     mode,
     hasImages,
-    overrides,
+    config,
     usage,
   });
 }
@@ -389,10 +389,10 @@ export async function POST(req: NextRequest) {
     }
     autoOptimize = autoOptimizeRaw;
   }
-  // Per-tier routing overrides. Absent means "use the preset for the mode".
+  // Per-tier routing config. Absent means "use the preset for the mode".
   // Any JSON shape is accepted; unknown tiers/entries are dropped by
-  // normalizeRouteOverrides so a corrupted payload never blocks routing.
-  let autoRouteOverrides: RouteOverrides | undefined;
+  // normalizeAutoRouteConfig so a corrupted payload never blocks routing.
+  let autoRouteConfig: AutoRouteConfig | undefined;
   if (body?.autoRouteOverrides !== undefined) {
     if (!auto) {
       return NextResponse.json(
@@ -400,7 +400,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    autoRouteOverrides = normalizeRouteOverrides(body.autoRouteOverrides);
+    autoRouteConfig = normalizeAutoRouteConfig(body.autoRouteOverrides);
   }
   const codexBarUsage = auto ? parseCodexBarUsage(body?.codexBarUsage) : undefined;
 
@@ -427,7 +427,7 @@ export async function POST(req: NextRequest) {
           qwenNativeForAuto ? [] : files,
           autoOptimize,
           codexBarUsage,
-          autoRouteOverrides,
+          autoRouteConfig,
         );
       } catch (err) {
         // The provider list itself could not be fetched (OpenCode

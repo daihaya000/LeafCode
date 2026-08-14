@@ -66,22 +66,22 @@ import { limitedProviderSet, readCodexBarAutoUsage } from "@/lib/codexbar-auto";
 import {
   AUTO_MODEL_OPTION,
   AUTO_MODEL_VALUE,
-  isRouteOverridesEmpty,
+  isAutoRouteConfigEmpty,
   type AutoDecision,
   type AutoOptimizeMode,
   type AutoProviderUsage,
-  type RouteOverrides,
+  type AutoRouteConfig,
 } from "@/lib/auto-model";
 import {
   AUTO_OPTIMIZE_SETTING_KEY,
   AUTO_ROUTE_OVERRIDES_SETTING_KEY,
   hasStoredAutoSetting,
   readAutoOptimizeMode,
-  readAutoRouteOverrides,
+  readAutoRouteConfig,
   readAutoSettingsFromServer,
   subscribeAutoSetting,
   writeAutoOptimizeMode,
-  writeAutoRouteOverrides,
+  writeAutoRouteConfig,
   writeAutoSettingToServer,
   type AutoSettingsSnapshot,
 } from "@/lib/auto-settings";
@@ -228,8 +228,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
     readAutoOptimizeMode(),
   );
-  const [routeOverrides, setRouteOverrides] = useState<RouteOverrides>(() =>
-    readAutoRouteOverrides(),
+  const [routeConfig, setRouteConfig] = useState<AutoRouteConfig>(() =>
+    readAutoRouteConfig(),
   );
   const [codexBarUsage, setCodexBarUsage] = useState<
     AutoProviderUsage | undefined
@@ -418,11 +418,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       if (
         !cancelled &&
         mountedRef.current &&
-        snapshot.routeOverrides &&
+        snapshot.routeConfig &&
         !hasStoredAutoSetting(AUTO_ROUTE_OVERRIDES_SETTING_KEY)
       ) {
-        writeAutoRouteOverrides(snapshot.routeOverrides);
-        setRouteOverrides(snapshot.routeOverrides);
+        writeAutoRouteConfig(snapshot.routeConfig);
+        setRouteConfig(snapshot.routeConfig);
       }
     })();
     return () => {
@@ -437,11 +437,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   }, []);
 
   useEffect(() => {
-    const onRouteOverrides = () =>
-      setRouteOverrides(readAutoRouteOverrides());
+    const onRouteConfig = () =>
+      setRouteConfig(readAutoRouteConfig());
     return subscribeAutoSetting(
       AUTO_ROUTE_OVERRIDES_SETTING_KEY,
-      onRouteOverrides,
+      onRouteConfig,
     );
   }, []);
 
@@ -1001,8 +1001,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 auto: true,
                 autoOptimize,
                 ...(codexBarUsage ? { codexBarUsage } : {}),
-                ...(!isRouteOverridesEmpty(routeOverrides)
-                  ? { autoRouteOverrides: routeOverrides }
+                ...(!isAutoRouteConfigEmpty(routeConfig)
+                  ? { autoRouteOverrides: routeConfig }
                   : {}),
               }
             : {}),
@@ -1123,7 +1123,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     agentModels,
     intelligence,
     autoOptimize,
-    routeOverrides,
+    routeConfig,
     codexBarUsage,
     goalLoopEnabled,
     goalLoopAcceptance,

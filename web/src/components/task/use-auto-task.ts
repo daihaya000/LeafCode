@@ -3,11 +3,11 @@ import {
   type AutoCandidateProvider,
   type AutoOptimizeMode,
   type AutoProviderUsage,
-  type RouteOverrides,
+  type AutoRouteConfig,
 } from "@/lib/auto-model";
 import {
   readAutoOptimizeMode,
-  readAutoRouteOverrides,
+  readAutoRouteConfig,
   readAutoShowModel,
 } from "@/lib/auto-settings";
 import { type AutoTaskRecord } from "@/lib/auto-task-record";
@@ -41,9 +41,9 @@ export function useAutoTask() {
   const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
     readAutoOptimizeMode(),
   );
-  /** Per-tier routing overrides; shared with HomeView and Settings. */
-  const [routeOverrides, setRouteOverrides] = useState<RouteOverrides>(() =>
-    readAutoRouteOverrides(),
+  /** Per-tier routing config; shared with HomeView and Settings. */
+  const [routeConfig, setRouteConfig] = useState<AutoRouteConfig>(() =>
+    readAutoRouteConfig(),
   );
   /**
    * Whether to name the model Auto picked. Off by default (Cursor parity), so
@@ -65,8 +65,8 @@ export function useAutoTask() {
     setAutoInputs,
     autoOptimize,
     setAutoOptimize,
-    routeOverrides,
-    setRouteOverrides,
+    routeConfig,
+    setRouteConfig,
     autoShowModel,
     setAutoShowModel,
     autoReplyFailedIds,

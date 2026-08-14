@@ -1010,16 +1010,17 @@ export function chooseAutoModel(input: {
   if (pool.length === 0) return null;
 
   // Effective route (spec §3-1). The v1 override is bridged into a route so
-  // existing callers keep working; `config` takes precedence.
+  // existing callers keep working; `config` takes precedence. A config cell
+  // wins even with empty candidates — its variantFallbackOrder / fallback are
+  // still honored, only the candidate list falls back to the preset.
   const legacyRoute = overrides[tier];
   const configured = config.modes[mode]?.[tier];
   const preset = presetTierRoute(mode, tier);
   const hasConfigCandidates =
     configured !== undefined && configured.candidates.length > 0;
   const effectiveRoute =
-    hasConfigCandidates ? configured
-    : legacyRoute ? legacyRouteToTierRoute(legacyRoute)
-    : preset;
+    configured ??
+    (legacyRoute ? legacyRouteToTierRoute(legacyRoute) : preset);
   const candidates =
     effectiveRoute.candidates.length > 0
       ? effectiveRoute.candidates

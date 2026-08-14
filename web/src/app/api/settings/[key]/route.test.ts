@@ -408,7 +408,7 @@ describe("/api/settings/[key] auto mode settings", () => {
   });
 
   describe("auto-route-overrides", () => {
-    it("stores a normalized override map", async () => {
+    it("stores a normalized config", async () => {
       const res = await PUT(
         putReq(
           { value: JSON.stringify({ light: { costOrder: ["cheap", "cheap"] } }) },
@@ -417,9 +417,19 @@ describe("/api/settings/[key] auto mode settings", () => {
         ctx("auto-route-overrides"),
       );
       expect(res.status).toBe(200);
+      const expected = {
+        version: 2,
+        modes: {
+          cost: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+          balanced: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+          intelligence: {
+            light: { candidates: [{ kind: "cost", cost: "cheap" }] },
+          },
+        },
+      };
       expect(setSetting).toHaveBeenCalledWith(
         "auto-route-overrides",
-        JSON.stringify({ light: { costOrder: ["cheap"] } }),
+        JSON.stringify(expected),
       );
     });
 
@@ -437,7 +447,10 @@ describe("/api/settings/[key] auto mode settings", () => {
         ctx("auto-route-overrides"),
       );
       expect(res.status).toBe(200);
-      expect(setSetting).toHaveBeenCalledWith("auto-route-overrides", "{}");
+      expect(setSetting).toHaveBeenCalledWith(
+        "auto-route-overrides",
+        JSON.stringify({ version: 2, modes: {} }),
+      );
     });
 
     it("treats an empty string as unset", async () => {

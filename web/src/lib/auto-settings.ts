@@ -12,11 +12,12 @@
 import { getJson, sendJson } from "./client";
 import {
   DEFAULT_AUTO_OPTIMIZE_MODE,
-  EMPTY_ROUTE_OVERRIDES,
+  EMPTY_AUTO_ROUTE_CONFIG,
   isAutoOptimizeMode,
-  normalizeRouteOverrides,
+  isAutoRouteConfigEmpty,
+  normalizeAutoRouteConfig,
   type AutoOptimizeMode,
-  type RouteOverrides,
+  type AutoRouteConfig,
 } from "./auto-model";
 
 const OPTIMIZE_STORAGE_KEY = "webui:auto-optimize";
@@ -82,23 +83,24 @@ export function writeAutoShowModel(enabled: boolean): void {
 }
 
 /**
- * Per-tier routing overrides. Stored as JSON in localStorage. Corrupted or
- * unknown entries are dropped by {@link normalizeRouteOverrides}, so a bad
- * payload always falls back to the preset instead of breaking routing.
+ * Per-tier routing config (v2). Stored as JSON in localStorage under the
+ * historical `webui:auto-route-overrides` key — v1 (`RouteOverrides`) payloads
+ * are migrated by {@link normalizeAutoRouteConfig} on read, so nothing needs
+ * a key rename. Corrupted or unknown entries are dropped by the normalizer, so
+ * a bad payload always falls back to the preset instead of breaking routing.
  */
-export function readAutoRouteOverrides(): RouteOverrides {
+export function readAutoRouteConfig(): AutoRouteConfig {
   const raw = readRaw(ROUTE_OVERRIDES_STORAGE_KEY);
-  if (!raw) return EMPTY_ROUTE_OVERRIDES;
+  if (!raw) return EMPTY_AUTO_ROUTE_CONFIG;
   try {
-    return normalizeRouteOverrides(JSON.parse(raw));
+    return normalizeAutoRouteConfig(JSON.parse(raw));
   } catch {
-    return EMPTY_ROUTE_OVERRIDES;
+    return EMPTY_AUTO_ROUTE_CONFIG;
   }
 }
 
-export function writeAutoRouteOverrides(overrides: RouteOverrides): void {
-  const json =
-    Object.keys(overrides).length === 0 ? "" : JSON.stringify(overrides);
+export function writeAutoRouteConfig(config: AutoRouteConfig): void {
+  const json = isAutoRouteConfigEmpty(config) ? "" : JSON.stringify(config);
   writeRaw(ROUTE_OVERRIDES_STORAGE_KEY, AUTO_ROUTE_OVERRIDES_EVENT, json);
 }
 
@@ -146,7 +148,7 @@ export function subscribeAutoSetting(
 export type AutoSettingsSnapshot = {
   mode?: AutoOptimizeMode;
   showModel?: boolean;
-  routeOverrides?: RouteOverrides;
+  routeConfig?: AutoRouteConfig;
 };
 
 /**
@@ -186,8 +188,8 @@ export async function readAutoSettingsFromServer(): Promise<AutoSettingsSnapshot
   if (showModel !== null) snapshot.showModel = showModel === ON;
   if (routeOverridesRaw) {
     try {
-      const overrides = normalizeRouteOverrides(JSON.parse(routeOverridesRaw));
-      if (Object.keys(overrides).length > 0) snapshot.routeOverrides = overrides;
+      const config = normalizeAutoRouteConfig(JSON.parse(routeOverridesRaw));
+      if (!isAutoRouteConfigEmpty(config)) snapshot.routeConfig = config;
     } catch {
       /* ignore corrupted JSON; preset is used */
     }

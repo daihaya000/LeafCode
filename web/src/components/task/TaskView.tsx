@@ -141,7 +141,7 @@ import {
   AUTO_ROUTE_OVERRIDES_SETTING_KEY,
   AUTO_SHOW_MODEL_SETTING_KEY,
   readAutoOptimizeMode,
-  readAutoRouteOverrides,
+  readAutoRouteConfig,
   readAutoShowModel,
   subscribeAutoSetting,
   writeAutoOptimizeMode,
@@ -657,8 +657,8 @@ export function TaskView({
     setAutoInputs,
     autoOptimize,
     setAutoOptimize,
-    routeOverrides,
-    setRouteOverrides,
+    routeConfig,
+    setRouteConfig,
     autoShowModel,
     setAutoShowModel,
     autoReplyFailedIds,
@@ -902,8 +902,8 @@ export function TaskView({
   useEffect(() => {
     const onMode = () => setAutoOptimize(readAutoOptimizeMode());
     const onShow = () => setAutoShowModel(readAutoShowModel());
-    const onRouteOverrides = () =>
-      setRouteOverrides(readAutoRouteOverrides());
+    const onRouteConfig = () =>
+      setRouteConfig(readAutoRouteConfig());
     const unsubscribeMode = subscribeAutoSetting(
       AUTO_OPTIMIZE_SETTING_KEY,
       onMode,
@@ -914,14 +914,14 @@ export function TaskView({
     );
     const unsubscribeRouteOverrides = subscribeAutoSetting(
       AUTO_ROUTE_OVERRIDES_SETTING_KEY,
-      onRouteOverrides,
+      onRouteConfig,
     );
     return () => {
       unsubscribeMode();
       unsubscribeShow();
       unsubscribeRouteOverrides();
     };
-  }, [setAutoOptimize, setAutoShowModel, setRouteOverrides]);
+  }, [setAutoOptimize, setAutoShowModel, setRouteConfig]);
 
   const changeAutoOptimize = useCallback((mode: AutoOptimizeMode) => {
     setAutoOptimize(mode);
@@ -2119,13 +2119,13 @@ export function TaskView({
         mode: autoOptimize,
         hasImages,
         usage: autoInputs.usage,
-        overrides: routeOverrides,
+        config: routeConfig,
       });
     },
     [
       autoInputs,
       autoOptimize,
-      routeOverrides,
+      routeConfig,
       streamMessages.length,
       streamSessionError,
     ],

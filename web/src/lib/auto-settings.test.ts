@@ -5,12 +5,12 @@ import {
   AUTO_SHOW_MODEL_EVENT,
   hasStoredAutoSetting,
   readAutoOptimizeMode,
-  readAutoRouteOverrides,
+  readAutoRouteConfig,
   readAutoSettingsFromServer,
   readAutoShowModel,
   subscribeAutoSetting,
   writeAutoOptimizeMode,
-  writeAutoRouteOverrides,
+  writeAutoRouteConfig,
   writeAutoSettingToServer,
   writeAutoShowModel,
 } from "./auto-settings";
@@ -167,7 +167,7 @@ describe("auto boolean toggles", () => {
   });
 });
 
-describe("auto route overrides storage", () => {
+describe("auto route config storage", () => {
   beforeEach(() => {
     localStorage.clear();
   });
@@ -176,48 +176,98 @@ describe("auto route overrides storage", () => {
     vi.restoreAllMocks();
   });
 
-  it("defaults to {} when nothing is stored", () => {
-    expect(readAutoRouteOverrides()).toEqual({});
-  });
-
-  it("round-trips a non-empty override map", () => {
-    writeAutoRouteOverrides({ light: { costOrder: ["cheap"] } });
-    expect(readAutoRouteOverrides()).toEqual({
-      light: { costOrder: ["cheap"] },
+  it("defaults to the empty v2 config when nothing is stored", () => {
+    expect(readAutoRouteConfig()).toEqual({
+      version: 2,
+      modes: {},
     });
   });
 
-  it("removes the key when written back to {}", () => {
-    writeAutoRouteOverrides({ light: { costOrder: ["cheap"] } });
-    writeAutoRouteOverrides({});
-    expect(localStorage.getItem("webui:auto-route-overrides")).toBeNull();
-    expect(readAutoRouteOverrides()).toEqual({});
+  it("round-trips a non-empty v2 config", () => {
+    writeAutoRouteConfig({
+      version: 2,
+      modes: {
+        cost: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+      },
+    });
+    expect(readAutoRouteConfig()).toEqual({
+      version: 2,
+      modes: {
+        cost: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+      },
+    });
   });
 
-  it("falls back to {} for corrupted JSON", () => {
+  it("removes the key when written back to an empty config", () => {
+    writeAutoRouteConfig({
+      version: 2,
+      modes: {
+        cost: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+      },
+    });
+    writeAutoRouteConfig({ version: 2, modes: {} });
+    expect(localStorage.getItem("webui:auto-route-overrides")).toBeNull();
+    expect(readAutoRouteConfig()).toEqual({ version: 2, modes: {} });
+  });
+
+  it("falls back to the empty config for corrupted JSON", () => {
     localStorage.setItem("webui:auto-route-overrides", "{not json");
-    expect(readAutoRouteOverrides()).toEqual({});
+    expect(readAutoRouteConfig()).toEqual({ version: 2, modes: {} });
+  });
+
+  it("migrates a stored v1 payload to v2 on read", () => {
+    localStorage.setItem(
+      "webui:auto-route-overrides",
+      JSON.stringify({ light: { costOrder: ["cheap", "bogus"] } }),
+    );
+    expect(readAutoRouteConfig()).toEqual({
+      version: 2,
+      modes: {
+        cost: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+        balanced: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+        intelligence: {
+          light: { candidates: [{ kind: "cost", cost: "cheap" }] },
+        },
+      },
+    });
   });
 
   it("drops unknown fields via normalization on read", () => {
     localStorage.setItem(
       "webui:auto-route-overrides",
-      JSON.stringify({ light: { costOrder: ["bogus"] }, extreme: {} }),
+      JSON.stringify({ extreme: { costOrder: ["cheap"] }, light: { costOrder: ["bogus"] } }),
     );
-    expect(readAutoRouteOverrides()).toEqual({});
+    expect(readAutoRouteConfig()).toEqual({ version: 2, modes: {} });
   });
 
   it("dispatches a CustomEvent with the JSON payload on write", () => {
     expect(
       captureEvent(AUTO_ROUTE_OVERRIDES_EVENT, () =>
-        writeAutoRouteOverrides({ heavy: { costOrder: null } }),
+        writeAutoRouteConfig({
+          version: 2,
+          modes: {
+            cost: { heavy: { candidates: [{ kind: "strongest" }] } },
+          },
+        }),
       ),
-    ).toEqual([JSON.stringify({ heavy: { costOrder: null } })]);
+    ).toEqual([
+      JSON.stringify({
+        version: 2,
+        modes: {
+          cost: { heavy: { candidates: [{ kind: "strongest" }] } },
+        },
+      }),
+    ]);
   });
 
   it("reports whether a local choice exists", () => {
     expect(hasStoredAutoSetting("auto-route-overrides")).toBe(false);
-    writeAutoRouteOverrides({ light: { costOrder: ["cheap"] } });
+    writeAutoRouteConfig({
+      version: 2,
+      modes: {
+        cost: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+      },
+    });
     expect(hasStoredAutoSetting("auto-route-overrides")).toBe(true);
   });
 });
@@ -284,23 +334,32 @@ describe("auto settings server sync", () => {
     expect(await readAutoSettingsFromServer()).toEqual({ showModel: true });
   });
 
-  it("reads and normalizes route overrides", async () => {
+  it("reads and normalizes route config", async () => {
     serverValues({
       "auto-route-overrides": JSON.stringify({
         light: { costOrder: ["cheap", "bogus"] },
       }),
     });
     expect(await readAutoSettingsFromServer()).toEqual({
-      routeOverrides: { light: { costOrder: ["cheap"] } },
+      routeConfig: {
+        version: 2,
+        modes: {
+          cost: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+          balanced: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+          intelligence: {
+            light: { candidates: [{ kind: "cost", cost: "cheap" }] },
+          },
+        },
+      },
     });
   });
 
-  it("omits route overrides for corrupted JSON", async () => {
+  it("omits route config for corrupted JSON", async () => {
     serverValues({ "auto-route-overrides": "{not json" });
     expect(await readAutoSettingsFromServer()).toEqual({});
   });
 
-  it("omits route overrides that normalize to empty", async () => {
+  it("omits route config that normalizes to empty", async () => {
     serverValues({ "auto-route-overrides": JSON.stringify({ extreme: {} }) });
     expect(await readAutoSettingsFromServer()).toEqual({});
   });

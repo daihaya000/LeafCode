@@ -5,7 +5,7 @@
  * 新キー追加はここに定義を足すだけで route 編集が不要になる。
  */
 
-import { isAutoOptimizeMode, normalizeRouteOverrides } from "@/lib/auto-model";
+import { isAutoOptimizeMode, normalizeAutoRouteConfig } from "@/lib/auto-model";
 import {
   COMMIT_AUTHOR_EMAIL_KEY,
   COMMIT_AUTHOR_NAME_KEY,
@@ -163,7 +163,7 @@ export function normalizeSettingValue(
   if (key === "auto-route-overrides") {
     try {
       const parsed = JSON.parse(value);
-      const normalized = normalizeRouteOverrides(parsed);
+      const normalized = normalizeAutoRouteConfig(parsed);
       return { ok: true, value: JSON.stringify(normalized) };
     } catch {
       return { ok: false, error: "auto-route-overrides must be JSON" };
