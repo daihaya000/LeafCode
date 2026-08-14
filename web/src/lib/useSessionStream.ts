@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { unwrapOcData } from "./oc-server";
+import { isGoalLoopPromptText } from "./goal-util";
 import { apiUrl, ApiError, ocJson, IMAGE_ANALYSIS_SEND_TIMEOUT_MS } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
@@ -399,17 +400,11 @@ export function filterRevertedMessages(
 }
 
 /**
- * Marker prepended to every goal-loop prompt (see `buildGoalPrompt`).
- * User messages starting with this are WebUI-internal system prompts and must
- * never appear in the chat timeline.
- */
-export const GOAL_LOOP_PROMPT_MARKER = "<!-- webui-goal-loop-prompt -->";
-
-/**
  * Drop goal-loop system-prompt user messages from the timeline. The loop
  * prompts the engine with a long instruction block that should not surface as
  * a normal user turn. Identified by the `GOAL_LOOP_PROMPT_MARKER` prefix on the
- * first text part.
+ * first text part — after stripping internal memory / collaboration blocks
+ * that the sending path may have prepended (see `isGoalLoopPromptText`).
  */
 export function filterGoalLoopMessages(
   messages: MessageWithParts[],
@@ -418,7 +413,7 @@ export function filterGoalLoopMessages(
     if (m.info.role !== "user") return true;
     const first = m.parts.find((p) => p.type === "text");
     if (!first || first.type !== "text") return true;
-    return !(first.text ?? "").startsWith(GOAL_LOOP_PROMPT_MARKER);
+    return !isGoalLoopPromptText(first.text);
   });
 }
 

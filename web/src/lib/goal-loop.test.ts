@@ -452,3 +452,43 @@ describe("goalLoopTestSeams", () => {
     expect(result?.evidence).toBe("awaiting approval");
   });
 });
+
+describe("isGoalLoopPromptText", () => {
+  const { isGoalLoopPromptText } = goalLoopTestSeams;
+
+  it("matches a bare marked prompt", () => {
+    expect(isGoalLoopPromptText("<!-- webui-goal-loop-prompt -->\n\nYou are running...")).toBe(true);
+  });
+
+  it("matches when a workspace-memory block was prepended", () => {
+    expect(
+      isGoalLoopPromptText(
+        "<workspace-memory>\n- [fact] mock\n</workspace-memory>\n<!-- webui-goal-loop-prompt -->\n\nContinue...",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches when a collaboration-context block was prepended", () => {
+    expect(
+      isGoalLoopPromptText(
+        "<collaboration-context>\nLive status\n</collaboration-context>\n<!-- webui-goal-loop-prompt -->\n\nContinue...",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches when memory and collaboration blocks are both prepended", () => {
+    expect(
+      isGoalLoopPromptText(
+        "<collaboration-context>\nLive status\n</collaboration-context>\n<workspace-memory>\n- [fact] mock\n</workspace-memory>\n<!-- webui-goal-loop-prompt -->\n\nContinue...",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects plain user text and mid-message markers", () => {
+    expect(isGoalLoopPromptText("こんにちは")).toBe(false);
+    expect(isGoalLoopPromptText("本文<!-- webui-goal-loop-prompt -->\n\nnot a prompt")).toBe(false);
+    expect(isGoalLoopPromptText("")).toBe(false);
+    expect(isGoalLoopPromptText(null)).toBe(false);
+    expect(isGoalLoopPromptText(undefined)).toBe(false);
+  });
+});

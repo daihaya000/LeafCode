@@ -1,11 +1,11 @@
 import { getDb } from "./db";
 import { scheduleAutoExtractAfterGoalCompleted } from "./goal-memory-hook";
 import {
-  GOAL_LOOP_PROMPT_MARKER,
   MAX_REJECTED_CLAIMS,
   TERMINAL_STATUSES,
   TURN_TIMEOUT_MS,
   boundaryStartIndex,
+  isGoalLoopPromptText,
   promptErrorMessage,
   type GoalLoopDto,
   type GoalLoopProgress,
@@ -152,7 +152,7 @@ export function deliveredGoalResultAfterUnknownPrompt(
   let promptIndex = -1;
   for (let i = start; i < messages.length; i += 1) {
     const message = messages[i];
-    if (message?.info.role === "user" && assistantText(message).includes(GOAL_LOOP_PROMPT_MARKER)) {
+    if (message?.info.role === "user" && isGoalLoopPromptText(assistantText(message))) {
       promptIndex = i;
     }
   }

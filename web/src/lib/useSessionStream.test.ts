@@ -639,6 +639,37 @@ describe("filterGoalLoopMessages", () => {
     expect(out.map((m) => m.info.id)).toEqual(["u2", "a1"]);
   });
 
+  it("drops marked prompts with a workspace-memory block prepended", () => {
+    const msgs: MessageWithParts[] = [
+      userMsg(
+        "u1",
+        "<workspace-memory>\n- [fact] mock\n</workspace-memory>\n<!-- webui-goal-loop-prompt -->\n\nYou are running...",
+      ),
+      userMsg("u2", "普通のユーザー発言"),
+    ];
+    const out = filterGoalLoopMessages(msgs);
+    expect(out.map((m) => m.info.id)).toEqual(["u2"]);
+  });
+
+  it("drops marked prompts with a collaboration-context block prepended", () => {
+    const msgs: MessageWithParts[] = [
+      userMsg(
+        "u1",
+        "<collaboration-context>\nLive status\n</collaboration-context>\n<!-- webui-goal-loop-prompt -->\n\nContinue...",
+      ),
+    ];
+    const out = filterGoalLoopMessages(msgs);
+    expect(out).toEqual([]);
+  });
+
+  it("keeps marked text that appears mid-message rather than as a prefix chain", () => {
+    const msgs: MessageWithParts[] = [
+      userMsg("u1", "本文<!-- webui-goal-loop-prompt -->\n\nnot a prompt"),
+    ];
+    const out = filterGoalLoopMessages(msgs);
+    expect(out.map((m) => m.info.id)).toEqual(["u1"]);
+  });
+
   it("keeps user messages without the marker", () => {
     const msgs: MessageWithParts[] = [
       userMsg("u1", "こんにちは"),

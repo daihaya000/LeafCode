@@ -2,6 +2,7 @@ import type { IntelligenceVariant } from "./model-variants";
 import type { MessageWithParts, SessionStatus } from "./types";
 import { OcError } from "./oc-server";
 import { isIntelligenceVariant, type ProviderModelMeta } from "./model-variants";
+import { stripMemoryInjectionBlock } from "./memory-text";
 
 export type GoalLoopStatus =
   | "queued"
@@ -412,3 +413,16 @@ export const MAX_GOAL_CHARS = 12_000;
  */
 export const MAX_REJECTED_CLAIMS = 2;
 export const GOAL_LOOP_PROMPT_MARKER = "<!-- webui-goal-loop-prompt -->";
+
+/**
+ * True when a text belongs to a goal-loop internal prompt, even if
+ * workspace-memory / collaboration-context blocks were prepended before the
+ * marker by the sending path (`buildGoalPromptWithMemory`,
+ * `prependCollaborationContext`). Those internal blocks are stripped first so
+ * the marker stays findable wherever it sits in the prefix chain. Renderers
+ * and title generation must use this instead of a raw `startsWith` on the
+ * marker, which misses prefixed prompts and leaks them into the chat.
+ */
+export function isGoalLoopPromptText(text: string | null | undefined): boolean {
+  return stripMemoryInjectionBlock(text ?? "").startsWith(GOAL_LOOP_PROMPT_MARKER);
+}

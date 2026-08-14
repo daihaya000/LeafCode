@@ -75,6 +75,30 @@ describe("buildTranscript", () => {
     expect(t).not.toContain("webui-goal-loop-prompt");
     expect(t).not.toContain("内部指示文");
   });
+
+  it("skips marked prompts even when a memory block was prepended", () => {
+    const loopPrompt: MessageWithParts = {
+      info: { id: "lp", role: "user" },
+      parts: [
+        {
+          id: "p",
+          messageID: "lp",
+          type: "text",
+          text: "<workspace-memory>\n- [fact] mock\n</workspace-memory>\n<!-- webui-goal-loop-prompt --> 大量の内部指示文",
+        },
+      ],
+    };
+    const t = buildTranscript([
+      msg("user", "ゴール"),
+      loopPrompt,
+      msg("assistant", "実装しました"),
+    ]);
+    expect(t).toContain("ゴール");
+    expect(t).toContain("実装しました");
+    expect(t).not.toContain("webui-goal-loop-prompt");
+    expect(t).not.toContain("内部指示文");
+    expect(t).not.toContain("workspace-memory");
+  });
 });
 
 describe("formatTranscriptForTitle", () => {

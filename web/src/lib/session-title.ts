@@ -1,5 +1,5 @@
 import type { MessageWithParts } from "./types";
-import { GOAL_LOOP_PROMPT_MARKER } from "./goal-util";
+import { isGoalLoopPromptText } from "./goal-util";
 
 const DEFAULT_MAX_CHARS = 24_000;
 const DEFAULT_MAX_TITLE = 60;
@@ -12,7 +12,7 @@ const DEFAULT_MAX_TITLE = 60;
 function isGoalLoopSystemPrompt(m: MessageWithParts): boolean {
   if (m.info.role !== "user") return false;
   const first = m.parts.find((p) => p.type === "text");
-  return first?.type === "text" && (first.text ?? "").startsWith(GOAL_LOOP_PROMPT_MARKER);
+  return first?.type === "text" && isGoalLoopPromptText(first.text);
 }
 
 /** Plain-text transcript from user/assistant text parts, latest-preferring. */
