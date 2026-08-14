@@ -896,6 +896,19 @@ export function isOurCaddyCommandLine(commandLine, caddyfile) {
 }
 
 /**
+ * Force-kill a single PID without a process tree (`taskkill /F` only).
+ * Returns true when the kill was accepted; the process may still be mid-exit.
+ */
+function forceKillPid(pid) {
+  try {
+    execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Stop any stray Caddy left behind when taking over a degraded host. That host
  * is killed without /T so its OpenCode/WebUI can be reused via health check, but
  * Caddy has no port-reuse path in resolvePortPlan and still holds its ports —
@@ -927,11 +940,8 @@ function stopStrayCaddy() {
       const pid = Number(row?.ProcessId);
       if (!Number.isInteger(pid) || pid <= 0) continue;
       if (!isOurCaddyCommandLine(row?.CommandLine, CADDYFILE)) continue;
-      try {
-        execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+      if (forceKillPid(pid)) {
         stopped += 1;
-      } catch {
-        /* already gone */
       }
     }
     if (stopped > 0) {
@@ -1376,12 +1386,8 @@ async function handleExistingInstance() {
       error(
         `Host PID ${lockPid} is running without a tray icon; taking over to restore it`,
       );
-      try {
-        execSync(`taskkill /F /PID ${lockPid}`, { stdio: 'ignore' });
-      } catch (err) {
-        throw new Error(
-          `Could not terminate degraded host PID ${lockPid}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+      if (!forceKillPid(lockPid)) {
+        throw new Error(`Could not terminate degraded host PID ${lockPid}`);
       }
       if (isProcessAlive(lockPid)) {
         throw new Error(`Degraded host PID ${lockPid} is still running after termination`);
