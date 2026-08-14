@@ -21,6 +21,7 @@ import { ModelSelect } from "@/components/ModelSelect";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { Button, GhostSelect, cx } from "@/components/ui";
 import { useVoiceInput } from "@/lib/use-voice-input";
+import { useModelConfigState } from "@/lib/hooks/use-model-config-state";
 import {
   ACCESS_MODE_EVENT,
   ACCESS_MODE_STORAGE_KEY,
@@ -195,20 +196,30 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
-  const [modelCapabilities, setModelCapabilities] = useState<
-    Record<string, { attachment?: boolean; image?: boolean }>
-  >({});
-  const [qwenNativeAvailable, setQwenNativeAvailable] = useState(false);
-  const [agents, setAgents] = useState<string[]>([]);
-  const [agentModels, setAgentModels] = useState<
-    Record<string, { providerID: string; modelID: string; variant?: string }>
-  >({});
-  const [model, setModel] = useState("");
-  const [serverDefaultModel, setServerDefaultModel] = useState<string | null>(null);
+  const {
+    modelOptions,
+    setModelOptions,
+    modelLabels,
+    modelCapabilities,
+    setModelCapabilities,
+    qwenNativeAvailable,
+    setQwenNativeAvailable,
+    agents,
+    setAgents,
+    agentModels,
+    setAgentModels,
+    model,
+    setModel,
+    serverDefaultModel,
+    setServerDefaultModel,
+    agent,
+    setAgent,
+    intelligence,
+    setIntelligence,
+    providerModelsMap,
+    setProviderModelsMap,
+  } = useModelConfigState();
   const modelTouchedRef = useRef(false);
-  const [agent, setAgent] = useState("");
-  const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
   /**
    * Auto "Optimize For" policy. Seeded from localStorage during the first
    * render so the composer never flashes the wrong mode, then reconciled with
@@ -223,9 +234,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [codexBarUsage, setCodexBarUsage] = useState<
     AutoProviderUsage | undefined
   >(undefined);
-  const [providerModelsMap, setProviderModelsMap] = useState<
-    Record<string, ProviderModelMeta>
-  >({});
   const [accessMode, setAccessMode] = useState<AccessMode>(() => readAccessMode());
   const [subagentPermission, setSubagentPermission] = useState<SubagentPermission>(
     () => readSubagentPermission(),
