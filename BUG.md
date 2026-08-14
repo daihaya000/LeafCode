@@ -1,8 +1,45 @@
 # BUG インベントリ
 
-> 対象リポジトリ: OpenCodeWebUI（`web/` + `host/` + `browser-bridge/`）
+> 対象リポジトリ: OpenCodeWebUI → LeafCode（`web/` + `host/` + `browser-bridge/`）
 > このファイルは**発見記録のみ**。修正は本ファイルを参照して別途行う（修正禁止）。
 > バグではなく構造・リファクタリングの改善余地は [IMPROVEMENT.md](./IMPROVEMENT.md) を参照。
+
+---
+
+# 2026-08-14 rebrand（サービス名変更: WebUI → LeafCode）後の追跡調査
+
+> 検証環境: git HEAD `ec47229c`（クリーン）、Windows / OneDrive
+> スコープ: `5c17cc20`〜`ec47229c` の rebrand 8 コミット（UI 文言・User-Agent・SW キャッシュ・npm 名・
+> データディレクトリ移行・env リネーム shim・ランチャー/FW/MCP 名・GitHub 参照）+ auth 2 コミット
+> （`af543e20` ログイン強制 / `ec47229c` ループバック admin）+ next 16.3.1 更新。
+> 検証: web vitest **327 files / 3943 tests 全 PASS** / host `node --test` **474 本 PASS** /
+> browser-bridge **91 本 PASS** / `tsc --noEmit` クリーン。本ラウンドは**発見記録のみ・修正しない**。
+
+| ID | 優先度 | 要約 | 根拠 / 影響 |
+|----|--------|------|-------------|
+| **BR-11** | 高 | **`0dc01130`（env リネーム）で `web/src/instrumentation.ts` の `register()` が env shim に書き換えられ、サーバー起動時のバックグラウンド処理 7 種が全て失われた** | 分割前（`0dc01130^`）の `register()` は 7 処理を実行していた: (1) `startGoalLoopScheduler()` (2) `startWorkflowScheduler()` (3) `startHangWatchdog()` (4) `startMemoryAutoExtractionMonitor()` (5) `void runStartupGitRestore()` (6) `installDependenciesOnStartup()` (7) `registerServerOpenCodeApiGenerationResolver(readServerOpenCodeApiGeneration)`。`0dc01130` で register() の中身が `normalizeWebuiEnv()` のみになり、**7 処理の呼び出しが全て消滅**（HEAD でも非テストコードからの呼び出しゼロを `rg` で機械確認。各関数は定義のみ残存）。影響: **(1) goal loop の自動進行停止**（`goal-db.ts` の DB 書き込みイベント経由の reactive tick `:160,249,289` のみ残存で、時間ベースのスケジュール・待機中の進行は止まる）、**(2) workflow の interval ドライバ停止**（`/api/tasks/[id]/workflow` の start/resume 時 tick のみ残存）、**(3) ハング検知・自動再開の完全停止**、**(4) 会話完了後のメモリ自動抽出の停止**、**(5) zip 配布インストールの起動時 git 復元の停止**、**(6) プロファイルへの WebUI deps 自動配布の停止**、**(7) サーバー側 API 世代が常に v1 に固定**（v2 設定ユーザーでクライアント v2 / サーバー v1 の**世代混在**が発生しうる）。**テストは全 3943+474+91 本 PASS のまま**（起動経路はユニットテストがカバーしないため検出されず）。`0dc01130` のコミットタイトルは「環境変数を LEAFCODE_* へリネーム」であり、rebrand の巻き添えで起動処理が誤削除された可能性が高い（登録を他へ移した痕跡なし）。→ `register()` に 0dc01130^ 相当の 7 処理を復元（env shim と併存） |
+| **BR-12** | 中 | **`ec47229c`（ループバック admin）で、BFF の `isLocalHostRequest`（Host ヘッダ + X-Forwarded-For ヒューリスティック）への依存が control-plane の「セッションなし admin」に昇格した。`LEAFCODE_HOST=0.0.0.0`（LAN 直接バインド）時、LAN クライアントが `Host: 127.0.0.1:3000` を偽装すると BFF が `x-ocw-local-request: 1` を付与し、control-plane が admin セッションなしで管理操作を許可する（権限昇格）** | `web/src/lib/local-request.ts` の `isLocalHostRequest` は「Host ヘッダがループバック名 + XFF なし（または XFF 先頭がループバック）」のみで判定し、**実ソケットの remoteAddress は見ない**（`web/src/lib/local-request.ts:94-116`）。BFF が 0.0.0.0 にバインドされていると LAN クライアントは直接接続でき、Host ヘッダは任意偽装可能（HTTP/1.1 仕様）→ `hostForwardHeaders` が local フラグを付与 → `host/src/control-server.js` の `isLocalRequest`（`:30-36`、値 `'1'` のみ判定）がセッションなし admin を許可（`/users` POST/DELETE・`/auth/config` POST・`/browser/config` GET/POST）。**昇格の性質**: `af543e20` 以前は spoofed-local でも管理系操作は admin セッション必須だったが、`ec47229c` で「local = admin」が管理系に拡張された。**デフォルト構成（`LEAFCODE_HOST=127.0.0.1` バインド + Caddy 経由）では到達不能**（Caddy は X-Forwarded-For に実 IP を付与するため LAN クライアントは local 判定されない。deploy/Caddyfile.example:75-88 のコメントも同様の設計前提）。つまり条件付きの権限昇格。control-plane 本体は 127.0.0.1 バインド + DNS rebinding ガード（control-server.test.js PASS）で直接攻撃は不可。→ `isLocalHostRequest` に実接続元アドレス検証を追加（例: BFF の `req.socket.remoteAddress` / 信頼済みプロキシの明示）か、`x-ocw-local-request` を HMAC 署名付きトークンに変更 |
+| **BR-4（再確認）** | 低 | **SettingsView 上位タブ切替の未保存編集喪失は構造が不変のまま（修正されていない）** | 今回の rebrand コミット群では SettingsView.tsx は文言変更のみ（`5f260f65` / `2dd9bbeb`）。BR-4 の条件付きマウント構造（`{activeTab === "engine" && ...}` 20 箇所）はそのまま。**引き続き実測なしの構造推測**（タブ切替時に onBlur 合成イベントが発火しないという React 一般挙動に基づく）。修正時は jsdom テストで onBlur 発火を先に検証すること。 |
+
+> **旧 BR-1〜10 の解決確認（2026-08-14 追跡）**: 前回（HEAD `b065870`）の記録は**全て現 HEAD で解決済み**。
+> - **BR-1（`removeBrokenWebBuild` 未 import）**: 修正済み（`host/src/index.js:32` に import あり、`git grep` で確認）。
+> - **BR-2（TaskView 旧キー期待 2 件）/ BR-3（memory-migration 前提乖離）/ BR-8（api-guard-coverage 検出低下）/ BR-9（host-control export）/ BR-10（workflow mock 未更新）**: 全て vitest 全 PASS（TaskView 149 本 / db.memory-migration 5 本 / api-guard-coverage 7 本 / host-control 18 本 / workflow.integration 2 本）で**テスト不整合は解消済み**。
+> - **BR-5（CLI sync の isDistributable 未注入）**: 修正済み（`scripts/sync-profiles.mjs:70` に `isDistributable` 定義・`:78,93` で注入。`sync-engine.mjs` のデフォルトは `() => true` のまま）。
+> - **BR-6（`stopOpencodeOnly` の dispose 欠落）**: 修正済み（`host/src/index.js:1700-1706` で `opencodeUrl: OPENCODE_URL` を注入）。
+> - **BR-7（lock-file 内部呼び出しの引数欠落）**: 修正済み（`9be2b58c`「fix: lock-file 内部呼び出しの引数伝搬を修正し unlink を復活（BR-7）」）。
+> - **BR-4**: 上記のとおり未修正（構造推測・低）。
+
+> **rebrand ラウンドの健全確認メモ（本ラウンドで「バグではない」と確認した再調査防止メモ）**
+> - **env shim の適用網羅性**: `normalizeWebuiEnv()` は全 entry point（host `index.js:7` / `next.config.ts:9` / `instrumentation.ts:13` / `build-web.mjs:9` / `production-webui-build-guard.mjs:12` / `smoke-browser-bridge.mjs:6` / `host-control.mjs:54` / browser-bridge の server.mjs・memory-server.mjs）で呼ばれ、start-webui.bat も 15 変数の手動 shim を実行。Launcher.cs は LEAFCODE_NONINTERACTIVE 優先 + 旧名フォールバック（コメントで恒久互換を明示）。host の `env-compat.test.js` 3 本 PASS。→ 健全。
+> - **データディレクトリ移行**: `migrateLegacyDataDir()` は host `ensureDataDir`（`index.js:1334`）と web `ensureDataDir`（`paths.ts:12`）の両方から実行。rename 失敗時は次回起動で再試行（swallow）。`paths.test.ts`（migrate 4 ケース）PASS。auth-store / auth-config / browser-config / trusted-device-store / control-server（revoked-sessions）/ memory-server は全て共有 `dataDir()` に統一。→ 健全。
+> - **ビルドミラー名**: `web-build-mirror.mjs:84` は `%LOCALAPPDATA%\leafcode\build\<slug>` に更新済み（`a1316e3f`）。旧 `%LOCALAPPDATA%\opencode-webui\build` は残存するが stale 扱いで再ビルドされ実害なし（削除処理は無し）。
+> - **旧名の残存参照**: `git grep -n "opencode-webui|OpenCodeWebUI|OPENCODE_WEBUI"` の全ヒットは意図的互換のみ（env shim / browser-bridge env 両出し `host/src/browser-bridge.js:40-41` / テスト・テンポラリプレフィックス / project-meta 除外リスト / worktrees 正規表現 `/opencode-webui|leafcode/`）。**書き込みパス・実行パスに旧名が残る箇所はゼロ**。→ 健全。
+> - **Provider models グローバル識別子リネーム**（`__opencodeWebui*` → `__leafCode*`）: 全参照が同一コミット内で一括リネーム済み（diff 確認・機械照合）。`provider-models.test.ts` 52 本 PASS。→ 健全。
+> - **ロジックファイルの文言置換**: `jsonc-edit.ts` / `access-mode.ts` / `oc-server.ts` / `goal-prompt.ts` / `tasks/route.ts` / `updates/*` / `copy.ts` / `link.ts` の変更は全てユーザー向けエラー/表示文字列のみ（diff 確認）。テストで文字列マッチに影響なし。→ 健全。
+> - **SW キャッシュ名**（`opencode-webui-v6` → `leafcode-v6`）: activate ハンドラが CACHE 以外の全キャッシュを削除するため旧キャッシュは自動クリーン。`sw.test.js` PASS。→ 健全。
+> - **Firewall 規則名**（'OpenCode WebUI' → 'LeafCode'）: `allow-firewall-*.bat` は旧規則を削除してから新規則を追加（`a1316e3f`）。`windows-integration.js` の `FIREWALL_RULE_NAME` と整合（テスト PASS）。→ 健全。
+> - **`LEAFCODE_WORKFLOW_GRAPH_EDIT` のデフォルト非対称**: start-webui.bat は `true`、host `spawnWeb` は `?? 'false'`。**rebrand 前（OPENCODE_WEBUI_ 時代）から存在する非対称で rebrand 起因ではない**（0dc01130^ と同一挙動）。host 直接起動時のみ Graph 編集が off。→ 既存仕様（変更なし）。
+> - **未検証事項**: `GITHUB_REPO = "daihaya000/LeafCode"`（`install-root.ts:4`）の**実在は未確認**（ネットワーク検証せず）。自己更新（`/api/updates/webui`）と git-restore の参照先。404 なら更新機能が壊れるため、ユーザー側でリポジトリ実在の確認が必要。
 
 ---
 
