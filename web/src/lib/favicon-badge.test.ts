@@ -18,7 +18,7 @@ describe("badgeColor", () => {
 interface DrawRecord {
   fills: string[];
   strokes: { style: string; width: number }[];
-  fillTexts: string[];
+  drawImages: number;
 }
 
 function makeFakeCanvas(record: DrawRecord, withContext = true) {
@@ -43,8 +43,8 @@ function makeFakeCanvas(record: DrawRecord, withContext = true) {
     stroke() {
       record.strokes.push({ style: String(this.strokeStyle), width: this.lineWidth });
     },
-    fillText(text: string) {
-      record.fillTexts.push(text);
+    drawImage() {
+      record.drawImages += 1;
     },
   };
   return {
@@ -52,6 +52,34 @@ function makeFakeCanvas(record: DrawRecord, withContext = true) {
     height: 0,
     getContext: (kind: string) => (kind === "2d" && withContext ? ctx : null),
     toDataURL: () => "data:image/png;base64,fake",
+  };
+}
+
+/**
+ * The artwork image loads asynchronously in real browsers; in jsdom it never
+ * gains a natural size, so applyFaviconBadge always takes the onload path.
+ * This helper swaps globalThis.Image for a controllable stub and returns a
+ * fireLoad() trigger plus a restore() cleanup.
+ */
+function captureImage() {
+  let onload: (() => void) | null = null;
+  const fakeImage = {
+    src: "",
+    complete: false,
+    naturalWidth: 0,
+    get onload() {
+      return onload;
+    },
+    set onload(fn: (() => void) | null) {
+      onload = fn;
+    },
+  };
+  const spy = vi
+    .spyOn(globalThis, "Image")
+    .mockImplementation(() => fakeImage as unknown as HTMLImageElement);
+  return {
+    fireLoad: () => onload?.(),
+    restore: () => spy.mockRestore(),
   };
 }
 
@@ -73,46 +101,58 @@ describe("applyFaviconBadge", () => {
       );
   }
 
-  it("draws the tray-matching tile (blue bg, white prompt glyph) for idle", () => {
-    const record: DrawRecord = { fills: [], strokes: [], fillTexts: [] };
+  it("draws the brand artwork with no status dot for idle (onload path)", () => {
+    const record: DrawRecord = { fills: [], strokes: [], drawImages: 0 };
+    const img = captureImage();
     mockCanvas(makeFakeCanvas(record));
 
     applyFaviconBadge("idle");
+    expect(record.drawImages).toBe(0); // artwork not loaded yet
 
-    // Blue tray tile first, then the white "_" cursor; no status dot.
-    expect(record.fills).toEqual(["#2563eb", "#ffffff"]);
-    // ">" chevron as a thick white stroke; the legacy "C" fillText is gone.
-    expect(record.strokes).toEqual([{ style: "#ffffff", width: 10 }]);
-    expect(record.fillTexts).toEqual([]);
-    // The rendered tile is swapped in via the dedicated badge link.
-    const link = document.querySelector<HTMLLinkElement>(
-      'link[rel="icon"][data-badge="1"]',
-    );
-    expect(link?.href).toBe("data:image/png;base64,fake");
+    img.fireLoad();
+    expect(record.drawImages).toBe(1); // artwork drawn
+    expect(record.fills).toEqual([]); // no dot for idle
+
+    img.restore();
   });
 
   it("adds a white gap ring and colored dot for attention", () => {
-    const record: DrawRecord = { fills: [], strokes: [], fillTexts: [] };
+    const record: DrawRecord = { fills: [], strokes: [], drawImages: 0 };
+    const img = captureImage();
     mockCanvas(makeFakeCanvas(record));
 
     applyFaviconBadge("attention");
+    img.fireLoad();
 
-    expect(record.fills).toEqual([
-      "#2563eb", // tile
-      "#ffffff", // "_" cursor
-      "#ffffff", // dot gap ring
-      "#ef4444", // dot
-    ]);
+    expect(record.drawImages).toBe(1);
+    expect(record.fills).toEqual(["#ffffff", "#ef4444"]);
+    img.restore();
+  });
+
+  it("draws the amber dot for working once the image loads", () => {
+    const record: DrawRecord = { fills: [], strokes: [], drawImages: 0 };
+    const img = captureImage();
+    mockCanvas(makeFakeCanvas(record));
+
+    applyFaviconBadge("working");
+    expect(record.drawImages).toBe(0);
+
+    img.fireLoad();
+    expect(record.drawImages).toBe(1);
+    expect(record.fills).toEqual(["#ffffff", "#f59e0b"]);
+    img.restore();
   });
 
   it("is a no-op when canvas 2d context is unavailable", () => {
-    const record: DrawRecord = { fills: [], strokes: [], fillTexts: [] };
+    const record: DrawRecord = { fills: [], strokes: [], drawImages: 0 };
+    const img = captureImage();
     mockCanvas(makeFakeCanvas(record, false));
 
     expect(() => applyFaviconBadge("working")).not.toThrow();
-    expect(record.fills).toEqual([]);
+    expect(record.drawImages).toBe(0);
     expect(
       document.querySelector('link[rel="icon"][data-badge="1"]'),
     ).toBeNull();
+    img.restore();
   });
 });

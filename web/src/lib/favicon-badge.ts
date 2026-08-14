@@ -12,23 +12,6 @@ export function badgeColor(state: NotifyState): string | null {
   }
 }
 
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
 function ensureBadgeLink(): HTMLLinkElement {
   let link = document.querySelector<HTMLLinkElement>(
     'link[rel="icon"][data-badge="1"]',
@@ -45,11 +28,11 @@ function ensureBadgeLink(): HTMLLinkElement {
 
 /**
  * Draw a branded favicon with an optional status dot, then swap it in via a
- * dedicated <link rel="icon"> element. The design mirrors the task-tray icon
- * (host/src/icon.json): a blue #2563eb rounded square with a white terminal
- * prompt glyph (">" chevron + "_" cursor). Geometry is the tray's 32px grid
- * scaled 2x to the 64px canvas. No-op outside the browser or when canvas is
- * unavailable.
+ * dedicated <link rel="icon"> element. The base artwork is the shared brand
+ * icon (web/public/icon-192.png, generated from icon/LeafCode.png by
+ * scripts/gen-icons.mjs). The status dot is drawn in the top-right corner
+ * with a white gap ring so it reads on any artwork. No-op outside the
+ * browser or when canvas is unavailable.
  */
 export function applyFaviconBadge(state: NotifyState): void {
   if (typeof document === "undefined") return;
@@ -61,45 +44,47 @@ export function applyFaviconBadge(state: NotifyState): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  // Tray-blue rounded square background.
-  ctx.fillStyle = "#2563eb";
-  roundRect(ctx, 0, 0, size, size, 13);
-  ctx.fill();
-
-  // ">" chevron (tray: caps at (7.5,9.5)/(7.5,21.5), vertex at (14,15.5),
-  // 5px stroke on the 32px grid).
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 10;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.beginPath();
-  ctx.moveTo(15, 19);
-  ctx.lineTo(28, 31);
-  ctx.lineTo(15, 43);
-  ctx.stroke();
-
-  // "_" cursor (tray: x 14-23, y 19-23 on the 32px grid).
-  ctx.fillStyle = "#ffffff";
-  roundRect(ctx, 28, 38, 18, 8, 4);
-  ctx.fill();
-
-  const color = badgeColor(state);
-  if (color) {
-    const cx = size - 16;
-    const cy = 16;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 13, 0, Math.PI * 2);
-    ctx.fillStyle = "#ffffff"; // gap ring so the dot reads on the blue tile
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(cx, cy, 10, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
+  // The brand artwork is a rounded-corner tile already; scale it to fill.
+  const img = new Image();
+  img.src = "/icon-192.png";
+  if (img.complete && img.naturalWidth > 0) {
+    ctx.drawImage(img, 0, 0, size, size);
+  } else {
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, size, size);
+      drawBadgeDot(ctx, size, state);
+      try {
+        ensureBadgeLink().href = canvas.toDataURL("image/png");
+      } catch {
+        // toDataURL can throw in locked-down contexts; ignore.
+      }
+    };
+    return;
   }
 
+  drawBadgeDot(ctx, size, state);
   try {
     ensureBadgeLink().href = canvas.toDataURL("image/png");
   } catch {
     // toDataURL can throw in locked-down contexts; ignore.
   }
+}
+
+function drawBadgeDot(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  state: NotifyState,
+): void {
+  const color = badgeColor(state);
+  if (!color) return;
+  const cx = size - 16;
+  const cy = 16;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff"; // gap ring so the dot reads on the tile
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
 }
