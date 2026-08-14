@@ -1,4 +1,4 @@
-# OpenCode WebUI
+# LeafCode
 
 CLI エージェント [OpenCode](https://opencode.ai) をブラウザから操作するための、Windows 向けローカル Web アプリケーションです。OpenCode 本体はフォークせず、`opencode serve` を別プロセスとして起動し、その HTTP API を利用します。
 
@@ -9,6 +9,8 @@ CLI エージェント [OpenCode](https://opencode.ai) をブラウザから操�
 - `browser-bridge/` — 開いているブラウザタブをエージェントへ共有する MCP サーバーとブラウザ拡張。
 
 WebUI と OpenCode は既定で `127.0.0.1` のみを待ち受けます。LAN や VPN への公開は、後述の設定を明示的に行った場合にだけ有効になります。
+
+> **改名移行中**: 表示名は LeafCode ですが、実行ファイル名（`OpenCodeWebUI.exe`）、リポジトリ URL、環境変数 `OPENCODE_WEBUI_*`、データ保存先 `%APPDATA%\opencode-webui` は互換性のため移行前の名称のままです。
 
 ## 動作条件
 

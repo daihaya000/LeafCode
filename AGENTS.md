@@ -1,4 +1,4 @@
-# OpenCodeWebUI プロジェクト指示
+# LeafCode プロジェクト指示
 
 グローバル `~/.config/opencode/AGENTS.md` に追加して適用する。
 

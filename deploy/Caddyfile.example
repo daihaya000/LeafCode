@@ -1,4 +1,4 @@
-# Example Caddy reverse proxy for OpenCode WebUI (LAN / VPN, local HTTPS).
+# Example Caddy reverse proxy for LeafCode (LAN / VPN, local HTTPS).
 #
 # The tray host can manage Caddy for you:
 #   set OPENCODE_WEBUI_CADDY=1
