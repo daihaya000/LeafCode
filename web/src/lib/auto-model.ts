@@ -246,6 +246,185 @@ export function isRouteOverridesEmpty(overrides: RouteOverrides): boolean {
   return Object.keys(overrides).length === 0;
 }
 
+/** ------------------------------------------------------------------ */
+/**  v2 正規化（spec §4）                                               */
+/** ------------------------------------------------------------------ */
+
+/**
+ * Dedupe key for a candidate (spec §4-2). `variant ?? "*"` keeps an explicit
+ * `""` distinct from a missing variant.
+ */
+function candidateKey(candidate: AutoRouteCandidate): string {
+  const variant = candidate.variant ?? "*";
+  switch (candidate.kind) {
+    case "model":
+      return `model:${candidate.providerID}::${candidate.modelID}::${variant}`;
+    case "cost":
+      return `cost:${candidate.cost}::${variant}`;
+    case "strongest":
+      return `strongest:${variant}`;
+  }
+}
+
+/**
+ * Normalize a single candidate; `undefined` when it carries an unknown kind /
+ * cost / variant, or a model reference with an empty or `::`-containing
+ * providerID (key-collision prevention).
+ */
+function normalizeCandidate(
+  raw: unknown,
+): AutoRouteCandidate | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const obj = raw as Record<string, unknown>;
+  let variant: IntelligenceVariant | "" | undefined;
+  if (obj.variant === "") {
+    variant = "";
+  } else if (obj.variant === undefined || isIntelligenceVariant(obj.variant)) {
+    variant = obj.variant as IntelligenceVariant | undefined;
+  } else {
+    return undefined;
+  }
+  if (obj.kind === "model") {
+    const { providerID, modelID } = obj;
+    if (typeof providerID !== "string" || providerID.length === 0) return undefined;
+    if (typeof modelID !== "string" || modelID.length === 0) return undefined;
+    if (providerID.includes("::")) return undefined;
+    return variant === undefined
+      ? { kind: "model", providerID, modelID }
+      : { kind: "model", providerID, modelID, variant };
+  }
+  if (obj.kind === "cost") {
+    if (!isModelCostTier(obj.cost)) return undefined;
+    return variant === undefined
+      ? { kind: "cost", cost: obj.cost }
+      : { kind: "cost", cost: obj.cost, variant };
+  }
+  if (obj.kind === "strongest") {
+    return variant === undefined
+      ? { kind: "strongest" }
+      : { kind: "strongest", variant };
+  }
+  return undefined;
+}
+
+/**
+ * Normalize one v2 tier cell (spec §4-2): drop invalid candidates, dedupe to
+ * first occurrence, truncate to {@link MAX_AUTO_ROUTE_CANDIDATES}, and drop
+ * unknown fallback values. Returns `undefined` for an empty tier so callers
+ * can omit the key.
+ */
+function normalizeTierRoute(raw: unknown): AutoTierRoute | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const obj = raw as Record<string, unknown>;
+
+  const candidates: AutoRouteCandidate[] = [];
+  if (Array.isArray(obj.candidates)) {
+    const seen = new Set<string>();
+    for (const entry of obj.candidates) {
+      if (candidates.length >= MAX_AUTO_ROUTE_CANDIDATES) break;
+      const candidate = normalizeCandidate(entry);
+      if (!candidate) continue;
+      const key = candidateKey(candidate);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      candidates.push(candidate);
+    }
+  }
+
+  let variantFallbackOrder: readonly IntelligenceVariant[] | undefined;
+  if (Array.isArray(obj.variantFallbackOrder)) {
+    const ordered = dedupeInOrder(obj.variantFallbackOrder, isIntelligenceVariant);
+    if (ordered.length > 0) variantFallbackOrder = ordered;
+  }
+
+  const fallback = isAutoTierFallback(obj.fallback) ? obj.fallback : undefined;
+
+  if (candidates.length === 0 && !variantFallbackOrder && !fallback) {
+    return undefined;
+  }
+  return {
+    candidates,
+    ...(variantFallbackOrder ? { variantFallbackOrder } : {}),
+    ...(fallback ? { fallback } : {}),
+  };
+}
+
+/**
+ * Normalize a `version: 2` object. Unknown modes / tiers are dropped and
+ * empty modes removed, keeping the stored size minimal.
+ */
+function normalizeV2Config(raw: Record<string, unknown>): AutoRouteConfig {
+  const modesRaw = raw.modes;
+  if (!modesRaw || typeof modesRaw !== "object" || Array.isArray(modesRaw)) {
+    return EMPTY_AUTO_ROUTE_CONFIG;
+  }
+  const modesObj = modesRaw as Record<string, unknown>;
+  const modes: AutoRouteConfig["modes"] = {};
+  for (const mode of AUTO_OPTIMIZE_MODES) {
+    const modeRaw = modesObj[mode];
+    if (!modeRaw || typeof modeRaw !== "object" || Array.isArray(modeRaw)) continue;
+    const modeObj = modeRaw as Record<string, unknown>;
+    const route: AutoModeRoute = {};
+    for (const tier of TIER_LADDER) {
+      const tierRoute = normalizeTierRoute(modeObj[tier]);
+      if (tierRoute) route[tier] = tierRoute;
+    }
+    if (Object.keys(route).length > 0) modes[mode] = route;
+  }
+  if (Object.keys(modes).length === 0) return EMPTY_AUTO_ROUTE_CONFIG;
+  return { version: AUTO_ROUTE_CONFIG_VERSION, modes };
+}
+
+/**
+ * Migrate a v1 (mode-independent) `RouteOverrides` object to a v2 config
+ * (spec §4-1). Each tier's migration is replicated to all three modes so the
+ * stored behavior stays identical until a mode-specific value is saved.
+ */
+function migrateV1Config(raw: Record<string, unknown>): AutoRouteConfig {
+  const perTier: Partial<Record<AutoTier, AutoTierRoute>> = {};
+  for (const tier of TIER_LADDER) {
+    const override = normalizeTierOverride(raw[tier]);
+    if (!override) continue;
+    const candidates: AutoRouteCandidate[] =
+      override.costOrder === null
+        ? [{ kind: "strongest" }]
+        : (override.costOrder ?? []).map((cost) => ({ kind: "cost", cost }));
+    const route: AutoTierRoute = {
+      candidates,
+      ...(override.variantOrder
+        ? { variantFallbackOrder: [...override.variantOrder] }
+        : {}),
+    };
+    perTier[tier] = route;
+  }
+  if (Object.keys(perTier).length === 0) return EMPTY_AUTO_ROUTE_CONFIG;
+  const modes: AutoRouteConfig["modes"] = {};
+  for (const mode of AUTO_OPTIMIZE_MODES) {
+    modes[mode] = { ...perTier };
+  }
+  return { version: AUTO_ROUTE_CONFIG_VERSION, modes };
+}
+
+/**
+ * Validate and normalize a raw (JSON-parsed) routing setting. A
+ * `version: 2` payload is normalized in place; anything else is treated as
+ * v1 (`RouteOverrides`) and migrated (spec §4). Returns `undefined`-free,
+ * always-valid v2 — corrupted input falls back to preset behavior.
+ */
+export function normalizeAutoRouteConfig(raw: unknown): AutoRouteConfig {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return EMPTY_AUTO_ROUTE_CONFIG;
+  }
+  const obj = raw as Record<string, unknown>;
+  if (obj.version === 2) return normalizeV2Config(obj);
+  return migrateV1Config(obj);
+}
+
+/** Whether the config carries no effective route anywhere. */
+export function isAutoRouteConfigEmpty(config: AutoRouteConfig): boolean {
+  return Object.keys(config.modes).length === 0;
+}
+
 export type AutoDecision = {
   providerID: string;
   modelID: string;

@@ -9,10 +9,12 @@ import {
   EMPTY_AUTO_ROUTE_CONFIG,
   EMPTY_ROUTE_OVERRIDES,
   isAutoOptimizeMode,
+  isAutoRouteConfigEmpty,
   isAutoTierFallback,
   isRouteOverridesEmpty,
   MAX_AUTO_ROUTE_CANDIDATES,
   modelCostTier,
+  normalizeAutoRouteConfig,
   normalizeRouteOverrides,
   presetTierRoute,
   SIGNAL_ATTACHMENT_THRESHOLD,
@@ -1829,3 +1831,323 @@ describe("isAutoTierFallback", () => {
     expect(isAutoTierFallback(undefined)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// normalizeAutoRouteConfig (spec §4)
+// ---------------------------------------------------------------------------
+
+describe("normalizeAutoRouteConfig", () => {
+  it("returns EMPTY for non-object input", () => {
+    expect(normalizeAutoRouteConfig(null)).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+    expect(normalizeAutoRouteConfig(undefined)).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+    expect(normalizeAutoRouteConfig("nope")).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+    expect(normalizeAutoRouteConfig([1, 2])).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+    expect(normalizeAutoRouteConfig(42)).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+  });
+
+  it("keeps a valid v2 payload", () => {
+    const raw = {
+      version: 2,
+      modes: {
+        cost: {
+          standard: {
+            candidates: [{ kind: "cost", cost: "cheap" }],
+            fallback: "error",
+          },
+        },
+      },
+    };
+    expect(normalizeAutoRouteConfig(raw)).toEqual(raw);
+  });
+
+  it("drops unknown modes and empty tiers", () => {
+    const result = normalizeAutoRouteConfig({
+      version: 2,
+      modes: {
+        bogus: { light: { candidates: [] } },
+        cost: {
+          light: { candidates: [{ kind: "cost", cost: "cheap" }] },
+          bogus: { candidates: [{ kind: "cost", cost: "premium" }] },
+          standard: { candidates: [] },
+        },
+      },
+    });
+    expect(result.modes).toEqual({
+      cost: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } },
+    });
+    expect(result.version).toBe(2);
+  });
+
+  it("returns EMPTY when all v2 modes are empty", () => {
+    const result = normalizeAutoRouteConfig({
+      version: 2,
+      modes: { cost: { light: { candidates: [] } } },
+    });
+    expect(result).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+  });
+
+  describe("candidate normalization", () => {
+    const base = (candidates: unknown[]) => ({
+      version: 2,
+      modes: { cost: { standard: { candidates } } },
+    });
+
+    it("drops candidates with unknown kind", () => {
+      const result = normalizeAutoRouteConfig(
+        base([{ kind: "nope", cost: "cheap" }, { kind: "cost", cost: "cheap" }]),
+      );
+      expect(result.modes.cost?.standard?.candidates).toEqual([
+        { kind: "cost", cost: "cheap" },
+      ]);
+    });
+
+    it("drops candidates with unknown cost", () => {
+      const result = normalizeAutoRouteConfig(
+        base([{ kind: "cost", cost: "bogus" }, { kind: "cost", cost: "cheap" }]),
+      );
+      expect(result.modes.cost?.standard?.candidates).toEqual([
+        { kind: "cost", cost: "cheap" },
+      ]);
+    });
+
+    it("drops candidates with unknown variant but keeps explicit empty string", () => {
+      const result = normalizeAutoRouteConfig(
+        base([
+          { kind: "cost", cost: "cheap", variant: "turbo" },
+          { kind: "cost", cost: "mid", variant: "" },
+        ]),
+      );
+      expect(result.modes.cost?.standard?.candidates).toEqual([
+        { kind: "cost", cost: "mid", variant: "" },
+      ]);
+    });
+
+    it("drops kind:model with empty providerID or modelID", () => {
+      const result = normalizeAutoRouteConfig(
+        base([
+          { kind: "model", providerID: "", modelID: "x" },
+          { kind: "model", providerID: "a", modelID: "" },
+          { kind: "model", providerID: "a", modelID: "x" },
+        ]),
+      );
+      expect(result.modes.cost?.standard?.candidates).toEqual([
+        { kind: "model", providerID: "a", modelID: "x" },
+      ]);
+    });
+
+    it("drops kind:model with a ::-containing providerID", () => {
+      const result = normalizeAutoRouteConfig(
+        base([{ kind: "model", providerID: "a::b", modelID: "x" }]),
+      );
+      // The only candidate is dropped, leaving an empty tier which is removed.
+      expect(result).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+    });
+
+    it("dedupes identical candidates keeping the first occurrence", () => {
+      const result = normalizeAutoRouteConfig(
+        base([
+          { kind: "cost", cost: "cheap", variant: "low" },
+          { kind: "cost", cost: "cheap", variant: "low" },
+          { kind: "cost", cost: "cheap" },
+          { kind: "cost", cost: "cheap", variant: "" },
+        ]),
+      );
+      expect(result.modes.cost?.standard?.candidates).toEqual([
+        { kind: "cost", cost: "cheap", variant: "low" },
+        { kind: "cost", cost: "cheap" },
+        { kind: "cost", cost: "cheap", variant: "" },
+      ]);
+    });
+
+    it("truncates candidates to MAX_AUTO_ROUTE_CANDIDATES", () => {
+      const costs = ["cheap", "mid", "premium"] as const;
+      const variants = [
+        "minimal",
+        "none",
+        "low",
+        "medium",
+        "high",
+        "max",
+      ] as const;
+      const candidates = Array.from({ length: 10 }, (_, i) => ({
+        kind: "cost" as const,
+        cost: costs[i % 3],
+        variant: variants[Math.floor(i / 3)],
+      }));
+      const result = normalizeAutoRouteConfig(base(candidates));
+      expect(result.modes.cost?.standard?.candidates?.length).toBe(
+        MAX_AUTO_ROUTE_CANDIDATES,
+      );
+      const kept = result.modes.cost?.standard?.candidates ?? [];
+      for (let i = 0; i < MAX_AUTO_ROUTE_CANDIDATES; i++) {
+        const c = kept[i];
+        expect(c).toMatchObject({
+          kind: "cost",
+          cost: costs[i % 3],
+        });
+        expect("variant" in c && c.variant ? c.variant : "").toBe(
+          variants[Math.floor(i / 3)],
+        );
+      }
+    });
+
+    it("normalizes variantFallbackOrder and drops unknown fallback values", () => {
+      const result = normalizeAutoRouteConfig({
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [{ kind: "cost", cost: "cheap" }],
+              variantFallbackOrder: ["high", "high", "bogus", "low"],
+              fallback: "whatever",
+            },
+          },
+        },
+      });
+      expect(result.modes.cost?.standard).toEqual({
+        candidates: [{ kind: "cost", cost: "cheap" }],
+        variantFallbackOrder: ["high", "low"],
+      });
+    });
+  });
+
+  describe("v1 migration", () => {
+    it("migrates costOrder lists to cost candidates in every mode", () => {
+      const result = normalizeAutoRouteConfig({
+        standard: { costOrder: ["cheap", "mid"] },
+      });
+      for (const mode of AUTO_OPTIMIZE_MODES) {
+        expect(result.modes[mode]?.standard?.candidates).toEqual([
+          { kind: "cost", cost: "cheap" },
+          { kind: "cost", cost: "mid" },
+        ]);
+      }
+    });
+
+    it("migrates costOrder: null to a single strongest candidate", () => {
+      const result = normalizeAutoRouteConfig({
+        heavy: { costOrder: null },
+      });
+      for (const mode of AUTO_OPTIMIZE_MODES) {
+        expect(result.modes[mode]?.heavy?.candidates).toEqual([
+          { kind: "strongest" },
+        ]);
+      }
+    });
+
+    it("keeps empty candidates for costOrder: undefined", () => {
+      const result = normalizeAutoRouteConfig({
+        light: { variantOrder: ["high", "low"] },
+      });
+      for (const mode of AUTO_OPTIMIZE_MODES) {
+        expect(result.modes[mode]?.light?.candidates).toEqual([]);
+      }
+    });
+
+    it("migrates variantOrder to variantFallbackOrder", () => {
+      const result = normalizeAutoRouteConfig({
+        light: { variantOrder: ["high", "low"] },
+      });
+      for (const mode of AUTO_OPTIMIZE_MODES) {
+        expect(result.modes[mode]?.light?.variantFallbackOrder).toEqual([
+          "high",
+          "low",
+        ]);
+      }
+    });
+
+    it("returns EMPTY for a v1 payload with no usable fields", () => {
+      expect(normalizeAutoRouteConfig({})).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+      expect(
+        normalizeAutoRouteConfig({ bogus: { costOrder: ["cheap"] } }),
+      ).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+      expect(
+        normalizeAutoRouteConfig({ light: { costOrder: ["nope"] } }),
+      ).toBe(EMPTY_AUTO_ROUTE_CONFIG);
+    });
+
+    it("produces the same routing as the legacy overrides path (equivalence)", () => {
+      const providers: AutoCandidateProvider[] = [
+        {
+          id: "alpha",
+          models: {
+            cheap: {},
+            mid: { variants: { low: {}, high: {} } },
+          },
+        },
+        {
+          id: "beta",
+          models: { premium: {} },
+        },
+      ];
+      const connected = ["alpha", "beta"];
+      const overrides: Parameters<typeof chooseAutoModel>[0]["overrides"] = {
+        light: { costOrder: ["cheap", "premium"], variantOrder: ["high", "low"] },
+        standard: { costOrder: ["mid"], variantOrder: ["low"] },
+        heavy: { costOrder: null },
+      };
+      const config = normalizeAutoRouteConfig(overrides);
+      for (const mode of AUTO_OPTIMIZE_MODES) {
+        for (const tier of ["light", "standard", "heavy"] as AutoTier[]) {
+          const viaOverrides = chooseAutoModel({
+            providers,
+            connected,
+            disabled: {},
+            tier,
+            mode,
+            hasImages: false,
+            overrides,
+          });
+          const viaConfig = chooseAutoModel({
+            providers,
+            connected,
+            disabled: {},
+            tier,
+            mode,
+            hasImages: false,
+            config,
+          });
+          // v2 config is "configured" so it gains candidateIndex/usedPreset
+          // metadata; the routing itself must be identical.
+          expect(viaConfig).not.toBeNull();
+          expect({
+            providerID: viaConfig?.providerID,
+            modelID: viaConfig?.modelID,
+            variant: viaConfig?.variant,
+            escalation: viaConfig?.escalation,
+          }).toEqual({
+            providerID: viaOverrides?.providerID,
+            modelID: viaOverrides?.modelID,
+            variant: viaOverrides?.variant,
+            escalation: viaOverrides?.escalation,
+          });
+        }
+      }
+    });
+  });
+});
+
+describe("isAutoRouteConfigEmpty", () => {
+  it("is true for the empty config", () => {
+    expect(isAutoRouteConfigEmpty(EMPTY_AUTO_ROUTE_CONFIG)).toBe(true);
+    expect(isAutoRouteConfigEmpty(normalizeAutoRouteConfig(null))).toBe(true);
+    expect(isAutoRouteConfigEmpty(normalizeAutoRouteConfig({}))).toBe(true);
+  });
+
+  it("is false once any route exists", () => {
+    expect(
+      isAutoRouteConfigEmpty(
+        normalizeAutoRouteConfig({
+          version: 2,
+          modes: { cost: { light: { candidates: [{ kind: "cost", cost: "cheap" }] } } },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isAutoRouteConfigEmpty(
+        normalizeAutoRouteConfig({ standard: { costOrder: ["cheap"] } }),
+      ),
+    ).toBe(false);
+  });
+});
+
