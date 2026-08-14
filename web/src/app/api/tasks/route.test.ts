@@ -1821,6 +1821,61 @@ describe("POST /api/tasks auto model selection", () => {
       });
       expect(provisionWorkspace).not.toHaveBeenCalled();
     });
+
+    it("accepts a v2 config payload", async () => {
+      const ocServer = await mockOc();
+
+      // cost + light preset prefers cheap; force premium via a v2 cell.
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        autoOptimize: "cost",
+        autoRouteOverrides: {
+          version: 2,
+          modes: {
+            cost: {
+              light: {
+                candidates: [{ kind: "cost", cost: "premium" }],
+              },
+            },
+          },
+        },
+      });
+
+      expect(res.status).toBe(200);
+      expect(promptBodyOf(ocServer)).toMatchObject({
+        model: { providerID: "anthropic", modelID: PREMIUM },
+      });
+    });
+
+    it("answers 400 when every candidate is unusable and fallback is error", async () => {
+      await mockOc();
+
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        autoOptimize: "cost",
+        autoRouteOverrides: {
+          version: 2,
+          modes: {
+            cost: {
+              light: {
+                candidates: [
+                  { kind: "model", providerID: "nope", modelID: "no-such-model" },
+                ],
+                fallback: "error",
+              },
+            },
+          },
+        },
+      });
+
+      expect(res.status).toBe(400);
+    });
   });
 
 });

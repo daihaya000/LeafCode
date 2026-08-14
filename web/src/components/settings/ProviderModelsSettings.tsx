@@ -26,15 +26,8 @@ import {
 import {
   AUTO_MODEL_OPTION,
   isAutoRouteConfigEmpty,
-  normalizeAutoRouteConfig,
-  type AutoModeRoute,
   type AutoOptimizeMode,
-  type AutoRouteCandidate,
   type AutoRouteConfig,
-  type AutoTier,
-  type AutoTierRoute,
-  type RouteOverrides,
-  type TierRouteOverride,
 } from "@/lib/auto-model";
 import {
   readDefaultModel,
@@ -117,90 +110,6 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
   if (item === undefined) return items;
   next.splice(to, 0, item);
   return next;
-}
-
-const BRIDGE_TIERS: readonly AutoTier[] = ["light", "standard", "heavy"];
-
-/**
- * Transitional bridge: project a v2 config cell onto the legacy v1 override
- * shape the editor edits. Returns `undefined` for an absent/empty cell.
- */
-function bridgeRouteToV1(
-  route: AutoTierRoute | undefined,
-): TierRouteOverride | undefined {
-  if (!route) return undefined;
-  const override: TierRouteOverride = {};
-  if (route.candidates.length === 1 && route.candidates[0].kind === "strongest") {
-    override.costOrder = null;
-  } else if (route.candidates.every((c) => c.kind === "cost")) {
-    override.costOrder = route.candidates.map((c) =>
-      c.kind === "cost" ? c.cost : "mid",
-    );
-  }
-  if (route.variantFallbackOrder) {
-    override.variantOrder = [...route.variantFallbackOrder];
-  }
-  return Object.keys(override).length > 0 ? override : undefined;
-}
-
-/**
- * Transitional bridge: convert the stored v2 config into the legacy v1
- * overrides the editor renders, using the current optimize mode.
- */
-function routeConfigToV1(
-  config: AutoRouteConfig,
-  mode: AutoOptimizeMode,
-): RouteOverrides {
-  const out: RouteOverrides = {};
-  const modeRoutes = config.modes[mode];
-  if (!modeRoutes) return out;
-  for (const tier of BRIDGE_TIERS) {
-    const override = bridgeRouteToV1(modeRoutes[tier]);
-    if (override) out[tier] = override;
-  }
-  return out;
-}
-
-/**
- * Transitional bridge: fold legacy v1 overrides (as edited) back into the v2
- * config for the given mode. Other modes keep their existing config untouched;
- * the result is normalized so empty tiers/modes are dropped.
- */
-function v1ToRouteConfig(
-  prev: AutoRouteConfig,
-  mode: AutoOptimizeMode,
-  overrides: RouteOverrides,
-): AutoRouteConfig {
-  const modes = { ...prev.modes };
-  const prevMode = modes[mode] ?? {};
-  const nextMode: AutoModeRoute = { ...prevMode };
-  for (const tier of BRIDGE_TIERS) {
-    const override = overrides[tier];
-    if (!override) {
-      delete nextMode[tier];
-      continue;
-    }
-    const candidates: AutoRouteCandidate[] =
-      override.costOrder === null
-        ? [{ kind: "strongest" }]
-        : (override.costOrder ?? []).map((cost) => ({ kind: "cost", cost }));
-    const variantFallbackOrder: readonly IntelligenceVariant[] | undefined =
-      override.variantOrder;
-    const route: AutoTierRoute = {
-      candidates,
-      ...(variantFallbackOrder ? { variantFallbackOrder } : {}),
-    };
-    nextMode[tier] = route;
-  }
-  if (Object.keys(nextMode).length === 0) {
-    delete modes[mode];
-  } else {
-    modes[mode] = nextMode;
-  }
-  return normalizeAutoRouteConfig({
-    version: 2,
-    modes,
-  });
 }
 
 function ExtensionSwitch({
@@ -1469,15 +1378,15 @@ export function ProviderModelsSettings() {
           <div className="py-3">
             <AutoRouteOverridesEditor
               mode={autoOptimize}
-              overrides={routeConfigToV1(routeConfig, autoOptimize)}
+              config={routeConfig}
+              providers={providers}
               onChange={(next) => {
                 autoSettingsTouched.current.routeConfig = true;
-                const config = v1ToRouteConfig(routeConfig, autoOptimize, next);
-                setRouteConfig(config);
-                writeAutoRouteConfig(config);
+                setRouteConfig(next);
+                writeAutoRouteConfig(next);
                 void writeAutoSettingToServer(
                   AUTO_ROUTE_OVERRIDES_SETTING_KEY,
-                  isAutoRouteConfigEmpty(config) ? "" : JSON.stringify(config),
+                  isAutoRouteConfigEmpty(next) ? "" : JSON.stringify(next),
                 );
               }}
             />
