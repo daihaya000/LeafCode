@@ -66,10 +66,36 @@ export function hostHeaderName(hostHeader: string): string {
  * loopback. Open host-only URLs on the host PC via a loopback hostname
  * (http://127.0.0.1:3000, http://localhost:3000, https://localhost:8443).
  */
+/**
+ * The TCP peer address of the request, when the runtime exposes it.
+ *
+ * Next.js Node runtime route handlers attach the underlying Node socket to
+ * the Web Request, so `request.socket.remoteAddress` is available there.
+ * Tests and non-Node runtimes construct plain `Request` objects without a
+ * socket, in which case this returns undefined and callers fall back to the
+ * header-based heuristic.
+ */
+function requestSocketAddress(req: Request): string | undefined {
+  const socket = (
+    req as Request & { socket?: { remoteAddress?: string } }
+  ).socket;
+  return socket?.remoteAddress;
+}
+
 export function isLocalHostRequest(req: Request): boolean {
   const hostHeader = req.headers.get("host") ?? "";
   const hostIsLoopback = isLoopbackAddress(hostHeaderName(hostHeader));
   if (!hostIsLoopback) return false;
+
+  // The Host header is attacker-controlled. When the caller reached the BFF
+  // over a real non-loopback socket, a spoofed loopback Host must never grant
+  // host-only access — e.g. a LAN client connecting directly with
+  // `Host: 127.0.0.1:3000` when LEAFCODE_HOST=0.0.0.0. The TCP peer address
+  // cannot be spoofed, so this closes the Host-spoofing hole that the header
+  // heuristic alone cannot see. When the runtime does not expose the socket
+  // (tests, non-Node), the header heuristic remains the fallback.
+  const socketAddress = requestSocketAddress(req);
+  if (socketAddress && !isLoopbackAddress(socketAddress)) return false;
 
   const forwarded = req.headers.get("x-forwarded-for");
   // No proxy header: direct loopback access to the BFF.

@@ -166,6 +166,52 @@ describe("isLocalHostRequest", () => {
       ),
     ).toBe(false);
   });
+
+  it("rejects a spoofed loopback Host when the real socket is non-loopback (BR-12)", () => {
+    // A LAN client connecting directly (LEAFCODE_HOST=0.0.0.0) can forge
+    // `Host: 127.0.0.1:3000` with no X-Forwarded-For. The TCP peer address
+    // cannot be spoofed, so it must veto the header-based verdict.
+    const req = new Request("http://127.0.0.1:3000/x", {
+      headers: { host: "127.0.0.1:3000" },
+    });
+    Object.defineProperty(req, "socket", {
+      value: { remoteAddress: "192.168.0.102" },
+    });
+    expect(isLocalHostRequest(req)).toBe(false);
+  });
+
+  it("accepts a loopback Host when the real socket is loopback", () => {
+    const req = new Request("http://127.0.0.1:3000/x", {
+      headers: { host: "127.0.0.1:3000" },
+    });
+    Object.defineProperty(req, "socket", {
+      value: { remoteAddress: "127.0.0.1" },
+    });
+    expect(isLocalHostRequest(req)).toBe(true);
+  });
+
+  it("accepts an IPv4-mapped loopback socket with a loopback Host", () => {
+    const req = new Request("http://127.0.0.1:3000/x", {
+      headers: { host: "127.0.0.1:3000" },
+    });
+    Object.defineProperty(req, "socket", {
+      value: { remoteAddress: "::ffff:127.0.0.1" },
+    });
+    expect(isLocalHostRequest(req)).toBe(true);
+  });
+
+  it("still rejects a loopback socket with a LAN X-Forwarded-For (Caddy path)", () => {
+    const req = new Request("http://127.0.0.1:3000/x", {
+      headers: {
+        host: "127.0.0.1:3000",
+        "x-forwarded-for": "192.168.0.102",
+      },
+    });
+    Object.defineProperty(req, "socket", {
+      value: { remoteAddress: "127.0.0.1" },
+    });
+    expect(isLocalHostRequest(req)).toBe(false);
+  });
 });
 
 describe("isPrivateAddress", () => {
