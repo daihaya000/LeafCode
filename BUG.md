@@ -25,7 +25,7 @@
 | **BR-13** | 低 | ✅ **修正済み** | README のビルドミラーパス → %LOCALAPPDATA%\leafcode\build に修正 + 「改名移行中」の矛盾表現を明確化（残る旧名は互換説明のみ） |
 | **BR-14** | 低 | ✅ **修正済み** | ProfilesSettings の「OpenCode host」（二重置換の取り違え・1 箇所のみ）→「LeafCode host」 |
 | **BR-15** | 中 | ✅ **修正済み（レジストリ + DB の読み取り時正規化）** | dataDir rename 後の絶対パス残存 — readState / getWorkspace / listWorkspaces で旧 dataDir 配下のパスを新名に正規化（external は維持） |
-| **BR-16** | 低 | ⬜ **未修正** | docs/specs の 5 仕様書がデータディレクトリを `%APPDATA%\opencode-webui` と記載したまま |
+| **BR-16** | 低 | ✅ **修正済み** | docs/specs 5 ファイル + provider-model-management の旧データパス 8 箇所を %APPDATA%\leafcode に修正（残る旧名は履歴文書のみ） |
 | **BR-17** | 低 | ✅ **修正済み** | proxy.ts:133 の 403 エラーのみ「disabled in WebUI」残存（oc-server.ts と「LeafCode」に統一） |
 | **BR-18** | 低 | ✅ **修正済み** | host ログ文言に「WebUI」が 5 箇所残存 → index.js のログ・エラーメッセージ 6 箇所を「LeafCode」に統一（残存ゼロ） |
 | **BR-19** | 低 | ✅ **修正済み** | 拡張ポップアップの日本語文言と build guard のコンソールメッセージ →「LeafCode」に統一（popup 2 箇所 + guard 5 箇所・テスト期待値も更新） |

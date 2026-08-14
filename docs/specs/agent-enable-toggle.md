@@ -25,7 +25,7 @@
 OpenCode エンジンの `/agent` 応答は無効化されたエージェントを返さない可能性がある。そのため WebUI は以下をマージして一覧を構成する。
 
 1. **OpenCode `/agent` 応答**を `enabled: true` として採用する。
-2. **WebUI ローカル状態ファイル**（`%APPDATA%/opencode-webui/agent-state.json`）に記録された無効化済みエージェント名を、メタデータが不明な `enabled: false` エントリとして追加する。
+2. **WebUI ローカル状態ファイル**（`%APPDATA%/leafcode/agent-state.json`）に記録された無効化済みエージェント名を、メタデータが不明な `enabled: false` エントリとして追加する。
 3. **設定ファイル** `opencode.jsonc` の `agent` オブジェクト内で `disable: true` のエージェントを、可能な範囲でメタデータを復元して追加する。
 
 マージ順位: `/agent` 応答 > `opencode.jsonc` > WebUI ローカル状態。重複する場合 `/agent` 応答の情報を優先する。

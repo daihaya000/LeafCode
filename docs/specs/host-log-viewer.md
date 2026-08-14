@@ -27,7 +27,7 @@ WebUI の設定画面「全般」タブから、トレイホストの直近ロ�
 押し出されやすく、WebUI のクラッシュ原因が数分で消える問題があった。そのため
 host はバッファとは別に `host/src/log-file.js` 経由でディスクへも追記する。
 
-- 出力先: `DATA_DIR`（`%APPDATA%\opencode-webui`）配下の `host.log`。
+- 出力先: `DATA_DIR`（`%APPDATA%\leafcode`）配下の `host.log`。
 - ローテーション: `host.log` が `maxBytes`（既定 2MB）に達すると
   `host.log` → `host.log.1` → `host.log.2` … と `maxFiles`（既定 3）世代まで
   退避し、最古を削除する。`maxFiles` は退避世代数なので、ディスク使用量の上限は

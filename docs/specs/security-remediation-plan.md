@@ -194,7 +194,7 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
   `verifySessionToken`）。username・jti にコロンが含まれても `lastIndexOf` の
   二段分割で正しく復元できる。
 - `createRevocationStore()` を追加。`jti -> revokedAt` の `Map` をメモリに保持し、
-  `%APPDATA%\opencode-webui\revoked-sessions.json` に永続化する。
+  `%APPDATA%\leafcode\revoked-sessions.json` に永続化する。
   `Set` ではなく `Map` にしたのは、新しい失効を書き込むたびに全エントリの
   タイムスタンプが書き込み時刻で上書きされ、古いエントリが二度と
   prune されなくなるバグを避けるため。
@@ -235,7 +235,7 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
 
 #### P2-3 監査ログ（`host/src/audit-log.js`）
 
-`%APPDATA%\opencode-webui\audit.log` に JSON Lines で追記する。
+`%APPDATA%\leafcode\audit.log` に JSON Lines で追記する。
 
 - 既存の `log-buffer.js` は**使わない**。あれは負荷時に古い行を追い出す
   リングバッファで、「誰がログインしたか」の記録には不適切

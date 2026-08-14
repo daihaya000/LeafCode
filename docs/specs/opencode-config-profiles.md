@@ -73,7 +73,7 @@
 
 ### 配置方針
 
-**すべてのプロファイルを `%APPDATA%\opencode-webui\profiles\<slug>\`（`dataDir()/profiles`）に集約する。** OneDrive 同期下は競合・上書きの温床であり、設定一式の実体を同期対象外へ置く。
+**すべてのプロファイルを `%APPDATA%\leafcode\profiles\<slug>\`（`dataDir()/profiles`）に集約する。** OneDrive 同期下は競合・上書きの温床であり、設定一式の実体を同期対象外へ置く。
 
 既存 `default`（OneDrive 配下）は後述の移行機能で dataDir へ複製し、リンクを新しい実体へ向け替える。
 
@@ -106,7 +106,7 @@ symlink 作成が `EPERM` で失敗する環境では `dereference: true` へフ
 
 ## データモデル
 
-レジストリを `%APPDATA%\opencode-webui\profiles.json` に置く（既存 `opencode-extensions.json` と同じ dataDir 方式、atomic write）。
+レジストリを `%APPDATA%\leafcode\profiles.json` に置く（既存 `opencode-extensions.json` と同じ dataDir 方式、atomic write）。
 
 ```ts
 type Profile = {
@@ -190,7 +190,7 @@ type ProfilesState = {
 ## 受入条件
 
 1. 設定画面に「プロファイル」タブがあり、現在の `default` が active として実パス付きで表示される。
-2. `default` が dataDir 外にある間は移行カードが表示され、実行すると `%APPDATA%\opencode-webui\profiles\default` へ全内容（`.git`・`node_modules` を含む）が複製され、リンクがそちらへ向く。
+2. `default` が dataDir 外にある間は移行カードが表示され、実行すると `%APPDATA%\leafcode\profiles\default` へ全内容（`.git`・`node_modules` を含む）が複製され、リンクがそちらへ向く。
 3. 移行後もコピー元（OneDrive 配下）は削除されず、「移行前バックアップ」として一覧に残り、切替で元に戻せる。
 4. 移行前バックアップを一覧から除外でき、**実体ディレクトリは削除されない**。除外後は全プロファイルが dataDir 配下に揃う。
 5. 新規プロファイルを「空」から作成でき、`dataDir()/profiles/<slug>` に `opencode.jsonc` が生成される。

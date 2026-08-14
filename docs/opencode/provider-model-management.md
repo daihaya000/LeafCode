@@ -17,7 +17,7 @@ WebUI の設定画面に「プロバイダー/モデル」タブを追加し、�
 
 ## 状態の保存先
 
-- WebUI ローカル状態ファイル: `%APPDATA%\opencode-webui\provider-model-state.json`
+- WebUI ローカル状態ファイル: `%APPDATA%\leafcode\provider-model-state.json`
 - 形式: `{ disabled: { [providerID]: boolean; [providerID::modelID]: boolean } }`
 - 無効なキーが `true` として保存される。キーはプロバイダーIDまたは `providerID::modelID`。
 - OpenCode 設定を変更せず、WebUI 管理の表示フィルタとしてのみ動作する。
