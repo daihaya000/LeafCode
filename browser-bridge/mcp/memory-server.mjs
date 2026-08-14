@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import path, { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { dataDir } from '../../scripts/lib/data-dir.mjs';
 import {
   MEMORY_KINDS,
   inspectMemoryContent,
@@ -46,14 +47,9 @@ function resolveDataDir(env) {
   if (typeof env.OPENCODE_WEBUI_DATA_DIR === 'string' && env.OPENCODE_WEBUI_DATA_DIR.trim() !== '') {
     return path.resolve(env.OPENCODE_WEBUI_DATA_DIR);
   }
-  // Mirror web/src/lib/paths.ts when the absolute path was not injected.
-  // Non-win32 path is ~/.opencode-webui (D2: unified on the web value; the
-  // old ~/.local/share/opencode-webui is no longer used).
-  if (process.platform === 'win32') {
-    const base = env.APPDATA ?? path.join((env.HOME || env.USERPROFILE || ''), 'AppData', 'Roaming');
-    return path.join(base, 'opencode-webui');
-  }
-  return path.join(env.HOME || env.HOME_PATH || '', '.opencode-webui');
+  // Shared D2 resolution (win32: %APPDATA%\opencode-webui, else
+  // ~/.opencode-webui), aligned with scripts/lib/data-dir.mjs.
+  return dataDir();
 }
 
 export function resolveWorkspace({ argv, env }) {
