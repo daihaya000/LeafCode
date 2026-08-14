@@ -33,12 +33,12 @@
 }
 
 .oyster {
-  --bg: #fdfcf9;
-  --surface: #f5f1ea;
-  --surface-2: #ede8de;
-  --surface-3: #e5dfd3;
-  --border: #e2dcd0;
-  --border-strong: #cbc4b5;
+  --bg: #fbf9f5;
+  --surface: #f7f3ec;
+  --surface-2: #efeae1;
+  --surface-3: #e8e2d6;
+  --border: #e5dfd4;
+  --border-strong: #cfc8b9;
   --text: #1e1b16;
   --muted: #746d60;
   --faint: #9d9484;
