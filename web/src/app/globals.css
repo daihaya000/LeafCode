@@ -33,17 +33,17 @@
 }
 
 .oyster {
-  --bg: #f3efe6;
-  --surface: #faf7f1;
-  --surface-2: #ece6da;
-  --surface-3: #e3dccd;
-  --border: #ddd6c6;
-  --border-strong: #c7bfac;
-  --text: #1c1a15;
-  --muted: #6b6457;
-  --faint: #988f7f;
-  --primary: #1c1a15;
-  --primary-fg: #faf7f1;
+  --bg: #f7f4ed;
+  --surface: #fdfbf7;
+  --surface-2: #f2eee5;
+  --surface-3: #ebe5d9;
+  --border: #e4ddd0;
+  --border-strong: #d0c8b8;
+  --text: #1e1b16;
+  --muted: #6f685c;
+  --faint: #9b9283;
+  --primary: #1e1b16;
+  --primary-fg: #fdfbf7;
   --accent: #2563eb;
   --success: #16a34a;
   --success-bg: #e9f3e6;
