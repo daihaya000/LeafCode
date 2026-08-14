@@ -10,8 +10,8 @@ vi.mock("node:fs", () => ({ readFileSync: readFileSyncMock }));
 
 const isGitInstallMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/install-root", () => ({
-  GITHUB_REPO: "daihaya000/OpenCodeWebUI",
-  GITHUB_REPO_URL: "https://github.com/daihaya000/OpenCodeWebUI.git",
+  GITHUB_REPO: "daihaya000/LeafCode",
+  GITHUB_REPO_URL: "https://github.com/daihaya000/LeafCode.git",
   installationRoot: vi.fn(() => "C:\\fake-root"),
   isGitInstall: isGitInstallMock,
 }));

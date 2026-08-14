@@ -6,7 +6,7 @@
 // cached "/" (referencing deleted _next chunks) survived deploys. v6 also
 // caches /_next/static/* so the offline shell is functional: the cached HTML
 // can load its (also cached) JS chunks.
-const CACHE = "opencode-webui-v6";
+const CACHE = "leafcode-v6";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 let activeBuildId = "";

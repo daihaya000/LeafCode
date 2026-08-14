@@ -1,9 +1,9 @@
 {
-  "name": "opencode-webui-host",
+  "name": "leafcode-host",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Windows system tray host for OpenCode WebUI",
+  "description": "Windows system tray host for LeafCode",
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test",

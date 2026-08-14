@@ -1,5 +1,5 @@
 {
-  "name": "opencode-webui",
+  "name": "leafcode",
   "private": true,
   "scripts": {
     "dev": "npm --prefix web run dev -- --hostname 127.0.0.1 --port 3000",

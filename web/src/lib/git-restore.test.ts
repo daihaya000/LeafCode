@@ -17,7 +17,7 @@ vi.mock("node:fs/promises", () => ({
 
 const isGitInstallMock = vi.hoisted(() => vi.fn());
 vi.mock("./install-root", () => ({
-  GITHUB_REPO_URL: "https://github.com/daihaya000/OpenCodeWebUI.git",
+  GITHUB_REPO_URL: "https://github.com/daihaya000/LeafCode.git",
   installationRoot: vi.fn(() => "C:\\fake-root"),
   isGitInstall: isGitInstallMock,
 }));

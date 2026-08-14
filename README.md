@@ -24,8 +24,8 @@ WebUI と OpenCode は既定で `127.0.0.1` のみを待ち受けます。LAN �
 ## 導入と起動
 
 ```bat
-git clone https://github.com/daihaya000/OpenCodeWebUI.git
-cd OpenCodeWebUI
+git clone https://github.com/daihaya000/LeafCode.git
+cd LeafCode
 ```
 
 リポジトリ直下の `OpenCodeWebUI.exe` を実行します。初回起動時に winget → Node.js → OpenCode CLI → Caddy（リモートアクセス用・任意）→ 依存関係 → production build の順に確認と導入を行います。2 回目以降は完了済みの手順を飛ばして起動します。

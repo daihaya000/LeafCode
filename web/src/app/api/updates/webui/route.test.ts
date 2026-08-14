@@ -20,8 +20,8 @@ vi.mock("node:fs/promises", () => ({
 
 const isGitInstallMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/install-root", () => ({
-  GITHUB_REPO: "daihaya000/OpenCodeWebUI",
-  GITHUB_REPO_URL: "https://github.com/daihaya000/OpenCodeWebUI.git",
+  GITHUB_REPO: "daihaya000/LeafCode",
+  GITHUB_REPO_URL: "https://github.com/daihaya000/LeafCode.git",
   installationRoot: vi.fn(() => "C:\\fake-root"),
   isGitInstall: isGitInstallMock,
 }));
@@ -71,7 +71,7 @@ describe("POST /api/updates/webui", () => {
     cpMock.mockResolvedValue(undefined);
     rmMock.mockResolvedValue(undefined);
     writeFileMock.mockResolvedValue(undefined);
-    readdirMock.mockResolvedValue([{ name: "OpenCodeWebUI-master", isDirectory: () => true }]);
+    readdirMock.mockResolvedValue([{ name: "LeafCode-master", isDirectory: () => true }]);
   });
 
   it("returns 503 while the startup git restore is in flight", async () => {

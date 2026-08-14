@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-export const GITHUB_REPO = "daihaya000/OpenCodeWebUI";
+export const GITHUB_REPO = "daihaya000/LeafCode";
 export const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO}.git`;
 
 /**
