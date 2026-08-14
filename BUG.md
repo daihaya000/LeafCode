@@ -30,9 +30,10 @@
 | **BR-18** | 低 | ⬜ **未修正** | host ログ文言に「WebUI」が 5 箇所残存（2dd9bbeb のログ文言統一からの漏れ） |
 | **BR-19** | 低 | ⬜ **未修正** | ブラウザ拡張ポップアップの日本語文言と build guard のコンソールメッセージに「WebUI」残存 |
 | **BR-20** | 低 | ⬜ **未修正** | 通知のフォールバックタイトル「OpenCode タスク」が残存（タスクタイトル空時のみ表示） |
+| **BR-21** | 低 | ⬜ **未修正** | IMPROVEMENT.md / OPTIMIZATION.md のヘッダ「対象リポジトリ: OpenCodeWebUI」が旧名のまま |
 
-**修正推奨順**: BR-12（中・セキュリティ）→ BR-15（中・移行後機能）→ BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20（低・表示/ドキュメント）。BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。**BR-11 は別セッションの `9a641a5c` で修正済み**（ターン 35 で git log 確認）。
-**未修正 9 件のうち実測済み**: BR-12（一時テスト）/ BR-15（一時テスト）。BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20 はコード・ドキュメント確認のみ。
+**修正推奨順**: BR-12（中・セキュリティ）→ BR-15（中・移行後機能）→ BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20 / BR-21（低・表示/ドキュメント）。BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。**BR-11 は別セッションの `9a641a5c` で修正済み**（ターン 35 で git log 確認）。
+**未修正 10 件のうち実測済み**: BR-12（一時テスト）/ BR-15（一時テスト）。BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20 / BR-21 はコード・ドキュメント確認のみ。
 
 # rebrand 追跡調査の完了サマリ（ターン 35・最終版）
 
@@ -49,7 +50,7 @@
 
 **検証**: web vitest 327 files / 3943 tests・host 480 本・browser-bridge 91 本・tsc --noEmit — 全てクリーン（調査差分は BUG.md のみ・一時テストは全て削除済み・各ターンでコミット済み）。
 
-**残課題**: 未修正 9 件（**BR-11 は別セッションの `9a641a5c` で修正済み** — ターン 35 の git log で確認。7 処理全て復元 + env shim 維持。`61135b26`（OneDrive クラウドファイルのミラー修正）も別セッションの修正で host テスト 474→480 本の増加要因）。修正推奨順: BR-12（中）→ BR-15（中）→ BR-13/14/16/17/18/19/20（低）。修正時は本ファイルの各 BR の「→」以降の修正方針を参照すること。
+**残課題**: 未修正 10 件（**BR-11 は別セッションの `9a641a5c` で修正済み** — ターン 35 の git log で確認。7 処理全て復元 + env shim 維持。`61135b26`（OneDrive クラウドファイルのミラー修正）も別セッションの修正で host テスト 474→480 本の増加要因）。修正推奨順: BR-12（中）→ BR-15（中）→ BR-13/14/16/17/18/19/20/21（低）。修正時は本ファイルの各 BR の「→」以降の修正方針を参照すること。
 
 ---
 
@@ -77,6 +78,7 @@
 | **BR-17** | 低 | **`web/src/lib/opencode-proxy/proxy.ts:133` の 403 エラー文字列が「disabled in WebUI」のまま（同一エラーの `oc-server.ts:53` は「disabled in LeafCode」に更新済み）** | `git grep "writes are disabled"` で検出: `oc-server.ts:53` は 2dd9bbeb で `"OpenCode config/auth/mcp writes are disabled in LeafCode"` に更新済みだが、**`proxy.ts:133` は `"OpenCode config/auth/mcp writes are disabled in WebUI"` のまま**。同一の 403（OpenCode への config/auth/mcp 書き込み禁止）が経路（ocServer 経由 vs opencode-proxy 経由）で文言が異なる。2dd9bbeb「画面の呼称をWebUIからLeafCodeへ統一」の更新漏れ。機能影響なし・表示文言の不統一。**関連（記録のみ）**: `src/app/api/provider/commandcode/auth/route.ts:49` の `writeSecrets({ userId: "webui", userName: "WebUI", keyName: "webui" })` は CommandCode CLI 認証シークレットの内部識別子（外部ツール側に表示される可能性はあるが、既存シークレットとの互換を考慮すると変更は任意・内部用）。→ proxy.ts:133 を「LeafCode」に更新（oc-server.ts と統一） |
 | **BR-18** | 低 | **host ログ文言に「WebUI」が 5 箇所残存（2dd9bbeb のログ文言統一からの漏れ）** | `host/src/index.js` のログ文字列で「WebUI」が残る箇所: `:760` / `:1947`（`WebUI failed to become ready after OpenCode port change`）、`:1624`（`WebUI build is stale but :${WEBUI_PORT} is held by an unknown process`）、`:1625`（`Reusing existing WebUI on :${WEBUI_PORT}`）、`:1629`（`Existing WebUI on :${WEBUI_PORT} is stale; stopping it to rebuild`）、`:1633`（`Could not free :${WEBUI_PORT} after stopping the stale WebUI`）。2dd9bbeb は同ファイルの他のログ文言（`Starting LeafCode` / `LeafCode exited` / `Restarting LeafCode` 等）を LeafCode に変更済みで、**上記 5 箇所のみ統一漏れ**。トレイ UI・設定 UI の表示文言は全て LeafCode 済み（ターン 1・8 で確認）。ホストログはトレイのログビューア（HostLogPanel）でユーザーが閲覧するため、rebrand の一貫性の観点で更新が望ましい。機能影響なし。→ 5 箇所の「WebUI」を「LeafCode」に更新（他のログ文言と統一） |
 | **BR-19** | 低 | **ブラウザ拡張ポップアップの日本語文言と build guard のコンソールメッセージに「WebUI」残存** | (a) **拡張ポップアップ（ユーザー向け UI）**: `browser-bridge/extension/popup.html:23`（「WebUI の設定 → 拡張機能で、このペアリング要求を承認してください…」）と `popup.mjs:20`（「WebUI での承認を待っています…」）が「WebUI」のまま（テスト `popup.test.mjs:83` も期待値が同文言）。2dd9bbeb「画面の呼称をWebUIからLeafCodeへ統一」の対象外領域（browser-bridge は rebrand コミットで UI 文言の変更対象外だった）。(b) **build guard のコンソールメッセージ**: `scripts/production-webui-build-guard.mjs` の `[LeafCode]` メッセージ 6 箇所（`:216,228,239,246,254` 等・「Production WebUI is running」「Stop the running production WebUI」）が「WebUI」のまま（build.bat 実行時にユーザーが閲覧）。コメント・内部識別子（`WebUIAddon` 型・`userId: "webui"`・FW 規則名の orphan 除去用 delete 行 `allow-firewall-*.bat`）は意図的で対象外。機能影響なし・表示文言の統一漏れ。→ popup の 2 箇所と guard のメッセージを「LeafCode」に更新 |
+| **BR-21** | 低 | **`IMPROVEMENT.md:3` / `OPTIMIZATION.md:3` のヘッダ「対象リポジトリ: OpenCodeWebUI」が旧名のまま** | 両インベントリ文書のヘッダ行のみ旧名（BUG.md のヘッダはターン 1 で「OpenCodeWebUI → LeafCode」に更新済み）。**他の旧名出現は全て履歴的言及で変更不要**: IMPROVEMENT.md `:586-587,674,842`（D2 当時のパス・BH-2 修正記録で `opencode-webui-v6` は過去の値として正しい）、OPTIMIZATION.md `:72,73,76`（OR-11/12/15 の当時記録・対応完了済み）、REFACTORING_PLAN.md `:155-160,422,432`（D2 計画当時の決定）。履歴文書は当時の状態を記録するもので、書き換えると記録の正確性を損なう。→ ヘッダ 2 行のみ「LeafCode」に更新 |
 | **BR-20** | 低 | **通知のフォールバックタイトル「OpenCode タスク」が残存（`web/src/lib/notify.ts:34`）** | `notificationText()` は `const name = title || "OpenCode タスク"` で、**タスクタイトルが空の場合に通知タイトル（承認が必要です / タスクが完了しました）の body に「OpenCode タスク」を表示**する。rebrand 後は「LeafCode タスク」であるべき（この WebUI のタスクを指すため・2dd9bbeb の統一対象）。呼び出し元 `TaskView.tsx:3716` は `task?.title ?? ""` を渡すため、タイトル無しタスクで発現する。拡張 manifest.json（`browser-bridge/manifest.json`）は「LeafCode Browser Bridge」に rebrand 済み（`a1316e3f`・確認済み）。機能影響なし・表示文言の更新漏れ。→ notify.ts:34 の「OpenCode タスク」を「LeafCode タスク」に更新 |
 
 > **旧 BR-1〜10 の解決確認（2026-08-14 追跡）**: 前回（HEAD `b065870`）の記録は**全て現 HEAD で解決済み**。
