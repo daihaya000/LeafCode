@@ -24,7 +24,7 @@
 | **BR-12** | 中 | ✅ **修正済み（ソケット検証追加）** | Host ヘッダ偽装による control-plane のセッションなし admin 昇格 — isLocalHostRequest に実ソケット remoteAddress 検証を追加（LEAFCODE_HOST=0.0.0.0 時も偽装不可） |
 | **BR-13** | 低 | ⬜ **未修正** | README のビルドミラーパス記述が旧名のまま |
 | **BR-14** | 低 | ⬜ **未修正** | ProfilesSettings の「OpenCode host」（二重置換の取り違え・1 箇所のみ） |
-| **BR-15** | 中 | 🔶 **一部修正済み（レジストリ正規化・DB worktree_path は未対応）** | dataDir rename 後に profiles.json / DB worktree_path の絶対パスが旧名残存 — readState で internal プロファイルの path を新 dataDir に正規化（DB 側は要対応） |
+| **BR-15** | 中 | ✅ **修正済み（レジストリ + DB の読み取り時正規化）** | dataDir rename 後の絶対パス残存 — readState / getWorkspace / listWorkspaces で旧 dataDir 配下のパスを新名に正規化（external は維持） |
 | **BR-16** | 低 | ⬜ **未修正** | docs/specs の 5 仕様書がデータディレクトリを `%APPDATA%\opencode-webui` と記載したまま |
 | **BR-17** | 低 | ⬜ **未修正** | proxy.ts:133 の 403 エラーのみ「disabled in WebUI」残存（oc-server.ts は LeafCode 済み・文言不統一） |
 | **BR-18** | 低 | ⬜ **未修正** | host ログ文言に「WebUI」が 5 箇所残存（2dd9bbeb のログ文言統一からの漏れ） |
@@ -32,8 +32,8 @@
 | **BR-20** | 低 | ⬜ **未修正** | 通知のフォールバックタイトル「OpenCode タスク」が残存（タスクタイトル空時のみ表示） |
 | **BR-21** | 低 | ⬜ **未修正** | IMPROVEMENT.md / OPTIMIZATION.md のヘッダ「対象リポジトリ: OpenCodeWebUI」が旧名のまま |
 
-**修正推奨順**: BR-15（中・移行後機能）→ BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20 / BR-21（低・表示/ドキュメント）。BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。**BR-11 は別セッションの `9a641a5c` で修正済み**（ターン 35 で git log 確認）。**BR-12 はソケット検証追加で修正済み**（local-request.ts・テスト 4 本追加・29 本 PASS・関連 63 本 PASS・tsc クリーン）。
-**未修正 9 件のうち実測済み**: BR-15（一時テスト）。BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20 / BR-21 はコード・ドキュメント確認のみ。
+**修正推奨順**: BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20 / BR-21（低・表示/ドキュメント）。BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。**BR-11 は別セッションの `9a641a5c` で修正済み**（ターン 35 で git log 確認）。**BR-12 はソケット検証追加で修正済み**（local-request.ts・テスト 4 本追加・29 本 PASS・関連 63 本 PASS・tsc クリーン）。**BR-15 は読み取り時正規化で修正済み**（normalizeLegacyDataDirPath を paths.ts に追加・readState / getWorkspace / listWorkspaces / listWorkspacesByStatus に適用・external は維持・テスト 2 本追加・db/profiles/workspace 系 40 本 PASS・tsc クリーン）。
+**未修正 8 件（全て低優先度の表示・ドキュメント）**: BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20 / BR-21 はコード・ドキュメント確認のみ。
 
 # rebrand 追跡調査の完了サマリ（ターン 44・最終版）
 

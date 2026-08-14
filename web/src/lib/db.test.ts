@@ -14,6 +14,7 @@ const {
   deleteProject,
   getDb,
   getWorkspace,
+  listWorkspaces,
   findWorkspaceIdsBySessionAndDirectory,
   createMemoryExtractionRun,
   completeMemoryExtractionRun,
@@ -34,6 +35,56 @@ const {
   tryAcquireSessionCompactionLock,
   upsertProject,
 } = await import("./db");
+
+test("getWorkspace / listWorkspaces rewrite paths under the legacy data dir (BR-15)", () => {
+  const appdata = testDataDir;
+  const legacy = path.join(appdata, "opencode-webui");
+  const legacyWt = path.join(legacy, "worktrees", "proj-legacy", "feat");
+  const newWt = path.join(appdata, "leafcode", "worktrees", "proj-legacy", "feat");
+  const project = upsertProject({
+    name: "LegacyWt",
+    rootPath: path.join(appdata, "some-project"),
+  });
+  getDb()
+    .prepare(
+      `INSERT INTO workspaces
+         (id, project_id, display_name, absolute_path, isolation, worktree_path, status, created_at)
+       VALUES (?, ?, ?, ?, 'git_worktree', ?, 'active', ?)`,
+    )
+    .run(
+      "ws-legacy-wt",
+      project.id,
+      "legacy worktree",
+      legacyWt,
+      legacyWt,
+      new Date().toISOString(),
+    );
+
+  const byId = getWorkspace("ws-legacy-wt");
+  expect(byId?.absolute_path).toBe(newWt);
+  expect(byId?.worktree_path).toBe(newWt);
+
+  const byList = listWorkspaces(project.id).find((w) => w.id === "ws-legacy-wt");
+  expect(byList?.absolute_path).toBe(newWt);
+  expect(byList?.worktree_path).toBe(newWt);
+
+  // A current_folder workspace whose root is outside the data dir is unchanged.
+  const outsideRoot = path.join(appdata, "repo");
+  getDb()
+    .prepare(
+      `INSERT INTO workspaces
+         (id, project_id, display_name, absolute_path, isolation, status, created_at)
+       VALUES (?, ?, ?, ?, 'current_folder', 'active', ?)`,
+    )
+    .run(
+      "ws-current",
+      project.id,
+      "current",
+      outsideRoot,
+      new Date().toISOString(),
+    );
+  expect(getWorkspace("ws-current")?.absolute_path).toBe(outsideRoot);
+});
 
 afterAll(() => {
   getDb().close();

@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { dataDir, legacyDataDir } from "../paths";
+import { dataDir, normalizeLegacyDataDirPath } from "../paths";
 
 /**
  * The global OpenCode config link we swap: always `~/.config/opencode`.
@@ -24,13 +24,7 @@ export function globalConfigLinkPath(): string {
  * real directory that must keep working unchanged.
  */
 export function normalizeProfilePath(p: string): string {
-  const legacy = path.resolve(legacyDataDir());
-  const resolved = path.resolve(p);
-  if (isInside(legacy, resolved)) {
-    const rel = path.relative(legacy, resolved);
-    return path.join(dataDir(), rel);
-  }
-  return p;
+  return normalizeLegacyDataDirPath(p);
 }
 
 /** Root holding every WebUI-managed profile directory. */

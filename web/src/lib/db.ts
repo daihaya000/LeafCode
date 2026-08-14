@@ -3,7 +3,7 @@ import { copyFileSync, existsSync } from "node:fs";
 import { CURRENT_SCHEMA_VERSION, MIGRATIONS, SCHEMA_SQL } from "./db-schema";
 import { isSafeOpenCodeSessionId } from "./opencode-id";
 import { normalizeMemoryKey } from "./memory-key";
-import { dbPath, ensureDataDir } from "./paths";
+import { dbPath, ensureDataDir, normalizeLegacyDataDirPath } from "./paths";
 import type { TaskExecutionMode } from "./types";
 import path from "node:path";
 
@@ -293,25 +293,48 @@ export function upsertProject(input: {
   return getDb().prepare("SELECT * FROM projects WHERE id = ?").get(id) as ProjectRow;
 }
 
+/**
+ * Normalize a raw workspace row whose paths may still point at the pre-rebrand
+ * data directory (BR-15): the `%APPDATA%\opencode-webui` tree was renamed to
+ * `%APPDATA%\leafcode`, so absolute paths recorded before the rename are
+ * rewritten at read time. Project roots (current_folder) are outside the data
+ * dir and pass through unchanged.
+ */
+function normalizeWorkspaceRow(row: WorkspaceRow): WorkspaceRow {
+  return {
+    ...row,
+    worktree_path: row.worktree_path
+      ? normalizeLegacyDataDirPath(row.worktree_path)
+      : row.worktree_path,
+    absolute_path: normalizeLegacyDataDirPath(row.absolute_path),
+  };
+}
+
 export function listWorkspaces(projectId?: string): WorkspaceRow[] {
   if (projectId) {
-    return getDb()
-      .prepare(
-        `SELECT * FROM workspaces WHERE project_id = ? ORDER BY created_at DESC`,
-      )
-      .all(projectId) as WorkspaceRow[];
+    return (
+      getDb()
+        .prepare(
+          `SELECT * FROM workspaces WHERE project_id = ? ORDER BY created_at DESC`,
+        )
+        .all(projectId) as WorkspaceRow[]
+    ).map(normalizeWorkspaceRow);
   }
-  return getDb()
-    .prepare(`SELECT * FROM workspaces ORDER BY created_at DESC`)
-    .all() as WorkspaceRow[];
+  return (
+    getDb()
+      .prepare(`SELECT * FROM workspaces ORDER BY created_at DESC`)
+      .all() as WorkspaceRow[]
+  ).map(normalizeWorkspaceRow);
 }
 
 export function listWorkspacesByStatus(
   status: WorkspaceRow["status"],
 ): WorkspaceRow[] {
-  return getDb()
-    .prepare(`SELECT * FROM workspaces WHERE status = ? ORDER BY created_at DESC`)
-    .all(status) as WorkspaceRow[];
+  return (
+    getDb()
+      .prepare(`SELECT * FROM workspaces WHERE status = ? ORDER BY created_at DESC`)
+      .all(status) as WorkspaceRow[]
+  ).map(normalizeWorkspaceRow);
 }
 
 export function createWorkspace(input: {
@@ -1034,9 +1057,10 @@ export function touchProjectOpened(projectId: string): void {
 }
 
 export function getWorkspace(id: string): WorkspaceRow | undefined {
-  return getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get(id) as
+  const row = getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get(id) as
     | WorkspaceRow
     | undefined;
+  return row ? normalizeWorkspaceRow(row) : undefined;
 }
 
 export function setWorkspaceStatus(
