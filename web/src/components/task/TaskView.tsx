@@ -537,6 +537,43 @@ function TurnNoticeBanner({
   );
 }
 
+/**
+ * Pending follow-up queue chips above the composer, one removable chip per
+ * enqueued item. Extracted from the TaskView render to keep the main JSX
+ * block readable (OR-8).
+ */
+function QueuedFollowUpsNotice({
+  items,
+  onRemove,
+}: {
+  items: QueuedFollowUp[];
+  onRemove: (id: number) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div
+      className="mt-2 flex flex-wrap items-center gap-1.5"
+      aria-live="polite"
+      aria-label={`キュー待ち ${items.length} 件`}
+    >
+      <span className="text-xs font-medium text-muted">キュー待ち:</span>
+      {items.map((item, index) => (
+        <button
+          key={item.id}
+          type="button"
+          title="キューから削除"
+          onClick={() => onRemove(item.id)}
+          className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+        >
+          <span className="text-faint">{index + 1}.</span>
+          <span className="max-w-56 truncate">{item.text || "画像"}</span>
+          <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function TaskView({
   taskId,
   onCloseSplit,
@@ -5098,30 +5135,14 @@ export function TaskView({
                   isMd={isMd}
                 />
               )}
-              {scopedQueuedFollowUps.length > 0 && (
-                <div
-                  className="mt-2 flex flex-wrap items-center gap-1.5"
-                  aria-live="polite"
-                  aria-label={`キュー待ち ${scopedQueuedFollowUps.length} 件`}
-                >
-                  <span className="text-xs font-medium text-muted">キュー待ち:</span>
-                  {scopedQueuedFollowUps.map((item, index) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      title="キューから削除"
-                      onClick={() =>
-                        setQueuedFollowUps((items) => items.filter((queued) => queued.id !== item.id))
-                      }
-                      className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                    >
-                      <span className="text-faint">{index + 1}.</span>
-                      <span className="max-w-56 truncate">{item.text || "画像"}</span>
-                      <X className="h-3 w-3 shrink-0" aria-hidden="true" />
-                    </button>
-                  ))}
-                </div>
-              )}
+              <QueuedFollowUpsNotice
+                items={scopedQueuedFollowUps}
+                onRemove={(id) =>
+                  setQueuedFollowUps((items) =>
+                    items.filter((queued) => queued.id !== id),
+                  )
+                }
+              />
               {sendError && (
                 <p
                   role="alert"
