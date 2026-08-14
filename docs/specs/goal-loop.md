@@ -71,9 +71,9 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 | --- | --- | --- | --- | --- |
 | 1 | – | `createGoalLoop`（履歴読取成功） | `queued` | 同ワークスペースの非終端ループを `stopped` に。`last_message_id` = 履歴末尾。置換されたループが in-flight（running / verifying_completed）なら abort する（BR-26） |
 | 2 | – | `createGoalLoop`（履歴読取失敗） | `paused` | `pause_reason = 'transcript_unreadable'` |
-| 3 | `queued` | tick・履歴 idle・`turn_count < max_turns` | `running` | `turn_count + 1`、`turn_kind = 'goal'`、`last_message_id` = 履歴末尾、`last_prompt_at = now`、goal プロンプト送信 |
+| 3 | `queued` | tick・エンジン idle（busy でない）・`turn_count < max_turns` | `running` | `turn_count + 1`、`turn_kind = 'goal'`、`last_message_id` = 履歴末尾、`last_prompt_at = now`、goal プロンプト送信 |
 | 4 | `queued` | tick・`turn_count >= max_turns` | `paused` | `pause_reason = 'turn_limit'` |
-| 5 | `verifying_completed` | tick・履歴 idle | `running` | `turn_kind = 'verification'`、`turn_count` は**変えない**、`last_message_id` = 履歴末尾、`last_prompt_at = now`、検証プロンプト送信 |
+| 5 | `verifying_completed` | tick・エンジン idle（busy でない） | `running` | `turn_kind = 'verification'`、`turn_count` は**変えない**、`last_message_id` = 履歴末尾、`last_prompt_at = now`、検証プロンプト送信 |
 | 6 | `running` (`turn_kind='goal'`) | 境界後に構造化結果 `progress` | `queued` | `progress` 追記 |
 | 7 | `running` (`turn_kind='goal'`) | 構造化結果 `completed` | `verifying_completed` | `progress` 追記 |
 | 8 | `running` (`turn_kind='goal'`) | 構造化結果 `blocked` | `blocked` | `blocked_reason` 設定 |
@@ -95,6 +95,14 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 | 22 | `paused` (上記以外) | `PATCH action=resume`・履歴読取成功 | `verifying_completed` または `queued` | `turn_kind = 'verification'` または 停止時 `verifying_completed` なら `verifying_completed`、それ以外は `queued`。`last_message_id` = 履歴末尾、`pause_reason = ''`、`error = ''` |
 | 23 | `paused` | `PATCH action=resume`・履歴読取失敗 | `paused` | `pause_reason` 維持。`error` に理由。**queued にしない** |
 | 24 | 非終端すべて | `PATCH action=stop` | `stopped` | CAS 成功時のみ `/session/:id/abort` を送る |
+
+遷移 3 / 5 の契機は「履歴 idle」ではなく「エンジン idle（busy でない）」である（BR-22）。従来は
+「transcript 末尾が completed assistant で TURN_QUIET_MS 沈黙」を要求していたが、abort・エンジン
+クラッシュ・プロンプト破棄で中断されたターンは、transcript 末尾が自プロンプト（user）や途中切れの
+assistant のまま残る。エンジンが idle を報告した時点でこれは in-flight ではなく残骸であり、
+完了を待っても永遠に idle にならないため、queued / verifying_completed が永久停止した。送信条件は
+「エンジンが busy でないこと」（processLoop 冒頭の status チェック）が実体であり、これが
+in-flight ターンへの重ね送りを防ぐ。
 
 遷移 22 が A の是正点である。停止前が検証フェーズだったかを `turn_kind` と停止時の状態から復元し、
 検証を必ず再実行する。`running` からの resume は同じターンを再開できないため `queued`（または
