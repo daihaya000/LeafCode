@@ -65,5 +65,9 @@ describe("evaluateWorkflowGraphRuntime", () => {
     const result = evaluateWorkflowGraphRuntime(graph, []);
     expect(result.pauseReason).toBe("write_conflict");
     expect(result.readyNodeIds).toEqual([]);
+    // Both writable nodes must be marked blocked: the scheduler pauses the run
+    // only when blockedNodeIds contains the node key (BH-10), so an empty list
+    // would silently stall the workflow instead of surfacing the conflict.
+    expect([...result.blockedNodeIds].sort()).toEqual(["a", "b"]);
   });
 });
