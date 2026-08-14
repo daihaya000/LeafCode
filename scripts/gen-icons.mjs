@@ -2,6 +2,8 @@
 // (512x512): the tray ICO (host/src/icon.json), PWA PNGs (web/public/),
 // the Next.js favicon (web/src/app/favicon.ico) and the Browser Bridge
 // extension icons (browser-bridge/extension/icons/).
+// The artwork is a full-bleed tile; a rounded-corner mask (radius 22% of the
+// size, matching the pre-rebrand tray design) is applied to every output.
 // Usage: node scripts/gen-icons.mjs
 import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -16,9 +18,32 @@ const sharp = require("sharp");
 
 const SOURCE = join(ROOT, "icon", "LeafCode.png");
 
-/** Load the source artwork, resized to size×size, as top-down RGBA bytes. */
+/** Rounded-corner mask as an SVG (black tile with rx corners). */
+function roundedMask(size) {
+  const radius = Math.round(size * 0.22);
+  return Buffer.from(
+    `<svg width="${size}" height="${size}">` +
+      `<rect width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="#000"/>` +
+      `</svg>`,
+  );
+}
+
+/** The artwork at size×size with rounded corners, as RGBA bytes (top-down). */
 async function renderRgba(size) {
-  return sharp(SOURCE).resize(size, size).raw().toBuffer();
+  return sharp(SOURCE)
+    .resize(size, size)
+    .composite([{ input: roundedMask(size), blend: "dest-in" }])
+    .raw()
+    .toBuffer();
+}
+
+/** The artwork at size×size with rounded corners, encoded as PNG. */
+async function renderPng(size) {
+  return sharp(SOURCE)
+    .resize(size, size)
+    .composite([{ input: roundedMask(size), blend: "dest-in" }])
+    .png()
+    .toBuffer();
 }
 
 // ---- ICO (32bpp BMP entries, bottom-up BGRA + AND mask) ----
@@ -89,13 +114,16 @@ async function main() {
 
   // PWA icons.
   for (const s of [192, 512]) {
-    await sharp(SOURCE).resize(s, s).png().toFile(join(ROOT, "web", "public", `icon-${s}.png`));
+    writeFileSync(join(ROOT, "web", "public", `icon-${s}.png`), await renderPng(s));
   }
-  await sharp(SOURCE).resize(180, 180).png().toFile(join(ROOT, "web", "public", "apple-touch-icon.png"));
+  writeFileSync(join(ROOT, "web", "public", "apple-touch-icon.png"), await renderPng(180));
 
   // Browser Bridge extension icons.
   for (const s of [16, 32, 48, 128]) {
-    await sharp(SOURCE).resize(s, s).png().toFile(join(ROOT, "browser-bridge", "extension", "icons", `icon-${s}.png`));
+    writeFileSync(
+      join(ROOT, "browser-bridge", "extension", "icons", `icon-${s}.png`),
+      await renderPng(s),
+    );
   }
 
   console.log("Generated icons from", SOURCE);
