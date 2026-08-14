@@ -23,6 +23,7 @@ import {
   migrateDefault,
   renameProfile,
   deleteProfile,
+  installDependenciesOnStartup,
 } from "./service";
 
 let sandbox: string;
@@ -741,6 +742,60 @@ describe("deleteProfile", () => {
     const result = await deleteProfile(state.profiles[0].id);
     expect(result).toMatchObject({ status: 409 });
     expect((result as { error: string }).error).toMatch(/アクティブ/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// installDependenciesOnStartup
+// ---------------------------------------------------------------------------
+
+describe("installDependenciesOnStartup", () => {
+  function writeSetupSettings(settings: Record<string, unknown>): void {
+    const dir = path.join(sandbox, "appdata", "opencode-webui");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "profile-setup-settings.json"), JSON.stringify(settings), "utf8");
+  }
+
+  it("skips when the option is disabled (default)", () => {
+    expect(installDependenciesOnStartup()).toEqual({
+      ok: true,
+      installed: [],
+      skipped: true,
+    });
+  });
+
+  it("applies dependencies to the active profile when enabled", () => {
+    writeSetupSettings({
+      browserBridge: true,
+      cursorAcp: true,
+      claudeAuth: true,
+      commandcodeAuth: true,
+      autoInstallOnStartup: true,
+    });
+    const created = createProfile({ name: "startup", from: "empty" }) as { kind: string };
+    expect(created.kind).toBe("created");
+
+    const result = installDependenciesOnStartup();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.skipped).not.toBe(true);
+      expect(Array.isArray(result.installed)).toBe(true);
+    }
+  });
+
+  it("skips when no active profile is registered", () => {
+    writeSetupSettings({
+      browserBridge: true,
+      cursorAcp: true,
+      claudeAuth: true,
+      commandcodeAuth: true,
+      autoInstallOnStartup: true,
+    });
+    expect(installDependenciesOnStartup()).toEqual({
+      ok: true,
+      installed: [],
+      skipped: true,
+    });
   });
 });
 

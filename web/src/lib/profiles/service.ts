@@ -304,6 +304,34 @@ export function installDependencies(id: string): InstallDependenciesResult {
   }
 }
 
+export type StartupInstallResult =
+  | { ok: true; installed: string[]; skipped?: boolean }
+  | { ok: false; error: string };
+
+/**
+ * WebUI 起動時にアクティブプロファイルへ連携依存を自動適用する。
+ * 設定が OFF またはアクティブプロファイルが無い場合は何もせず `skipped` を返す。
+ * 失敗しても起動を妨げない（呼び出し側は必ず捕捉する）。
+ */
+export function installDependenciesOnStartup(): StartupInstallResult {
+  const settings = readProfileSetupSettings();
+  if (!settings.autoInstallOnStartup) {
+    return { ok: true, installed: [], skipped: true };
+  }
+  const { state, link } = ensureRegistry();
+  const activeId = resolveActiveId(state, link);
+  const active = state.profiles.find((p) => p.id === activeId);
+  if (!active) return { ok: true, installed: [], skipped: true };
+  if (!dirExists(active.path) || !isValidProfileDir(active.path)) {
+    return { ok: false, error: `${active.path} は設定ディレクトリとして認識できません。` };
+  }
+  try {
+    return { ok: true, installed: installWebUiDependencies(active.path, settings) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "WebUI依存の適用に失敗しました。" };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // migrate
 // ---------------------------------------------------------------------------

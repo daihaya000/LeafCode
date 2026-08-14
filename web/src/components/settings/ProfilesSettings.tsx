@@ -48,6 +48,7 @@ type ProfileSetupSettings = {
   cursorAcp: boolean;
   claudeAuth: boolean;
   commandcodeAuth: boolean;
+  autoInstallOnStartup: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -610,6 +611,22 @@ export function ProfilesSettings() {
                 </span>
               </label>
             ))}
+          </div>
+          <div className="mt-3">
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-bg px-3.5 py-3 transition-colors hover:border-primary/40 hover:bg-surface-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                checked={setupSettings.autoInstallOnStartup}
+                disabled={actionBusy !== null || busyId !== null}
+                onChange={(event) => void updateSetupSetting("autoInstallOnStartup", event.target.checked)}
+                aria-label="起動時自動配布"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-text">起動時自動配布</span>
+                <span className="block text-xs text-muted">WebUI 起動時にアクティブプロファイルへ連携依存を自動適用します。</span>
+              </span>
+            </label>
           </div>
         </fieldset>
       )}

@@ -26,4 +26,11 @@ export async function register() {
   // Fire-and-forget: restoring a zip install to git can take a while
   // (network clone) and must never block server startup.
   void runStartupGitRestore();
+
+  const [{ installDependenciesOnStartup }] = await Promise.all([
+    import("./lib/profiles/service"),
+  ]);
+  // Fire-and-forget: auto-distributing WebUI deps on boot must never block
+  // server startup or crash it when a profile is unavailable.
+  void Promise.resolve().then(installDependenciesOnStartup).catch(() => {});
 }

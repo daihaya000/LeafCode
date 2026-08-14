@@ -22,7 +22,7 @@ const local = (method: string, body?: unknown) => new Request("http://127.0.0.1:
 });
 
 beforeEach(() => {
-  h.read.mockReset().mockReturnValue({ browserBridge: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true });
+  h.read.mockReset().mockReturnValue({ browserBridge: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true, autoInstallOnStartup: false });
   h.write.mockReset().mockImplementation((value) => value);
 });
 
@@ -30,13 +30,13 @@ describe("/api/profiles/settings", () => {
   it("returns setup settings", async () => {
     const response = await GET(local("GET"));
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ browserBridge: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true });
+    expect(await response.json()).toEqual({ browserBridge: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true, autoInstallOnStartup: false });
   });
 
   it("saves both setup switches", async () => {
-    const response = await PUT(local("PUT", { browserBridge: false, cursorAcp: true, claudeAuth: true, commandcodeAuth: true }));
+    const response = await PUT(local("PUT", { browserBridge: false, cursorAcp: true, claudeAuth: true, commandcodeAuth: true, autoInstallOnStartup: true }));
     expect(response.status).toBe(200);
-    expect(h.write).toHaveBeenCalledWith({ browserBridge: false, cursorAcp: true, claudeAuth: true, commandcodeAuth: true });
+    expect(h.write).toHaveBeenCalledWith({ browserBridge: false, cursorAcp: true, claudeAuth: true, commandcodeAuth: true, autoInstallOnStartup: true });
   });
 
   it("rejects incomplete settings", async () => {

@@ -11,6 +11,7 @@ export type ProfileSetupSettings = {
   cursorAcp: boolean;
   claudeAuth: boolean;
   commandcodeAuth: boolean;
+  autoInstallOnStartup: boolean;
 };
 
 /**
@@ -36,6 +37,7 @@ const DEFAULT_SETTINGS: ProfileSetupSettings = {
   cursorAcp: true,
   claudeAuth: true,
   commandcodeAuth: true,
+  autoInstallOnStartup: false,
 };
 
 function settingsPath(): string {
@@ -50,6 +52,7 @@ export function readProfileSetupSettings(): ProfileSetupSettings {
       cursorAcp: parsed.cursorAcp !== false,
       claudeAuth: parsed.claudeAuth !== false,
       commandcodeAuth: parsed.commandcodeAuth !== false,
+      autoInstallOnStartup: parsed.autoInstallOnStartup === true,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

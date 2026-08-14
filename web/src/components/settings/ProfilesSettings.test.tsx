@@ -9,7 +9,7 @@ function mockFetch(responses: Record<string, unknown>) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/api/profiles/settings")) {
-        return new Response(JSON.stringify({ browserBridge: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true }), {
+        return new Response(JSON.stringify({ browserBridge: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true, autoInstallOnStartup: false }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -289,6 +289,9 @@ describe("ProfilesSettings", () => {
     expect(
       (screen.getByLabelText("Browser Bridgeの自動セットアップ") as HTMLInputElement).checked,
     ).toBe(true);
+    expect(
+      (screen.getByLabelText("起動時自動配布") as HTMLInputElement).checked,
+    ).toBe(false);
   });
 
   it("shows error state when the API fails", async () => {
