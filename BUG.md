@@ -44,6 +44,8 @@
 > - **health の service 名リネーム（ターン 2）**: control-server の `service: 'leafcode-host'`（`control-server.js:408`）は production-webui-build-guard の host 判定（`production-webui-build-guard.mjs:93`）と整合。旧名 `opencode-webui-host` を期待する参照はゼロ（`git grep` で機械確認・テスト追従済み）。→ 健全。
 > - **残り rebrand 差分の整合（ターン 2）**: `host/src/control-server.js`・`scripts/caddy-trust.bat`・`web/ConnectivitySettingsTab.tsx`（netsh 規則名 'LeafCode' は windows-integration と整合）・`browser-bridge/scripts/install-mcp.mjs`・`install-memory-mcp.mjs`・`web/playwright.config.ts`・`web/.env.example`・`workflow-feature.ts`・`host-control.ts`・`access/route.ts`・`client-ip.ts`・`opencode/[...path]/route.test.ts` の変更を全て確認。文言・env 名のみでロジック非干渉。→ 健全。
 > - **README のビルドミラー記述ずれ（ターン 2）**: BR-13 として記録（README のみ旧パス `%LOCALAPPDATA%\opencode-webui\build` のまま）。実装は leafcode に更新済み。
+> - **2dd9bbeb の全差分は表示文字列のみ（ターン 5）**: EngineSettingsTab.tsx（50 行・RESTART_LABELS / 接続状態 / アップデート / API 世代の文言）、goal-prompt.ts（プロンプト文言）、oc-server.ts / jsonc-edit.ts / access-mode.ts / TaskView / HomeView / Sidebar / GoalLoopPanel / opencode-restart / updates 2 ルート / tasks / ollama/setup を全て確認。2dd9bbeb は 5f260f65 の「OpenCode → LeafCode」一括置換のうち**エンジンを指していた文言を OpenCode へ戻す二重リネーム**であり、全てユーザー向け表示・エラー文字列のみでロジック非干渉（テスト追従済み・全 PASS）。→ 健全。
+> - **goal-loop プロンプトマーカー `<!-- webui-goal-loop-prompt -->` の残存（ターン 5）**: `goal-util.ts:414` / `useSessionStream.ts:406` の `GOAL_LOOP_PROMPT_MARKER` と `goal-prompt.ts` 5 箇所が**同一文字列のまま整合**しており、プロンプト生成側とターン判定側（goal loop プロンプトかどうかの判定）が機能。HTML コメント（非表示）の内部マーカーで、**rebrand 後も「webui」名が残るのは意図的維持と判断**（既に実行中の履歴ループは旧マーカーで開始されており、変更すると新・旧プロンプトの判定が不整合になる。変更する場合は 7 箇所同時 + 旧セッション互換の考慮が必要）。機能正常・バグではない。→ 変更しないこと（再調査防止メモ）。
 
 ---
 
