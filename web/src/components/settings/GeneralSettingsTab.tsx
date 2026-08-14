@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Shell, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { HostLogPanel } from "@/components/settings/HostLogPanel";
 import { cx } from "@/components/ui";
@@ -50,10 +50,21 @@ function ThemeSettings() {
   useEffect(() => setMounted(true), []);
 
   const current = theme ?? "system";
-  const resolved = resolvedTheme === "dark" ? "ダーク" : "ライト";
+  const resolved =
+    resolvedTheme === "dark"
+      ? "ダーク"
+      : resolvedTheme === "oyster"
+        ? "オフホワイト（オイスター）"
+        : "ライト";
   const options = [
     { key: "light", label: "ライト", description: "明るい配色で固定", icon: Sun },
     { key: "dark", label: "ダーク", description: "暗い配色で固定", icon: Moon },
+    {
+      key: "oyster",
+      label: "オフホワイト",
+      description: "温かみのあるオイスター系の明るい配色",
+      icon: Shell,
+    },
     { key: "system", label: "システム", description: "OS の設定に合わせる", icon: Monitor },
   ] as const;
 
@@ -68,7 +79,7 @@ function ThemeSettings() {
             {mounted ? resolved : "読み込み中"} です。
           </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {options.map((option) => {
             const Icon = option.icon;
             const active = mounted && current === option.key;
