@@ -46,6 +46,8 @@
 > - **README のビルドミラー記述ずれ（ターン 2）**: BR-13 として記録（README のみ旧パス `%LOCALAPPDATA%\opencode-webui\build` のまま）。実装は leafcode に更新済み。
 > - **2dd9bbeb の全差分は表示文字列のみ（ターン 5）**: EngineSettingsTab.tsx（50 行・RESTART_LABELS / 接続状態 / アップデート / API 世代の文言）、goal-prompt.ts（プロンプト文言）、oc-server.ts / jsonc-edit.ts / access-mode.ts / TaskView / HomeView / Sidebar / GoalLoopPanel / opencode-restart / updates 2 ルート / tasks / ollama/setup を全て確認。2dd9bbeb は 5f260f65 の「OpenCode → LeafCode」一括置換のうち**エンジンを指していた文言を OpenCode へ戻す二重リネーム**であり、全てユーザー向け表示・エラー文字列のみでロジック非干渉（テスト追従済み・全 PASS）。→ 健全。
 > - **goal-loop プロンプトマーカー `<!-- webui-goal-loop-prompt -->` の残存（ターン 5）**: `goal-util.ts:414` / `useSessionStream.ts:406` の `GOAL_LOOP_PROMPT_MARKER` と `goal-prompt.ts` 5 箇所が**同一文字列のまま整合**しており、プロンプト生成側とターン判定側（goal loop プロンプトかどうかの判定）が機能。HTML コメント（非表示）の内部マーカーで、**rebrand 後も「webui」名が残るのは意図的維持と判断**（既に実行中の履歴ループは旧マーカーで開始されており、変更すると新・旧プロンプトの判定が不整合になる。変更する場合は 7 箇所同時 + 旧セッション互換の考慮が必要）。機能正常・バグではない。→ 変更しないこと（再調査防止メモ）。
+> - **e2e セレクタと実 UI の整合（ターン 6）**: `composer.spec.ts` / `smoke.spec.ts` の `getByRole("heading", { name: "LeafCode" })` は `HomeView.tsx:1306-1316` の `<h1><span>LeafCode</span></h1>` に一致、`toHaveTitle(/LeafCode/)` は `layout.tsx:18` の title と一致。manifest.ts の name/short_name も "LeafCode"。e2e の実実行は未実施（AGENTS.md の CI モード制約）だが、コード整合は確認済み。→ 健全。
+> - **LoginGate の auth-required イベント整合（ターン 6）**: `AUTH_REQUIRED_EVENT = "leafcode:auth-required"`（`client.ts:23`）は `client.ts:36` の dispatch と `LoginGate.tsx:40` の addEventListener が同一文字列で整合。テスト（LoginGate.test 11 本 PASS）済み。**注意（低・命名不統一）**: 新イベントだけが「leafcode:」接頭辞で、既存イベント・localStorage キー（`webui:hang-timeout` / `webui:side-panel:*` 等）は「webui:」のまま（9-1b で意図的に維持）。機能には影響しない（dispatch/listen が同一なら動作）が、将来の「webui:」名前空間廃止時に混在する。→ バグではない（記録のみ）。
 
 ---
 
