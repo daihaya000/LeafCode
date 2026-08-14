@@ -41,11 +41,22 @@ describe("readProviderModelState defaults", () => {
       },
       providerIcons: {},
       knownModelKeys: [],
-      modelPricingDefaultsVersion: 1,
+      modelPricingDefaultsVersion: 2,
     });
     expect(state.modelPricing["ollama-cloud::glm-5.2"]).toEqual({
       input: 0.5026,
       output: 1.5796,
+    });
+    expect(state.modelPricing["qwen-cloud::qwen3.8-max"]).toEqual({
+      input: 2,
+      cachedInput: 0.25,
+      cacheWrite: 2.5,
+      output: 6,
+    });
+    expect(state.modelPricing["qwen-cloud::deepseek-v4-flash-0731"]).toEqual({
+      input: 0.14,
+      cachedInput: 0.0028,
+      output: 0.28,
     });
   });
 
@@ -73,14 +84,19 @@ describe("readProviderModelState defaults", () => {
       input: 0.7,
       output: 3.5,
     });
-    expect(state.modelPricingDefaultsVersion).toBe(1);
+    expect(state.modelPricing["qwen-cloud::glm-5.2"]).toEqual({
+      input: 0.63,
+      cachedInput: 0.0945,
+      output: 1.98,
+    });
+    expect(state.modelPricingDefaultsVersion).toBe(2);
   });
 
   it("keeps a cleared default price cleared after migration", async () => {
     await setModelPricing("ollama-cloud::glm-5.2", undefined);
 
     expect(readProviderModelState().modelPricing["ollama-cloud::glm-5.2"]).toBeUndefined();
-    expect(readProviderModelState().modelPricingDefaultsVersion).toBe(1);
+    expect(readProviderModelState().modelPricingDefaultsVersion).toBe(2);
   });
 
   it("also falls back to the defaults for malformed state", () => {

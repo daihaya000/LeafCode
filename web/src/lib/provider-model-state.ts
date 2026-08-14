@@ -38,7 +38,7 @@ type StateFile = {
   modelPricingDefaultsVersion: number;
 };
 
-const MODEL_PRICING_DEFAULTS_VERSION = 1;
+const MODEL_PRICING_DEFAULTS_VERSION = 2;
 
 /**
  * Defaults used when a profile has no WebUI provider/model state yet.
@@ -64,9 +64,10 @@ const DEFAULT_STATE: StateFile = {
   knownModelKeys: [],
   modelPricingDefaultsVersion: MODEL_PRICING_DEFAULTS_VERSION,
   // Default manual pricing for models whose cost is not reported by OpenCode.
-  // Ollama Cloud does not publish per-token prices, so values below are
-  // representative vendor-equivalent prices (mostly from OpenRouter / vendor
-  // APIs) in USD per 1M tokens. Users can override via the WebUI.
+  // Ollama Cloud / Qwen Cloud (Alibaba token-plan) do not publish per-token
+  // prices, so values below are representative vendor-equivalent prices
+  // (mostly from OpenRouter / vendor APIs) in USD per 1M tokens. Users can
+  // override via the WebUI.
   modelPricing: {
     // Google: gemma-4-31b-it via OpenRouter
     "ollama-cloud::gemma4": { input: 0.1, output: 0.34 },
@@ -100,6 +101,48 @@ const DEFAULT_STATE: StateFile = {
     "ollama-cloud::nemotron-3-ultra": { input: 0.6, output: 3.6 },
     // Moonshot AI: kimi-k3 from Ollama Cloud pricing page
     "ollama-cloud::kimi-k3": { input: 3, cachedInput: 0.3, output: 15 },
+    // Qwen Cloud (Alibaba token-plan). Base price tier up to 256K context.
+    // Alibaba Cloud: qwen3.8-max (official international pricing)
+    "qwen-cloud::qwen3.8-max": {
+      input: 2,
+      cachedInput: 0.25,
+      cacheWrite: 2.5,
+      output: 6,
+    },
+    // Alibaba Cloud: qwen3.7-max (official international pricing)
+    "qwen-cloud::qwen3.7-max": {
+      input: 2.5,
+      cachedInput: 0.5,
+      cacheWrite: 3.125,
+      output: 7.5,
+    },
+    // Alibaba Cloud: qwen3.7-plus (official international pricing)
+    "qwen-cloud::qwen3.7-plus": {
+      input: 0.5,
+      cachedInput: 0.05,
+      cacheWrite: 0.625,
+      output: 3,
+    },
+    // Alibaba Cloud: qwen3.6-flash (official international pricing)
+    "qwen-cloud::qwen3.6-flash": {
+      input: 0.1875,
+      cacheWrite: 0.234375,
+      output: 1.125,
+    },
+    // Z.ai: glm-5.2 via OpenRouter
+    "qwen-cloud::glm-5.2": { input: 0.63, cachedInput: 0.0945, output: 1.98 },
+    // DeepSeek: deepseek-v4-pro (official DeepSeek pricing)
+    "qwen-cloud::deepseek-v4-pro": {
+      input: 0.435,
+      cachedInput: 0.003625,
+      output: 0.87,
+    },
+    // DeepSeek: deepseek-v4-flash-0731 (official DeepSeek pricing)
+    "qwen-cloud::deepseek-v4-flash-0731": {
+      input: 0.14,
+      cachedInput: 0.0028,
+      output: 0.28,
+    },
   },
 };
 
