@@ -29,6 +29,7 @@ const {
   sessionActionsCompact,
   unrevertSession,
   playSessionCompleteSound,
+  playAttentionRequiredSound,
 } = vi.hoisted(() => ({
   getJson: vi.fn(),
   notifyTasksChanged: vi.fn(),
@@ -41,6 +42,7 @@ const {
   sessionActionsCompact: vi.fn(),
   unrevertSession: vi.fn(),
   playSessionCompleteSound: vi.fn(),
+  playAttentionRequiredSound: vi.fn(),
 }));
 
 const { taskSplitState } = vi.hoisted(() => ({
@@ -76,7 +78,10 @@ vi.mock("@/lib/client", () => ({
 
 vi.mock("@/lib/events", () => ({ notifyTasksChanged }));
 
-vi.mock("@/lib/session-complete-sound", () => ({ playSessionCompleteSound }));
+vi.mock("@/lib/session-complete-sound", () => ({
+  playSessionCompleteSound,
+  playAttentionRequiredSound,
+}));
 
 vi.mock("@/lib/currency", () => ({
   formatCost: (cost: number) => `cost $${cost.toFixed(4)}`,
@@ -4486,6 +4491,72 @@ describe("TaskView voice input", () => {
       // No attention/working transition happened, so still no notification —
       // this only proves the visibilitychange listener doesn't throw or loop.
       expect(notificationCtor).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("attention sound", () => {
+    it("plays the attention sound when a permission or question UI appears", async () => {
+      const view = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      expect(playAttentionRequiredSound).not.toHaveBeenCalled();
+
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        status: { type: "busy" },
+        permissions: [
+          {
+            id: "perm-1",
+            version: "v1",
+            sessionID: "sess1",
+            permission: "bash",
+            patterns: [],
+            receivedAt: Date.now(),
+          },
+        ],
+        questions: [],
+      });
+      await act(async () => {
+        view.rerender(<TaskView taskId="ws1" />);
+      });
+      expect(playAttentionRequiredSound).toHaveBeenCalledTimes(1);
+
+      // Staying pending must not replay the sound.
+      await act(async () => {
+        view.rerender(<TaskView taskId="ws1" />);
+      });
+      expect(playAttentionRequiredSound).toHaveBeenCalledTimes(1);
+
+      // Permission resolved → attention clears → no replay while idle.
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        status: { type: "busy" },
+        permissions: [],
+        questions: [],
+      });
+      await act(async () => {
+        view.rerender(<TaskView taskId="ws1" />);
+      });
+      expect(playAttentionRequiredSound).toHaveBeenCalledTimes(1);
+
+      // Question arrives after attention cleared → another rising edge.
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        status: { type: "busy" },
+        permissions: [],
+        questions: [
+          {
+            id: "q-1",
+            version: "v1",
+            sessionID: "sess1",
+            questions: [],
+            receivedAt: Date.now(),
+          },
+        ],
+      });
+      await act(async () => {
+        view.rerender(<TaskView taskId="ws1" />);
+      });
+      expect(playAttentionRequiredSound).toHaveBeenCalledTimes(2);
     });
   });
 

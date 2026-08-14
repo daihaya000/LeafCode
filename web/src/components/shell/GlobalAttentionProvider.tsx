@@ -51,6 +51,7 @@ import { shouldSyncAccessCeilingForSessionCreated } from "@/lib/opencode-access-
 import { activeEventPath } from "@/lib/opencode-paths";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { wasRecentlyReplied } from "@/lib/recently-replied";
+import { playAttentionRequiredSound } from "@/lib/session-complete-sound";
 import type { QuestionInfo, TaskSummary } from "@/lib/types";
 import { useAttentionQueue } from "@/lib/useAttentionQueue";
 
@@ -532,6 +533,7 @@ export function GlobalAttentionProvider({
       if (autoOpenedRef.current || hasEditingFocus()) return false;
       autoOpenedRef.current = true;
       setOpenState(true);
+      playAttentionRequiredSound();
       return true;
     };
 

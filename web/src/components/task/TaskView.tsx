@@ -179,7 +179,10 @@ import {
   type ProviderModelMeta,
 } from "@/lib/model-variants";
 import { decideNotification, notificationText } from "@/lib/notify";
-import { playSessionCompleteSound } from "@/lib/session-complete-sound";
+import {
+  playAttentionRequiredSound,
+  playSessionCompleteSound,
+} from "@/lib/session-complete-sound";
 import {
   extractPlanMarkdownPath,
   isPlanApproved,
@@ -3654,6 +3657,18 @@ export function TaskView({
   // Desktop notifications when the tab is backgrounded
   const prevWorkingRef = useRef(false);
   const prevAttentionRef = useRef(false);
+  // Permission / question UI rising edge → attention alert sound. Separate
+  // from the notification effect so it fires even without the Notification
+  // API and regardless of tab visibility.
+  const prevAttentionSoundRef = useRef(false);
+  useEffect(() => {
+    const attention =
+      stream.permissions.length > 0 || stream.questions.length > 0;
+    if (!prevAttentionSoundRef.current && attention) {
+      playAttentionRequiredSound();
+    }
+    prevAttentionSoundRef.current = attention;
+  }, [stream.permissions.length, stream.questions.length]);
   // Tracked as state (not read directly from `document.hidden`) so
   // visibilitychange re-runs the effect below — otherwise a state change
   // that happens right as the tab gets hidden could evaluate against the

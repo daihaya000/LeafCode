@@ -3,17 +3,23 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { GlobalAttentionProvider, useGlobalAttention } from "./GlobalAttentionProvider";
 import type { AttentionItem } from "@/lib/attention";
 
-const { getJsonMock, ocJsonMock, sendJsonMock } = vi.hoisted(() => ({
-  getJsonMock: vi.fn(),
-  ocJsonMock: vi.fn(),
-  sendJsonMock: vi.fn(),
-}));
+const { getJsonMock, ocJsonMock, sendJsonMock, playAttentionRequiredSoundMock } =
+  vi.hoisted(() => ({
+    getJsonMock: vi.fn(),
+    ocJsonMock: vi.fn(),
+    sendJsonMock: vi.fn(),
+    playAttentionRequiredSoundMock: vi.fn(),
+  }));
 
 vi.mock("@/lib/client", () => ({
   apiUrl: (p: string) => p,
   getJson: getJsonMock,
   ocJson: ocJsonMock,
   sendJson: sendJsonMock,
+}));
+
+vi.mock("@/lib/session-complete-sound", () => ({
+  playAttentionRequiredSound: playAttentionRequiredSoundMock,
 }));
 
 const TestConsumer = ({ onItems }: { onItems: (items: AttentionItem[]) => void }) => {
@@ -85,6 +91,7 @@ describe("GlobalAttentionProvider", () => {
     getJsonMock.mockReset();
     ocJsonMock.mockReset();
     sendJsonMock.mockReset();
+    playAttentionRequiredSoundMock.mockReset();
     getJsonMock.mockResolvedValue({ tasks: [] });
     ocJsonMock.mockResolvedValue([]);
     sendJsonMock.mockResolvedValue({});
@@ -136,6 +143,36 @@ describe("GlobalAttentionProvider", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByTestId("open-state").textContent).toBe("closed");
+  });
+
+  it("plays the attention sound when the modal auto-opens for a new item", async () => {
+    render(
+      <GlobalAttentionProvider activeScope={null}>
+        <TestConsumer onItems={() => undefined} />
+      </GlobalAttentionProvider>,
+    );
+    expect(playAttentionRequiredSoundMock).not.toHaveBeenCalled();
+
+    emitQuestion();
+    expect(playAttentionRequiredSoundMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("open-state").textContent).toBe("open");
+  });
+
+  it("does not replay the attention sound for the same queued item on manual reopen", async () => {
+    render(
+      <GlobalAttentionProvider activeScope={null}>
+        <TestConsumer onItems={() => undefined} />
+      </GlobalAttentionProvider>,
+    );
+    emitQuestion();
+    expect(playAttentionRequiredSoundMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+    expect(screen.getByTestId("open-state").textContent).toBe("closed");
+
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    expect(screen.getByTestId("open-state").textContent).toBe("open");
+    expect(playAttentionRequiredSoundMock).toHaveBeenCalledTimes(1);
   });
 
   it("restores pending questions on first connect", async () => {
