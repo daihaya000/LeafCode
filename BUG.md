@@ -82,6 +82,7 @@
 > - **FW 規則名の rebrand 整合（ターン 16）**: `scripts/allow-firewall-*.bat` / `fix-lan-access.bat` の「旧名 delete」は**意図的な orphan 除去**（a1316e3f のコメント「Remove the pre-rebrand rule name so it cannot linger as an orphan」）。旧 add 名との一致を `git show a1316e3f^` で確認: 3000 系 'OpenCode WebUI' / 8080 'OpenCode WebUI Caddy' / 8443 'OpenCode WebUI Caddy HTTPS' / Node 'OpenCode WebUI Node' — **全て delete 名と一致**し、新名（'LeafCode' / 'LeafCode Caddy' / 'LeafCode Caddy HTTPS' / 'LeafCode Node'）で再 add。`windows-integration.js` の `FIREWALL_RULE_NAME = 'LeafCode'` は allow-firewall-3000 の新名と一致。host テスト（firewallRuleExists / allowFirewallPort）PASS。→ 健全。setup-messages / shortcut-messages に旧名残りゼロ（git grep で確認）。
 > - **host テスト残り 5 ファイルの追従（ターン 17）**: `opencode-upgrade.test.js` / `launcher-exe.test.js` / `production-webui-build-guard.test.js` / `start-webui-bat.test.js` / `web-build-mirror.test.js` の変更は全て env 名追従のみ（`LEAFCODE_NONINTERACTIVE` / `LEAFCODE_AUTO_UPDATE_OPENCODE` / `LEAFCODE_HOST_CONTROL_URL` / `LEAFCODE_PORT` / `LEAFCODE_CADDY` / `LEAFCODE_BUILD_DIR`）で**テストの意味不変**。全 474 本 PASS。→ 健全。
 > - **名前整合の両方向網羅（ターン 17）**: 「LeafCode がエンジンを指す誤用」は 0 件（`git grep "LeafCode エンジン|LeafCode のプロバイダ|LeafCode CLI|LeafCode 本体|LeafCode の呼び出し"` で非テストコード 0 件）。「OpenCode がフロントエンド/host を指す誤用」は BR-14 の 1 箇所のみ（ターン 8 の全数検証）。→ 名前の取り違えは BR-14 のみで確定。
+> - **.gitignore の rebrand 追従（ターン 18）**: `.leafcode/` を追加し旧 `.opencode-webui/` も除外維持（`fe439fc5`、pre-rebrand clone の漏れ防止として正しい）。`OpenCodeWebUI.exe.old` → `LeafCode.exe.old`（`a1316e3f`）。データディレクトリ（%APPDATA% 下）はリポジトリ外なので ignore 不要。→ 健全。
 
 ---
 
