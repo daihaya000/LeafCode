@@ -448,3 +448,50 @@ test('index.js constructs factories that cold start calls as instances', () => {
     assert.match(src, new RegExp(`\\b${instance}\\.\\w+`), `${instance} is still called`);
   }
 });
+
+test('resolveOccupiedPort waits out ghost sockets before falling back', () => {
+  const src = readFileSync(fileURLToPath(new URL('./index.js', import.meta.url)), 'utf8');
+  const ghostGrace = src.match(/const GHOST_SOCKET_GRACE_MS = (\d+);/);
+  assert.ok(ghostGrace, 'GHOST_SOCKET_GRACE_MS must exist (prevents port drift on transient ghosts)');
+  assert.equal(Number(ghostGrace[1]) > 0, true, 'GHOST_SOCKET_GRACE_MS must be positive');
+  assert.match(
+    src,
+    /is held by a ghost socket/,
+    'resolveOccupiedPort must log when it detects a ghost socket',
+  );
+  assert.match(
+    src,
+    /waiting up to \$\{GHOST_SOCKET_GRACE_MS \/ 1000\}s/,
+    'resolveOccupiedPort must log a bounded grace wait before falling back',
+  );
+  assert.match(
+    src,
+    /if \(!isPortInUse\(port\)\) return \{ port, reuse: false \};\s*if \(await httpWaiter\.isHttpUp\(healthUrl\)\) return \{ port, reuse: true \};/,
+    'the grace loop must re-probe health so a concurrently starting OpenCode is reused',
+  );
+});
+
+test('auto-restart resolves the port instead of blind respawning onto a stuck socket', () => {
+  const src = readFileSync(fileURLToPath(new URL('./index.js', import.meta.url)), 'utf8');
+  assert.match(
+    src,
+    /setTimeout\(autoRestartOpencodeAfterCrash, 1000\)/,
+    'auto-restart must schedule the resolution helper',
+  );
+  assert.match(
+    src,
+    /async function autoRestartOpencodeAfterCrash/,
+    'autoRestartOpencodeAfterCrash must be defined',
+  );
+  const restartBlock = src.slice(src.indexOf('async function autoRestartOpencodeAfterCrash'));
+  assert.match(
+    restartBlock,
+    /await httpWaiter\.waitForPortFree\(OPENCODE_PORT, 60\)/,
+    'auto-restart must wait for the port to free before respawning',
+  );
+  assert.match(
+    restartBlock,
+    /await resolveOccupiedPort\(/,
+    'auto-restart must resolve a stuck port like a cold start instead of respawning blindly',
+  );
+});

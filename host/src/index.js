@@ -172,6 +172,14 @@ const WEBUI_HOST = process.env.OPENCODE_WEBUI_HOST || '127.0.0.1';
 let WEBUI_URL = `http://127.0.0.1:${WEBUI_PORT}`;
 let OPENCODE_URL = `http://127.0.0.1:${OPENCODE_PORT}`;
 
+/**
+ * How long to wait for a ghost LISTENING socket (dead PID, Windows TCP leak) to
+ * clear before falling back to the next free port. The socket normally releases
+ * within a few seconds once the last inherited handle is closed, so a short
+ * grace period avoids permanent port drift (4096 → 4097 → …) on transient ghosts.
+ */
+const GHOST_SOCKET_GRACE_MS = 5000;
+
 function setOpencodePort(port) {
   OPENCODE_PORT = port;
   OPENCODE_URL = `http://127.0.0.1:${OPENCODE_PORT}`;
@@ -520,6 +528,23 @@ async function resolveOccupiedPort(port, healthUrl, label, snapshot) {
   const listeningPids = getListeningPids(port);
   const livePids = listeningPids.filter((pid) => isProcessAlive(pid));
 
+  if (livePids.length === 0) {
+    // Ghost socket: the LISTENING PID is already dead, but a leftover inherited
+    // handle (or a concurrently starting OpenCode) may still hold the port for
+    // a few seconds. Windows releases the socket once the last holder exits,
+    // so wait briefly and re-probe health before drifting to another port.
+    log(
+      `Port ${port} is held by a ghost socket (PID ${listeningPids.join(',') || 'unknown'} is dead); ` +
+        `waiting up to ${GHOST_SOCKET_GRACE_MS / 1000}s for it to clear…`,
+    );
+    const ghostDeadline = Date.now() + GHOST_SOCKET_GRACE_MS;
+    while (Date.now() < ghostDeadline) {
+      await sleep(250);
+      if (!isPortInUse(port)) return { port, reuse: false };
+      if (await httpWaiter.isHttpUp(healthUrl)) return { port, reuse: true };
+    }
+  }
+
   if (livePids.length > 0) {
     if (label === 'OpenCode') {
       const disposed = await disposeOpencodeServer(OPENCODE_URL);
@@ -680,27 +705,72 @@ function handleOpencodeExit(child, code, signal) {
       );
     }
     if (exitDecision.shouldAutoRestart) {
-      setTimeout(async () => {
-        try {
-          const opencodePath = opencodeUpgrader.findOpencode();
-          spawnOpencode(opencodePath);
-          const ready = await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45, {
-            proc: () => opencodeProc,
-          });
-          if (!ready) {
-            throw new Error(
-              `OpenCode failed to become ready on :${OPENCODE_PORT} (${OPENCODE_URL}/global/health)`,
-            );
-          }
-        } catch (restartErr) {
-          error(
-            `OpenCode auto-restart failed: ${restartErr instanceof Error ? restartErr.message : String(restartErr)}`,
-          );
-        }
-      }, 1000);
+      setTimeout(autoRestartOpencodeAfterCrash, 1000);
     }
   }
   refreshStatusMenu();
+}
+
+/**
+ * Unexpected-exit auto-restart. The reap in `handleOpencodeExit` only kills
+ * holders; the kernel may still hold the listen socket briefly, and a blind
+ * respawn onto a still-held port fails with ServeError and crashes again.
+ * So wait for the port to free, resolve it like a cold start when it stays
+ * stuck, and follow any port change with a WebUI restart (the WebUI bakes
+ * OPENCODE_BASE_URL at spawn time).
+ */
+async function autoRestartOpencodeAfterCrash() {
+  try {
+    const freed = await httpWaiter.waitForPortFree(OPENCODE_PORT, 60);
+    if (!freed) {
+      const resolved = await resolveOccupiedPort(
+        OPENCODE_PORT,
+        `${OPENCODE_URL}/global/health`,
+        'OpenCode',
+      );
+      if (resolved.reuse) {
+        log(`Reusing existing OpenCode on :${OPENCODE_PORT}`);
+        return;
+      }
+      if (resolved.port !== OPENCODE_PORT) {
+        const previousPort = OPENCODE_PORT;
+        setOpencodePort(resolved.port);
+        process.env.OPENCODE_PORT = String(OPENCODE_PORT);
+        process.env.OPENCODE_BASE_URL = OPENCODE_URL;
+        log(
+          `OpenCode port changed ${previousPort} → ${OPENCODE_PORT}; restarting WebUI to follow…`,
+        );
+        await stopWebOnly();
+        await sleep(500);
+        await spawnWeb();
+        const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+          proc: () => webProc,
+        });
+        if (!webReady) {
+          throw new Error(
+            `WebUI failed to become ready after OpenCode port change (${WEBUI_URL})`,
+          );
+        }
+      }
+    }
+    const opencodePath = opencodeUpgrader.findOpencode();
+    spawnOpencode(opencodePath);
+    const ready = await httpWaiter.waitUntilReady(
+      `${OPENCODE_URL}/global/health`,
+      'OpenCode',
+      45,
+      { proc: () => opencodeProc },
+    );
+    if (!ready) {
+      throw new Error(
+        `OpenCode failed to become ready on :${OPENCODE_PORT} (${OPENCODE_URL}/global/health)`,
+      );
+    }
+  } catch (restartErr) {
+    error(
+      `OpenCode auto-restart failed: ${restartErr instanceof Error ? restartErr.message : String(restartErr)}`,
+    );
+  }
 }
 
 function spawnOpencode(opencodePath) {
