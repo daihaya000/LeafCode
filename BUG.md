@@ -28,7 +28,7 @@
 | **BR-16** | 低 | ⬜ **未修正** | docs/specs の 5 仕様書がデータディレクトリを `%APPDATA%\opencode-webui` と記載したまま |
 | **BR-17** | 低 | ✅ **修正済み** | proxy.ts:133 の 403 エラーのみ「disabled in WebUI」残存（oc-server.ts と「LeafCode」に統一） |
 | **BR-18** | 低 | ✅ **修正済み** | host ログ文言に「WebUI」が 5 箇所残存 → index.js のログ・エラーメッセージ 6 箇所を「LeafCode」に統一（残存ゼロ） |
-| **BR-19** | 低 | ⬜ **未修正** | ブラウザ拡張ポップアップの日本語文言と build guard のコンソールメッセージに「WebUI」残存 |
+| **BR-19** | 低 | ✅ **修正済み** | 拡張ポップアップの日本語文言と build guard のコンソールメッセージ →「LeafCode」に統一（popup 2 箇所 + guard 5 箇所・テスト期待値も更新） |
 | **BR-20** | 低 | ✅ **修正済み** | 通知のフォールバックタイトル「OpenCode タスク」→「LeafCode タスク」（テスト期待値も更新） |
 | **BR-21** | 低 | ⬜ **未修正** | IMPROVEMENT.md / OPTIMIZATION.md のヘッダ「対象リポジトリ: OpenCodeWebUI」が旧名のまま |
 

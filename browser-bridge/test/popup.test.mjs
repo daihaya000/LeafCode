@@ -80,7 +80,7 @@ test('render shows a reconnecting state once paired but not yet connected, and h
 test('render shows a waiting-for-approval state while a pairing request is pending in the WebUI, with no code to type', () => {
   const document = setup();
   render({ connected: false, paired: false, pairingRequested: true, autoShareEnabled: false, sharedTabs: [] });
-  assert.equal(document.getElementById('status-text').textContent, 'WebUI での承認を待っています…');
+  assert.equal(document.getElementById('status-text').textContent, 'LeafCode での承認を待っています…');
   assert.equal(document.getElementById('status-dot').className, 'status-dot is-pending');
   assert.equal(document.getElementById('connect-section').hidden, false);
   assert.equal(document.getElementById('share').disabled, true);

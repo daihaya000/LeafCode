@@ -17,7 +17,7 @@ export function render(state) {
     text.textContent = 'ペアリング済み・再接続中…';
   } else if (state.pairingRequested) {
     dot.className = 'status-dot is-pending';
-    text.textContent = 'WebUI での承認を待っています…';
+    text.textContent = 'LeafCode での承認を待っています…';
   } else {
     dot.className = 'status-dot is-disconnected';
     text.textContent = '未ペアリング';
