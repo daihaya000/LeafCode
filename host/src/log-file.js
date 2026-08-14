@@ -40,6 +40,7 @@ function normalizeText(text) {
  * @param {{ ts: number, source: string, level: string, text: string }} entry
  * @returns {string}
  */
+// Test-only export (used by log-file.test.js).
 export function formatLogLine(entry) {
   const ts =
     entry && typeof entry.ts === 'number'
@@ -58,6 +59,7 @@ export function formatLogLine(entry) {
  * @param {number} maxBytes
  * @returns {boolean}
  */
+// Test-only export (used by log-file.test.js).
 export function shouldRotate(sizeBytes, maxBytes) {
   return (
     Number.isFinite(sizeBytes) &&
@@ -73,6 +75,7 @@ export function shouldRotate(sizeBytes, maxBytes) {
  * @param {number} index
  * @returns {string}
  */
+// Test-only export (used by log-file.test.js).
 export function rotateFilePath(dir, index) {
   return index === 0
     ? join(dir, LOG_FILENAME)
@@ -80,13 +83,14 @@ export function rotateFilePath(dir, index) {
 }
 
 /**
- * Pure helper: list the file paths involved in a rotation chain, oldest first.
+  * Pure helper: list the file paths involved in a rotation chain, oldest first.
  * Used by tests to assert the rename/delete plan without performing IO.
  *
  * @param {string} dir
  * @param {number} maxFiles
  * @returns {string[]} paths from oldest (to delete) to newest (active log)
  */
+// Test-only export (used by log-file.test.js).
 export function rotateFilePaths(dir, maxFiles) {
   const count = Math.max(1, Math.trunc(maxFiles));
   const paths = [];
@@ -94,6 +98,7 @@ export function rotateFilePaths(dir, maxFiles) {
   return paths;
 }
 
+// Test-only export (used by log-file.test.js).
 /**
  * Create a log file writer that appends entries to `host.log` and rotates
  * generations when the file grows past `maxBytes`. All fs failures are

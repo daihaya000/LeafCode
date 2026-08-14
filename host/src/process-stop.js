@@ -78,6 +78,7 @@ export function listChildPids(pid, deps = {}) {
  * @param {string} output
  * @returns {number[]}
  */
+// Test-only export (used by process-stop.test.js).
 export function parseChildPidOutput(output) {
   if (!output) return [];
   const ids = [];
@@ -95,6 +96,7 @@ export function parseChildPidOutput(output) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {Record<string, string>}
  */
+// Test-only export (used by process-stop.test.js).
 export function disposeAuthHeaders(env = process.env) {
   const password = env.OPENCODE_SERVER_PASSWORD;
   if (!password) return {};

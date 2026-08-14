@@ -59,6 +59,7 @@ function truncate(text) {
  * @param {number} [maxShare]
  * @returns {number} index into `list`
  */
+// Test-only export (used by log-buffer.test.js).
 export function pickEvictionIndex(list, maxShare = MAX_SHARE_PER_SOURCE) {
   if (!list || list.length === 0) return -1;
   const counts = new Map();

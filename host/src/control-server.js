@@ -54,6 +54,7 @@ const ROUTE_TABLE = [
  * @param {string} pathname
  * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | 'allow-firewall' | 'users' | 'auth' | 'auth-config' | 'browser-config' | null}
  */
+// Test-only export (used by control-server.test.js).
 export function matchControlRoute(method, pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
   const m = method.toUpperCase();
@@ -82,6 +83,7 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '0:0:0:0:0:0:0:
  * @param {number} [expectedPort]
  * @returns {boolean}
  */
+// Test-only export (used by control-server.test.js).
 export function isLoopbackHostHeader(hostHeader, expectedPort) {
   const raw = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
   if (!raw) return false;
@@ -251,6 +253,7 @@ function writeRevokedJtis(map) {
  * not read or write the real %APPDATA%\opencode-webui\revoked-sessions.json.
  * @param {{ persist?: boolean }} [options]
  */
+// Test-only export (used by control-server.test.js).
 export function createRevocationStore({ persist = true } = {}) {
   let revoked = persist ? readRevokedJtis() : new Map();
   return {
@@ -354,6 +357,7 @@ function getTrustedDeviceCookie(header) {
  * }} handlers
  * @returns {(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>}
  */
+// Test-only export (used by control-server.test.js).
 export function createControlRequestHandler(handlers) {
   // Shared across requests so a brute-force attempt cannot reset its own count.
   const throttle = handlers.loginThrottle ?? createLoginThrottle();
