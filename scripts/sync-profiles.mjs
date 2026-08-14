@@ -64,12 +64,18 @@ const CLI_PATHS = {
 };
 
 /**
+ * WebUI-only MCP servers must never leak into external profiles.
+ * Keep in sync with `web/src/lib/profiles/sync-engine.ts`.
+ */
+const isDistributable = (name) => name !== "browser-bridge";
+
+/**
  * Parse `~/.claude/settings.json`. Unlike the master `opencode.jsonc`, it must
  * be strict JSON; a corrupted file used to crash the script with a raw
  * stack trace. Returns null and a user-facing message instead.
  */
 if (dryRun) {
-  const plan = planSync({ paths: CLI_PATHS });
+  const plan = planSync({ paths: CLI_PATHS, isDistributable });
   if (!plan.ok) {
     console.error(`[sync-profiles] ${plan.error}`);
     process.exit(2);
@@ -84,7 +90,7 @@ if (dryRun) {
   process.exit(0);
 }
 
-const result = applySync({ paths: CLI_PATHS });
+const result = applySync({ paths: CLI_PATHS, isDistributable });
 if (!result.ok) {
   console.error(`[sync-profiles] ${result.error}`);
   process.exit(2);
