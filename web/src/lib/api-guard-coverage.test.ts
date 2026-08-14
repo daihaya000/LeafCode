@@ -138,6 +138,7 @@ describe("API guard coverage", () => {
       "/api/auth/logout",
       "/api/auth/session",
       "/api/health",
+      "/api/theme",
     ]);
   });
 

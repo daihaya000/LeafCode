@@ -30,12 +30,15 @@ const STATE_CHANGING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  *   would break process supervision. It reports liveness only.
  * - The auth routes are how an unauthenticated client discovers that it must log
  *   in and then does so, so they cannot require authorization themselves.
+ * - `/api/theme` serves public theme token definitions (read-only GET, no
+ *   secrets), so the theme applies before login as well.
  */
 export const PUBLIC_API_ROUTES = [
   "/api/health",
   "/api/auth/session",
   "/api/auth/login",
   "/api/auth/logout",
+  "/api/theme",
 ] as const;
 
 function forbidden(error: string, code?: string) {
