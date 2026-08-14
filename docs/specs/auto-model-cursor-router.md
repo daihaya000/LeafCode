@@ -1,6 +1,10 @@
 # WebUI Auto モード: Cursor Router 相当への拡張
 
 > 実装ステータス: ✅ 実装済み（参照: `web/src/lib/auto-model.ts` / `model-options.ts`）
+>
+> 追補: ルーティング設定のデータモデル・解決手順・設定 UI は
+> `docs/specs/auto-route-candidates.md`（候補リスト方式）が本仕様を上書きする。
+> 最適化モードの 3 値・tier 分類・シグナルは本仕様のまま。
 
 ## 背景
 
