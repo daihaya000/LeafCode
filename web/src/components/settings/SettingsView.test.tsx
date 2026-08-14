@@ -425,6 +425,29 @@ describe("SettingsView", () => {
     });
   });
 
+  it("keeps an edited threshold across tab switches (no draft loss)", async () => {
+    render(<SettingsView />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "全般" }));
+    const threshold = screen.getByRole("spinbutton", {
+      name: "コンテキスト使用率の閾値",
+    });
+    fireEvent.change(threshold, { target: { value: "88" } });
+    fireEvent.blur(threshold);
+
+    // Switching away and back must not lose the committed draft.
+    fireEvent.click(screen.getByRole("tab", { name: "エンジン" }));
+    fireEvent.click(screen.getByRole("tab", { name: "全般" }));
+
+    expect(
+      (
+        screen.getByRole("spinbutton", {
+          name: "コンテキスト使用率の閾値",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("88");
+  });
+
   it("exposes selected cost display options as pressed toggle buttons", async () => {
     render(<SettingsView />);
 
