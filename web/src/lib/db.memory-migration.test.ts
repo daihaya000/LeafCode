@@ -105,6 +105,9 @@ describe("memories FTS trigger sync", () => {
       .run(legacyProject.id, legacyOrphan.id);
 
     // Re-running schema init is what an upgrade does; it must repair the rows.
+    // Stamp the db back to v0 so the reopen path runs the v1 migration
+    // (a v1 -> v1 reopen is a no-op by design).
+    getDb().pragma("user_version = 0");
     getDb().close();
     const reopened = getDb();
     const rows = reopened
