@@ -5,7 +5,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 const { ocServer, runGit } = vi.hoisted(() => ({ ocServer: vi.fn(), runGit: vi.fn() }));
-vi.mock("./oc-server", () => ({ ocServer }));
+vi.mock("./oc-server", async () => {
+  const actual = await vi.importActual<typeof import("./oc-server")>("./oc-server");
+  return { ...actual, ocServer };
+});
 vi.mock("./git", () => ({ runGit }));
 const { browserBrokerFetch } = vi.hoisted(() => ({ browserBrokerFetch: vi.fn() }));
 vi.mock("./browser-bridge", () => ({ browserBrokerFetch }));
