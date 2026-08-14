@@ -117,4 +117,38 @@ describe("/api/auth/users host-only guard", () => {
     ];
     expect((init.headers as Record<string, string>).cookie).toBeUndefined();
   });
+
+  it("marks a loopback caller as local so the host treats it as admin", async () => {
+    await POST(req(LOCAL, { username: "alice", password: "secret" }));
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect((init.headers as Record<string, string>)["x-ocw-local-request"]).toBe("1");
+  });
+
+  it("does not mark a proxied LAN caller as local", async () => {
+    // A LAN client through the reverse proxy has a non-loopback first XFF hop,
+    // so it must NOT be marked local. verifySession here hits the mocked
+    // global.fetch (which never yields a username), so the route 403s before
+    // ever forwarding to the host /users endpoint.
+    const request = new NextRequest("http://127.0.0.1:3000/api/auth/users", {
+      method: "POST",
+      headers: {
+        host: LOCAL,
+        "x-forwarded-for": "192.168.1.50",
+        "content-type": "application/json",
+        cookie: "webui_session=valid-but-unverified-in-this-test",
+      },
+      body: JSON.stringify({ username: "alice", password: "secret" }),
+    });
+    const res = await POST(request);
+    expect(res.status).toBe(403);
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls as [
+      string,
+      RequestInit,
+    ][];
+    const usersCalls = calls.filter(([url]) => url.endsWith("/users"));
+    expect(usersCalls).toEqual([]);
+  });
 });

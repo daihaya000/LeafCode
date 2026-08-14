@@ -392,6 +392,70 @@ test('POST /users rejects a non-admin session', async () => {
   assert.equal(res.statusCode, 403);
 });
 
+test('POST /users treats a loopback caller as admin without a session', async () => {
+  let upserted = null;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      isAdmin: () => false,
+      upsertUser: (username, password) => {
+        upserted = { username, password };
+        return { ok: true };
+      },
+    }),
+    sessionSecret: 'test-secret',
+  });
+  const res = await postJson(
+    handle,
+    '/users',
+    { username: 'alice', password: 'secret' },
+    { 'x-ocw-local-request': '1' },
+  );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(upserted, { username: 'alice', password: 'secret' });
+});
+
+test('DELETE /users treats a loopback caller as admin without a session', async () => {
+  let deleted = null;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      isAdmin: () => false,
+      deleteUser: (username) => {
+        deleted = username;
+        return { ok: true };
+      },
+    }),
+    sessionSecret: 'test-secret',
+  });
+  const res = fakeResponse();
+  const req = new MockReadable(JSON.stringify({ username: 'alice' }), {
+    'x-ocw-local-request': '1',
+  });
+  req.method = 'DELETE';
+  req.url = '/users';
+  await handle(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(deleted, 'alice');
+});
+
+test('a loopback caller that is not admin is not rejected even with a stale non-admin session', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({ isAdmin: () => false }),
+    sessionSecret: 'test-secret',
+  });
+  const res = await postJson(
+    handle,
+    '/users',
+    { username: 'mallory', password: 'pw' },
+    { 'x-ocw-local-request': '1' },
+  );
+  // The upsert is unsupported in the stub, so this is 400 (unsupported), not
+  // 403 — the point is that the admin gate passed.
+  assert.notEqual(res.statusCode, 403);
+});
+
 test('DELETE /users rejects a non-admin session', async () => {
   const handle = createControlRequestHandler({
     ...noopHandlers,
@@ -888,6 +952,82 @@ test('POST /auth/config rejects a non-admin session', async () => {
   });
   const cookie = await adminCookie(handle);
   const res = await postJson(handle, '/auth/config', { windowsAuth: true }, cookie);
+  assert.equal(res.statusCode, 403);
+});
+
+test('POST /auth/config treats a loopback caller as admin without a session', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({ isAdmin: () => false }),
+    sessionSecret: 'test-secret',
+  });
+  const res = await postJson(
+    handle,
+    '/auth/config',
+    { windowsAuth: true },
+    { 'x-ocw-local-request': '1' },
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.windowsAuth, true);
+});
+
+test('GET /browser/config treats a loopback caller as admin without a session', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub(),
+    browserConfig: {
+      read: () => ({ autoOpenBrowser: true }),
+      write: () => ({ autoOpenBrowser: true }),
+      isAdmin: () => false,
+    },
+    sessionSecret: 'test-secret',
+  });
+  const res = fakeResponse();
+  await handle(
+    {
+      method: 'GET',
+      url: '/browser/config',
+      headers: { host: '127.0.0.1:18765', 'x-ocw-local-request': '1' },
+    },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { autoOpenBrowser: true });
+});
+
+test('POST /browser/config treats a loopback caller as admin without a session', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub(),
+    browserConfig: {
+      read: () => ({ autoOpenBrowser: false }),
+      write: (body) => ({ autoOpenBrowser: body.autoOpenBrowser === true }),
+      isAdmin: () => false,
+    },
+    sessionSecret: 'test-secret',
+  });
+  const res = await postJson(
+    handle,
+    '/browser/config',
+    { autoOpenBrowser: true },
+    { 'x-ocw-local-request': '1' },
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.autoOpenBrowser, true);
+});
+
+test('POST /browser/config rejects a non-local caller without an admin session', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub(),
+    browserConfig: {
+      read: () => ({ autoOpenBrowser: false }),
+      write: () => ({ autoOpenBrowser: false }),
+      isAdmin: () => false,
+    },
+    sessionSecret: 'test-secret',
+  });
+  const res = await postJson(handle, '/browser/config', { autoOpenBrowser: true });
   assert.equal(res.statusCode, 403);
 });
 

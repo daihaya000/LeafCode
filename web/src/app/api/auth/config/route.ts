@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveHostControlUrl } from "@/lib/host-control";
 import { requireAuthorized } from "@/lib/api-guard";
+import { hostForwardHeaders } from "@/lib/local-request";
 import { withReadCache } from "@/lib/http-cache";
 
 export const runtime = "nodejs";
@@ -18,9 +19,12 @@ async function forwardToHost(method: string, req: NextRequest, body?: unknown) {
   };
   // Forwarding the browser's session cookie lets the host verify who is
   // asking. Without it, POST here always 403s from the host now that
-  // toggling Windows-account login requires an admin session.
+  // toggling Windows-account login requires an admin session. A loopback
+  // caller (operator on the host PC) is additionally marked as local, which
+  // the host treats as admin without a session.
   const cookie = req.headers.get("cookie");
   const headers: Record<string, string> = cookie ? { cookie } : {};
+  Object.assign(headers, hostForwardHeaders(req));
   if (body !== undefined) {
     headers["content-type"] = "application/json";
     init.body = JSON.stringify(body);

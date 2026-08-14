@@ -16,6 +16,25 @@ import { createLoginThrottle } from './windows-auth.js';
  */
 const CLIENT_IP_HEADER = 'x-ocw-client-ip';
 
+/**
+ * Set by the BFF when the caller reached it over loopback, meaning the
+ * operator is on the host machine itself. The BFF computes this from Host /
+ * X-Forwarded-For with the same fail-safe logic it uses to authorize every
+ * API, so a LAN client cannot force it: a spoofed header sent straight to
+ * this control plane only works from a local process, which already has full
+ * OS access (it could edit users.json directly). This turns the admin-only
+ * operations into no-login operations for the host PC, mirroring how
+ * `/api/auth/session` already reports `loginRequired: false` for loopback.
+ */
+const LOCAL_REQUEST_HEADER = 'x-ocw-local-request';
+
+/** @param {import('http').IncomingMessage} req */
+function isLocalRequest(req) {
+  const raw = req.headers?.[LOCAL_REQUEST_HEADER];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value === '1';
+}
+
 /** @param {import('http').IncomingMessage} req */
 function clientIpOf(req) {
   const raw = req.headers?.[CLIENT_IP_HEADER];
@@ -500,11 +519,13 @@ export function createControlRequestHandler(handlers) {
 
     // Mutating operations (POST/DELETE) require an admin session. The one
     // exception is the first POST on a fresh install: there cannot be an
-    // admin session until that first admin user exists.
+    // admin session until that first admin user exists. A local caller (the
+    // operator on the host machine) is treated as admin without a session.
     const session = await resolveSession(req);
     const ip = clientIpOf(req) ?? undefined;
+    const localAdmin = isLocalRequest(req);
     const bootstrap = method === 'POST' && !authStore.hasUsers();
-    if ((!session && !bootstrap) || (session && authStore.isAdmin?.(session.username) !== true)) {
+    if (!localAdmin && ((!session && !bootstrap) || (session && authStore.isAdmin?.(session.username) !== true))) {
       auditLog.record({
         action: 'authz.denied',
         actor: session?.username,
@@ -529,7 +550,7 @@ export function createControlRequestHandler(handlers) {
       const result = authStore.deleteUser(username);
       auditLog.record({
         action: 'user.delete',
-        actor: session.username,
+        actor: session?.username ?? 'local',
         target: username,
         ip,
         result: result.ok ? 'allow' : 'deny',
@@ -598,7 +619,7 @@ export function createControlRequestHandler(handlers) {
     }
     const session = await resolveSession(req);
     const configIp = clientIpOf(req) ?? undefined;
-    if (!session || authStore.isAdmin?.(session.username) !== true) {
+    if (!isLocalRequest(req) && (!session || authStore.isAdmin?.(session.username) !== true)) {
       auditLog.record({
         action: 'authz.denied',
         actor: session?.username,
@@ -630,7 +651,7 @@ export function createControlRequestHandler(handlers) {
     const saved = authStore.writeConfig({ windowsAuth: body.windowsAuth });
     auditLog.record({
       action: 'authconfig.update',
-      actor: session.username,
+      actor: session?.username ?? 'local',
       target: 'windowsAuth',
       ip: configIp,
       result: 'allow',
@@ -657,7 +678,7 @@ export function createControlRequestHandler(handlers) {
     }
     const session = await resolveSession(req);
     const noUsers = handlers.authStore?.hasUsers?.() !== true;
-    if (!noUsers && (!session || browserConfig.isAdmin?.(session.username) !== true)) {
+    if (!isLocalRequest(req) && !noUsers && (!session || browserConfig.isAdmin?.(session.username) !== true)) {
       res.writeHead(403, JSON_HEADERS);
       res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
       return;

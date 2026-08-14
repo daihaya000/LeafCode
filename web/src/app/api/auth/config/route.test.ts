@@ -145,4 +145,13 @@ describe("/api/auth/config", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>).cookie).toBeUndefined();
   });
+
+  it("marks a loopback caller as local so the host treats it as admin", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(hostConfig({ windowsAuth: true }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await POST(req(LOCAL, { windowsAuth: true }));
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["x-ocw-local-request"]).toBe("1");
+  });
 });

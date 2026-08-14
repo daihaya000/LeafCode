@@ -1,6 +1,23 @@
 import { NextResponse } from "next/server";
 import { verifySession } from "@/lib/session";
 
+/**
+ * Header the BFF sends to the host control plane when the caller reached the
+ * BFF over loopback. The host treats a `1` as an admin caller without a
+ * session, so the operator on the host PC never hits "admin session required".
+ *
+ * The BFF computes the value itself from Host / X-Forwarded-For (the same
+ * fail-safe `isLocalHostRequest` logic that authorizes every API), and the
+ * forwarding routes never copy a client-supplied value of this header — a LAN
+ * client cannot force it.
+ */
+export const LOCAL_REQUEST_HEADER = "x-ocw-local-request";
+
+/** Headers to add when forwarding a request to the host control plane. */
+export function hostForwardHeaders(req: Request): Record<string, string> {
+  return isLocalHostRequest(req) ? { [LOCAL_REQUEST_HEADER]: "1" } : {};
+}
+
 const LOOPBACK_HOSTS = new Set([
   "127.0.0.1",
   "::1",

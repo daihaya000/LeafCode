@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveHostControlUrl } from "@/lib/host-control";
 import { requireAuthorized } from "@/lib/api-guard";
+import { hostForwardHeaders } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,9 @@ async function forward(method: string, req: NextRequest, body?: unknown) {
   const headers: Record<string, string> = {};
   const cookie = req.headers.get("cookie");
   if (cookie) headers.cookie = cookie;
+  // A loopback caller (operator on the host PC) is marked local so the host
+  // treats it as admin without a session.
+  Object.assign(headers, hostForwardHeaders(req));
   const init: RequestInit = { method, headers, cache: "no-store", signal: AbortSignal.timeout(5000) };
   if (body !== undefined) {
     headers["content-type"] = "application/json";
