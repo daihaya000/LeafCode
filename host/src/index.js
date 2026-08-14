@@ -14,6 +14,7 @@ import { randomBytes } from 'crypto';
 import { networkInterfaces } from 'os';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { dataDir } from '../../scripts/lib/data-dir.mjs';
 import SysTrayImport from 'systray2';
 import { WebSocketServer } from 'ws';
 import { formatServiceStatus } from './service-status.js';
@@ -120,7 +121,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const HOST_DIR = join(__dirname, '..');
 const REPO_ROOT = join(HOST_DIR, '..');
 const WEB_DIR = join(REPO_ROOT, 'web');
-const DATA_DIR = join(process.env.APPDATA, 'opencode-webui');
+const DATA_DIR = dataDir();
 /**
  * Production builds and `next start` both run in the hard-link mirror outside
  * the OneDrive-synced tree (scripts/web-build-mirror.mjs), so the served files
