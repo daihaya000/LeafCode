@@ -433,7 +433,7 @@ describe("TaskView", () => {
         screen.getByRole("button", { name: /^会話$/ }).className,
       ).toContain("border-primary");
     });
-    expect(localStorage.getItem("webui:side-tab")).toBe("chat");
+    expect(localStorage.getItem("webui:side-panel:tab")).toBe("chat");
   });
 
   it("allows switching away from conversation after entering split view", async () => {
@@ -451,7 +451,7 @@ describe("TaskView", () => {
     fireEvent.click(filesTab);
 
     expect(filesTab.className).toContain("border-primary");
-    expect(localStorage.getItem("webui:side-tab")).toBe("diff");
+    expect(localStorage.getItem("webui:side-panel:tab")).toBe("diff");
   });
 
   it("closes a secondary split pane from the task header", async () => {
