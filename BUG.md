@@ -112,6 +112,7 @@
 > - **.gitignore の rebrand 追従（ターン 18）**: `.leafcode/` を追加し旧 `.opencode-webui/` も除外維持（`fe439fc5`、pre-rebrand clone の漏れ防止として正しい）。`OpenCodeWebUI.exe.old` → `LeafCode.exe.old`（`a1316e3f`）。データディレクトリ（%APPDATA% 下）はリポジトリ外なので ignore 不要。→ 健全。
 > - **実環境 host.log の確認（ターン 22）**: `%APPDATA%\leafcode\host.log`（524 行）を読み取り専用で確認。rebrand 後の起動は正常（`Production LeafCode build completed` → `Starting LeafCode (production) on 0.0.0.0:3000` → `LeafCode is ready` / `OpenCode is ready`）。「Failed to seed Caddyfile: ENOENT」は host テスト実行時の副作用ログ（`ocw-caddyfile-1M2Ks9` はテスト temp dir）で実運用エラーではない。「Turbopack build encountered 52 warnings」は Dynamic filesystem access 警告（rebrand と無関係・既存）。BR-11 の直接証跡（scheduler 系の起動ログ）は**確認できず**（start 関数群は起動ログを出力しないため・弱い証跡）。→ 起動経路は健全。
 > - **ログ source 名「webui」の残存（ターン 22・記録のみ）**: host が子プロセス（next start）のログに付ける source タグは `'webui'` のまま（`host/src/index.js` の spawnWeb の recordLog source・`HostLogPanel.tsx:9` の `LogSource` 型に `"webui"`）。ログビューアの各行に `[webui]` と表示される（HostLogPanel は source をそのまま表示 `:183`）。2dd9bbeb の統一対象外（内部タグ）で、**source 名を変えると旧ログ（webui タグ）の表示・フィルタと不整合になるため変更リスクあり** → goal-loop マーカーと同様に**変更しないこと**（再調査防止メモ）。UI 文言（HostLogPanel.tsx の説明文「OpenCode / LeafCode / Caddy / ビルド」）は更新済み。
+> - **「OpenCode」フォールバック名の網羅（ターン 24）**: 「OpenCode」を**デフォルト名・フォールバック名**として使う箇所は `notify.ts:34`（「OpenCode タスク」・BR-20）**のみ**（`git grep "OpenCode タスク|OpenCode プロジェクト|..."` で確認）。他の「OpenCode」出現は全てエンジン参照（AgentsSettings の「OpenCode の既定」（AgentScope 既定・正しい）/ コメントのエンジン説明）で rebrand 対象外。→ BR-20 が唯一のフォールバック名残り。
 
 ---
 
