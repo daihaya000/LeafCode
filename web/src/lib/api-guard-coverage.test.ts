@@ -42,20 +42,32 @@ function read(rel: string): string {
 /**
  * Some routes only re-export a handler that lives outside `web/src`, e.g.
  * `export { GET } from "@addons/codexbar/api/usage"`. The guard has to be in the
- * implementation, so resolve and read that file too.
+ * implementation, so resolve and read that file too. Same for re-exports
+ * through the `@/lib/` alias (e.g. the thin `/api/opencode/[...path]` route
+ * that re-exports `proxy` from `@/lib/opencode-proxy/proxy`).
  */
 function withReExportedSources(rel: string, text: string): string {
   let combined = text;
+  const tryRead = (candidate: string): boolean => {
+    try {
+      combined += readFileSync(candidate, "utf8");
+      return true;
+    } catch {
+      return false;
+    }
+  };
   for (const m of text.matchAll(
     /export\s*\{[^}]*\}\s*from\s*["']@addons\/([^"']+)["']/g,
   )) {
     for (const ext of [".ts", ".tsx"]) {
-      try {
-        combined += readFileSync(join(repoRoot, "addons", m[1] + ext), "utf8");
-        break;
-      } catch {
-        // try the next extension
-      }
+      if (tryRead(join(repoRoot, "addons", m[1] + ext))) break;
+    }
+  }
+  for (const m of text.matchAll(
+    /export\s*\{[^}]*\}\s*from\s*["']@\/lib\/([^"']+)["']/g,
+  )) {
+    for (const ext of [".ts", ".tsx"]) {
+      if (tryRead(join(webRoot, "src", "lib", m[1] + ext))) break;
     }
   }
   return combined;
@@ -131,8 +143,10 @@ describe("API guard coverage", () => {
 
   it("routes the OpenCode catch-all proxy through the guard", () => {
     // Highest-value target: an unguarded proxy here is remote code execution,
-    // because the agent runs shell commands on the host.
-    const text = read("web/src/app/api/opencode/[...path]/route.ts");
+    // because the agent runs shell commands on the host. The route is a thin
+    // re-export of `@/lib/opencode-proxy/proxy`, so resolve that source too.
+    const rel = "web/src/app/api/opencode/[...path]/route.ts";
+    const text = withReExportedSources(rel, read(rel));
     expect(text).toContain("requireAuthorized");
     const guardAt = text.indexOf("requireAuthorized(req)");
     const paramsAt = text.indexOf("await context.params");
