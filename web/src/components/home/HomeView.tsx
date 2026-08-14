@@ -116,6 +116,7 @@ import {
 } from "@/lib/agent-mention";
 import { useSlashCommands } from "@/lib/useSlashCommands";
 import { useAgents } from "@/lib/useAgents";
+import { NextTaskSuggest } from "@/components/home/NextTaskSuggest";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import type { ProviderModelsDto } from "@/lib/extensions";
@@ -842,6 +843,27 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     const el = textareaRef.current;
     if (el) setCursor(el.selectionStart ?? 0);
   }, []);
+
+  /**
+   * Write an accepted next-task proposal into the composer. Mirrors
+   * TaskView's restoreToComposer: the text replaces the current prompt and
+   * the caret moves to the end. Never submits — starting the task stays an
+   * explicit user action.
+   */
+  const applySuggestion = useCallback(
+    (suggestion: string) => {
+      setPrompt(suggestion);
+      setCursor(suggestion.length);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(suggestion.length, suggestion.length);
+        autoResize();
+      });
+    },
+    [autoResize],
+  );
 
   const applySlash = useCallback(
     (name: string) => {
@@ -1664,6 +1686,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               >
                 {!submitting && <ArrowUp className="h-4.5 w-4.5" />}
               </Button>}
+          />
+
+          <NextTaskSuggest
+            projectId={projectId}
+            model={model || undefined}
+            agent={agent || undefined}
+            disabled={submitting || !engineOk}
+            onApply={applySuggestion}
           />
 
           {loaded && !engineOk && (

@@ -11,7 +11,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui";
 import { sendJson } from "@/lib/client";
-import { NEXT_ACTION_PREVIOUS_MAX_COUNT } from "@/lib/next-action-text";
+import {
+  NEXT_ACTION_PREVIOUS_MAX_COUNT,
+  parseSuggestions,
+} from "@/lib/next-action-text";
 
 type NextActionState =
   | { kind: "idle" }
@@ -38,27 +41,6 @@ export type NextActionProps = {
    */
   isMd?: boolean;
 };
-
-/** Parse the API response, preferring `suggestions` and falling back to the legacy `suggestion` field. */
-function parseSuggestions(res: {
-  suggestion?: unknown;
-  suggestions?: unknown;
-}): string[] {
-  const out: string[] = [];
-  if (Array.isArray(res.suggestions)) {
-    for (const s of res.suggestions) {
-      if (typeof s === "string" && s.trim() && !out.includes(s)) out.push(s);
-    }
-  }
-  if (
-    out.length === 0 &&
-    typeof res.suggestion === "string" &&
-    res.suggestion.trim()
-  ) {
-    out.push(res.suggestion);
-  }
-  return out;
-}
 
 const panelClass = "mt-2";
 const quietPanelClass =

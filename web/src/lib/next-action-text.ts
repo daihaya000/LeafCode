@@ -196,6 +196,34 @@ export function normalizeSuggestion(raw: string): string {
 }
 
 /**
+ * Parse a suggestion API response, preferring the `suggestions` list and
+ * falling back to the legacy single `suggestion` field. Non-string, empty and
+ * duplicate entries are dropped.
+ *
+ * Shared by the task-scoped NextAction UI and the Home next-task UI, which
+ * both consume the same `{ suggestion, suggestions }` response shape.
+ */
+export function parseSuggestions(res: {
+  suggestion?: unknown;
+  suggestions?: unknown;
+}): string[] {
+  const out: string[] = [];
+  if (Array.isArray(res.suggestions)) {
+    for (const s of res.suggestions) {
+      if (typeof s === "string" && s.trim() && !out.includes(s)) out.push(s);
+    }
+  }
+  if (
+    out.length === 0 &&
+    typeof res.suggestion === "string" &&
+    res.suggestion.trim()
+  ) {
+    out.push(res.suggestion);
+  }
+  return out;
+}
+
+/**
  * Extract the assistant text from a synchronous prompt response. The
  * OpenCode `/session/{id}/prompt` response shape is
  * `{ info: AssistantMessage, parts: Part[] }`. The first text part is the
