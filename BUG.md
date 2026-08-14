@@ -240,3 +240,26 @@ vitest 287 ファイル・3561 テスト / host 395 テスト / browser-bridge 9
 - ターン40 追加レビュー: `opencode-schema-freshness.test.ts`（spec の path 面 vs 生成 `.d.ts` の一致・`OC_PATH_TEMPLATES` が spec に存在・`VERSION` 形式）→ 健全（stale 生成ファイルによる誤検証を防ぐ）。`StatusBadge.tsx` → 健全。新規確定バグなし。
 - ターン41 追加レビュー: TaskView の busy→idle 遷移（`playSessionCompleteSound`・`setDiffKey`・`refreshTask`・`refreshTodos`・`resync`・`refreshGoalLoop` を scope 一致時のみ、null は reset プレースホルダと判別）→ 健全。`useVoiceInput` の TaskView/HomeView 統合（`disabled` 時 auto-stop）→ 健全。新規確定バグなし。
 - `build.log` の `useSessionStream.ts` 構文エラーは古い失敗記録で、現ファイルは正常（tsc PASS）。
+
+---
+
+## 対応記録（2026-08-14 修正ラウンド）
+
+**BR-1〜10 の全項目を対応完了**（コミット群 `86a84c4` 〜 `3acac90`）:
+
+| ID | 修正内容 | コミット |
+|----|---------|---------|
+| BR-1 | index.js に `removeBrokenWebBuild` import 追加（本番ビルド ReferenceError 解消） | `86a84c4` |
+| BR-2 | TaskView.test.tsx の localStorage キー期待を新キーへ更新 | `b5dba3a` |
+| BR-3 | マイグレーション再オープンテストを v0 アップグレード相当に修正 | `d709c75` |
+| BR-4 | タブ切替で編集値が失われないことを検証するテスト追加（実害なしを実証） | `cd0c37d` |
+| BR-5 | CLI 同期で browser-bridge を外部プロファイルへ漏らさない（isDistributable 注入） | `e1b4e31` |
+| BR-6 | stopOpencodeOnly に opencodeUrl 等を注入し /global/dispose を復活 | `1e73334` |
+| BR-7 | lock-file 内部呼び出しの引数伝搬 4 箇所を修正 + 専用テスト 6 本 | `9be2b58` |
+| BR-8 | ガード網羅テストが @/lib/ re-export を追跡できるよう拡張 | `98c3ccd` |
+| BR-9 | guard の不要 export 除去 + host テストは共有実装を参照 | `979b4f0` |
+| BR-10 | workflow 統合テストの oc-server mock に unwrapOcData を提供 | `3acac90` |
+
+**検証結果**: web 全体 vitest は 9 件失敗 → **321→325 ファイル / 3918 本 PASS（0 失敗）** に改善。
+host 417→462 本 PASS。tsc --noEmit クリーン。修正はすべてテストで保護済み。
+

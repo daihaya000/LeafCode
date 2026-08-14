@@ -18,6 +18,27 @@ opencode-proxy 65 本 / SettingsView 32 本 / git 77 本 / memory 44 本 / workf
 **テスト不足の分割モジュール** の 3 系統に分類できる。**OR-1〜23（高 2 / 中 3 / 低 18）**。
 バグは BR-1〜10（高 1 / 中 7 / 低 2、うち web 全体 vitest の 9 件失敗を説明）を BUG.md に記録。
 
+## 対応記録（2026-08-14）
+
+**OR-1〜23 の全項目を対応完了**（調査→修正は同日実施、コミット群 `2e1ea3e` 〜 `c79ff24`）:
+
+- **構造・整理**: OR-1（index.js 未使用 import 13 個削除）/ OR-3（goal-loop 循環 import 解消）/
+  OR-4（useSessionStream 純ロジック抽出）/ OR-5（モデル選択 state 共通フック化）/
+  OR-6（テスト専用 export 明示）/ OR-7（taskkill ヘルパー集約）/ OR-8（TaskView JSX 抽出）/
+  OR-9（spawnOpencode 分割 95→36 行）/ OR-11（resolveHostControlUrl の dataDir 追従）/
+  OR-12（index.js DATA_DIR 共有化）/ OR-13（createSettingSync 3 モジュール移行）/
+  OR-15（memory-server 共有 dataDir 化）/ OR-16（specs バッジ 26 本付与）/
+  OR-17（CI Node 24 統一）/ OR-19（lib→components 逆依存解消）/ OR-21（キャッシュ値一元化）/
+  OR-10（user_version トランザクション内移動）
+- **テスト追加**: OR-2（分割モジュール 44 本）/ OR-14（goal-state 10 本）/ OR-18（write_conflict
+  blockedNodeIds 検証）/ OR-20（useSubscriptionOAuth 5 本）/ OR-22（PermissionGhostSelect 6 本）/
+  OR-23（task-cost 13 本）
+- **検証結果**: web 325 ファイル 3918 本 PASS（1 skipped）/ host 462 本 PASS / browser-bridge 91 本
+  PASS / tsc --noEmit クリーン
+- **並行セッション対応**: 別エージェントのコミット（`48fa20a` / `c305109`）を検出し、自分が
+  作っていない差分は触らず残置。OR-8 は別エージェントが ComposerStatusMessages をインライン化
+  したため、キュー待ち表示を別ブロックで抽出して対応
+
 ---
 
 ## 高（優先的に片付ける）
