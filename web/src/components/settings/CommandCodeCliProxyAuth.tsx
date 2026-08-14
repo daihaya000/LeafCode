@@ -1,18 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Badge, Button } from "@/components/ui";
-import { getJson, sendJson } from "@/lib/client";
+import { getJson } from "@/lib/client";
 
 type AuthResponse = { connected?: boolean };
 
 export function CommandCodeCliProxyAuth({ showHeading = true }: { showHeading?: boolean }) {
   const [connected, setConnected] = useState(false);
-  const [key, setKey] = useState("");
-  const [state, setState] = useState<"loading" | "ready" | "saving" | "saved" | "error">("loading");
-  const [message, setMessage] = useState<string | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const mountedRef = useRef(false);
 
-  useEffect(() => {
-    mountedRef.current = true;
+  const load = () => {
+    setState("loading");
     void getJson<AuthResponse>("/api/provider/commandcode/auth")
       .then((result) => {
         if (!mountedRef.current) return;
@@ -22,26 +20,13 @@ export function CommandCodeCliProxyAuth({ showHeading = true }: { showHeading?: 
       .catch(() => {
         if (mountedRef.current) setState("error");
       });
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    load();
     return () => { mountedRef.current = false; };
   }, []);
-
-  const save = async () => {
-    if (!key.trim() || state === "saving") return;
-    setState("saving");
-    setMessage(null);
-    try {
-      await sendJson("POST", "/api/provider/commandcode/auth", { key });
-      if (!mountedRef.current) return;
-      setKey("");
-      setConnected(true);
-      setState("saved");
-      setMessage("保存しました。反映にはOpenCodeの再起動が必要です。");
-    } catch (cause) {
-      if (!mountedRef.current) return;
-      setState("error");
-      setMessage(cause instanceof Error ? cause.message : "CommandCode APIキーを保存できませんでした");
-    }
-  };
 
   return (
     <section aria-label={showHeading ? undefined : "CommandCode CLI Proxy"} aria-labelledby={showHeading ? "commandcode-cli-proxy-heading" : undefined}>
@@ -53,15 +38,19 @@ export function CommandCodeCliProxyAuth({ showHeading = true }: { showHeading?: 
               <h3 className="text-sm font-semibold text-text">CommandCode CLI Proxy</h3>
               {state !== "loading" && state !== "error" && <Badge tone={connected ? "success" : "neutral"}>{connected ? "接続済み" : "未接続"}</Badge>}
             </div>
-            <p className="mt-1 text-xs text-faint">CommandCode CLIをローカルプロキシ経由で使用します。認証キーをCLI互換の認証ストアへ保存します。APIへ直接接続せず、CLI経由のローカルプロキシを使用します。</p>
+            <p className="mt-1 text-xs text-faint">
+              CommandCode CLIをローカルプロキシ経由で使用します。認証情報はCommandCode CLI側で管理されるため、LeafCodeでAPIキーを入力・保存する必要はありません。
+            </p>
           </div>
-          <div className="flex w-full shrink-0 gap-2 sm:w-auto">
-            <input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="CommandCode CLI Proxy認証キー" aria-label="CommandCode CLI Proxy認証キー" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-primary sm:w-56" />
-            <Button size="sm" onClick={() => void save()} disabled={!key.trim() || state === "saving"} busy={state === "saving"}>保存</Button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {state === "loading" && <span className="text-xs text-faint">確認中…</span>}
+            {state === "error" && <Button variant="secondary" size="sm" onClick={load}>再試行</Button>}
+            {state === "ready" && !connected && <Button variant="secondary" size="sm" onClick={load}>再確認</Button>}
           </div>
         </div>
-        {state === "saved" && message && <p className="mt-3 text-xs text-success" aria-live="polite">{message}</p>}
-        {state === "error" && message && <p className="mt-3 text-xs text-danger" role="alert">{message}</p>}
+        <p className="mt-3 text-xs text-muted">
+          未認証の場合はターミナルで <code className="rounded bg-bg px-1.5 py-0.5 font-mono text-text">command-code login</code> を実行し、認証後に再確認してください。
+        </p>
       </div>
     </section>
   );

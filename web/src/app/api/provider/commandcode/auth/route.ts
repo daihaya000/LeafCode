@@ -7,6 +7,10 @@ import { requireAuthorized } from "@/lib/api-guard";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// CommandCode CLI Proxy delegates authentication entirely to the `command-code`
+// CLI; WebUI never stores an API key itself. This mirrors the auth-file
+// discovery logic in vendor/commandcode-cli-proxy so the badge can reflect the
+// real login state without duplicating the proxy.
 const secretPath = () => path.join(os.homedir(), ".commandcode", "auth.json");
 
 function readSecrets(): Record<string, unknown> {
@@ -20,49 +24,10 @@ function readSecrets(): Record<string, unknown> {
   }
 }
 
-function writeSecrets(secrets: Record<string, unknown>): void {
-  const file = secretPath();
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const temp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(temp, `${JSON.stringify(secrets, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  fs.renameSync(temp, file);
-  fs.chmodSync(file, 0o600);
-}
-
 export async function GET(req: Request) {
   const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const token = readSecrets().apiKey;
   return NextResponse.json({ connected: typeof token === "string" && token.length > 0 });
-}
-
-export async function POST(req: Request) {
-  const denied = await requireAuthorized(req);
-  if (denied) return denied;
-
-  const body = (await req.json().catch(() => undefined)) as { key?: unknown } | undefined;
-  if (typeof body?.key !== "string" || body.key.trim().length === 0 || body.key.length > 4096) {
-    return NextResponse.json({ error: "CommandCode CLI Proxy認証キーを入力してください" }, { status: 400 });
-  }
-  try {
-    writeSecrets({ ...readSecrets(), apiKey: body.key.trim(), userId: "webui", userName: "WebUI", keyName: "webui", authenticatedAt: new Date().toISOString() });
-    return NextResponse.json({ ok: true, requiresRestart: true });
-  } catch {
-    return NextResponse.json({ error: "CommandCode CLI Proxy認証キーの保存に失敗しました" }, { status: 500 });
-  }
-}
-
-export async function DELETE(req: Request) {
-  const denied = await requireAuthorized(req);
-  if (denied) return denied;
-
-  try {
-    const secrets = readSecrets();
-    for (const key of ["apiKey", "userId", "userName", "keyName", "authenticatedAt"]) delete secrets[key];
-    writeSecrets(secrets);
-    return NextResponse.json({ ok: true, requiresRestart: true });
-  } catch {
-    return NextResponse.json({ error: "CommandCode CLI Proxy認証の解除に失敗しました" }, { status: 500 });
-  }
 }

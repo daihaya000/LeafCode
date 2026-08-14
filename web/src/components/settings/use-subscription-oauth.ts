@@ -4,8 +4,8 @@ import { getJson, sendJson } from "@/lib/client";
 /**
  * OAuth サブスクリプション認証カードの共通ロジック
  * （REFACTORING_PLAN P5-d / IMPROVEMENT 1-3b）。
- * ClaudeSubscriptionAuth / OpenAISubscriptionAuth の状態機械・接続確認・
- * ポーリング・認証開始を 1 実装に集約する。表示は各コンポーネントが行う。
+ * OpenAISubscriptionAuth の状態機械・接続確認・ポーリング・認証開始を
+ * 1 実装に集約する。表示は各コンポーネントが行う。
  */
 
 type AuthMethod = { type?: unknown; label?: unknown };
