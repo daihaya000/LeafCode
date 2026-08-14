@@ -795,6 +795,64 @@ export function sessionStreamReducer(
   }
 }
 
+type PermRow = {
+  id?: string;
+  sessionID?: string;
+  permission?: string;
+  action?: string;
+  patterns?: string[];
+  resources?: string[];
+};
+
+type QRow = {
+  id?: string;
+  sessionID?: string;
+  questions?: QuestionInfo[];
+};
+
+/**
+ * Map a pending-permission row to the UI model, skipping rows that do not
+ * belong to the pinned session. Pure: the caller provides the target session id.
+ */
+export function permRowToRequest(
+  p: PermRow,
+  sid: string,
+  version: "v1" | "v2",
+): PermissionRequest | null {
+  const id = String(p.id ?? "");
+  const sessionID = String(p.sessionID ?? sid);
+  if (!id || sessionID !== sid) return null;
+  return {
+    id,
+    version,
+    sessionID,
+    permission: String(p.permission ?? p.action ?? "permission"),
+    patterns: (p.patterns ?? p.resources ?? []) as string[],
+    receivedAt: Date.now(),
+  };
+}
+
+/**
+ * Map a pending-question row to the UI model, skipping rows that do not belong
+ * to the pinned session. Pure: the caller provides the target session id.
+ */
+export function questionRowToRequest(
+  q: QRow,
+  sid: string,
+  version: "v1" | "v2",
+): QuestionRequest | null {
+  const id = String(q.id ?? "");
+  const sessionID = String(q.sessionID ?? sid);
+  if (!id || sessionID !== sid) return null;
+  return {
+    id,
+    version,
+    sessionID,
+    questions: q.questions ?? [],
+    receivedAt: Date.now(),
+  };
+}
+
 /** Live view of one OpenCode session: initial fetch + SSE incremental updates. */
 export function useSessionStream(directory: string | null, sessionId: string | null) {
   const scopeKey = `${directory ?? ""}\u0000${sessionId ?? ""}`;
@@ -1029,30 +1087,6 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     // Recover pending permissions (v1 list + v2 session-scoped list).
     // Always attempted even when message fetch failed, so answered cards clear.
     try {
-      type PermRow = {
-        id?: string;
-        sessionID?: string;
-        permission?: string;
-        action?: string;
-        patterns?: string[];
-        resources?: string[];
-      };
-      const toRequest = (
-        p: PermRow,
-        version: "v1" | "v2",
-      ): PermissionRequest | null => {
-        const id = String(p.id ?? "");
-        const sessionID = String(p.sessionID ?? sid);
-        if (!id || sessionID !== sid) return null;
-        return {
-          id,
-          version,
-          sessionID,
-          permission: String(p.permission ?? p.action ?? "permission"),
-          patterns: (p.patterns ?? p.resources ?? []) as string[],
-          receivedAt: Date.now(),
-        };
-      };
       const v1raw = await ocJson<unknown>(activePermissionListPath(), directory).catch(
         () => [],
       );
@@ -1070,13 +1104,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (stale()) return;
       const byId = new Map<string, PermissionRequest>();
       for (const p of unwrapOcData<PermRow>(v1raw)) {
-        const req = toRequest(p, "v1");
+        const req = permRowToRequest(p, sid, "v1");
         if (req) byId.set(req.id, req);
       }
       if (v2ok) {
         for (const p of unwrapOcData<PermRow>(v2raw)) {
-          const req = toRequest(p, "v2");
-          if (req) byId.set(req.id, req);
+        const req = permRowToRequest(p, sid, "v2");
+        if (req) byId.set(req.id, req);
         }
       }
       dispatch({
@@ -1091,26 +1125,6 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
     // Recover pending questions (v1 + v2). Same merge rationale as permissions.
     try {
-      type QRow = {
-        id?: string;
-        sessionID?: string;
-        questions?: QuestionInfo[];
-      };
-      const toRequest = (
-        q: QRow,
-        version: "v1" | "v2",
-      ): QuestionRequest | null => {
-        const id = String(q.id ?? "");
-        const sessionID = String(q.sessionID ?? sid);
-        if (!id || sessionID !== sid) return null;
-        return {
-          id,
-          version,
-          sessionID,
-          questions: q.questions ?? [],
-          receivedAt: Date.now(),
-        };
-      };
       const v1raw = await ocJson<unknown>(activeQuestionListPath(), directory).catch(
         () => [],
       );
@@ -1128,12 +1142,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (stale()) return;
       const byId = new Map<string, QuestionRequest>();
       for (const q of unwrapOcData<QRow>(v1raw)) {
-        const req = toRequest(q, "v1");
+        const req = questionRowToRequest(q, sid, "v1");
         if (req) byId.set(req.id, req);
       }
       if (v2ok) {
         for (const q of unwrapOcData<QRow>(v2raw)) {
-          const req = toRequest(q, "v2");
+          const req = questionRowToRequest(q, sid, "v2");
           if (req) byId.set(req.id, req);
         }
       }

@@ -18,6 +18,8 @@ import {
   SESSION_MUTATION_TIMEOUT_MS,
   markHangRetryBody,
   mutationTimeoutForSend,
+  permRowToRequest,
+  questionRowToRequest,
   shouldTrustSseForMessages,
   stripGoalLoopJsonBlock,
   STUCK_BUSY_IDLE_STREAK,
@@ -821,5 +823,55 @@ describe("stripGoalLoopJsonBlock", () => {
   it("leaves text without a trailing json block untouched", () => {
     const text = "プレーンテキスト";
     expect(stripGoalLoopJsonBlock(text)).toBe(text);
+  });
+});
+
+describe("permRowToRequest", () => {
+  it("maps a v1 row to the pinned session", () => {
+    const req = permRowToRequest(
+      { id: "p1", sessionID: "s1", permission: "shell", patterns: ["git"] },
+      "s1",
+      "v1",
+    );
+    expect(req).toMatchObject({
+      id: "p1",
+      sessionID: "s1",
+      version: "v1",
+      permission: "shell",
+      patterns: ["git"],
+    });
+    expect(typeof req?.receivedAt).toBe("number");
+  });
+
+  it("falls back to the action/resources v2 fields", () => {
+    const req = permRowToRequest(
+      { id: "p2", sessionID: "s1", action: "file.read", resources: ["a.txt"] },
+      "s1",
+      "v2",
+    );
+    expect(req).toMatchObject({
+      permission: "file.read",
+      patterns: ["a.txt"],
+    });
+  });
+
+  it("returns null for a row of another session", () => {
+    expect(permRowToRequest({ id: "p3", sessionID: "other" }, "s1", "v1")).toBeNull();
+    expect(permRowToRequest({ id: "" }, "s1", "v1")).toBeNull();
+  });
+});
+
+describe("questionRowToRequest", () => {
+  it("maps a v2 question row to the pinned session", () => {
+    const req = questionRowToRequest(
+      { id: "q1", sessionID: "s1", questions: [] },
+      "s1",
+      "v2",
+    );
+    expect(req).toMatchObject({ id: "q1", sessionID: "s1", version: "v2" });
+  });
+
+  it("returns null for a row of another session", () => {
+    expect(questionRowToRequest({ id: "q2", sessionID: "other" }, "s1", "v2")).toBeNull();
   });
 });
