@@ -5,7 +5,7 @@ import { dataDir } from "@/lib/paths";
 import type {
   AgentDto as BaseAgentDto,
   AgentScope,
-} from "@/components/settings/agent-utils";
+} from "@/lib/agent-utils";
 import { ExtensionsError } from "./safe-move";
 import {
   applyEdits,

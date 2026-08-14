@@ -8,7 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetStaleCacheForTests } from "@/lib/stale-cache";
 import { AgentsSettings } from "./AgentsSettings";
-import type { AgentDto } from "./agent-utils";
+import type { AgentDto } from "@/lib/agent-utils";
 
 const AGENTS: AgentDto[] = [
   {

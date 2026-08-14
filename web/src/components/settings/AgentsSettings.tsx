@@ -26,7 +26,7 @@ import {
   type AgentGroup,
   type AgentScope,
   type ParsedAgent,
-} from "./agent-utils";
+} from "@/lib/agent-utils";
 
 type LoadState = "loading" | "ready" | "error";
 

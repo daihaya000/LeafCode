@@ -4,7 +4,7 @@ import { timedFetch } from "@/lib/client";
 import { directoryHeaders, withDirectoryQuery } from "@/lib/directory-header";
 import { useEffect, useState } from "react";
 import type { AgentMention } from "@/lib/agent-mention";
-import type { AgentDto } from "@/components/settings/agent-utils";
+import type { AgentDto } from "@/lib/agent-utils";
 
 type AgentListResponse = {
   agents: (AgentDto & { hidden?: boolean })[];
