@@ -54,7 +54,7 @@ describe("PermissionGhostSelect", () => {
 
 describe("AccessModeSelect", () => {
   it("renders with the current mode label", () => {
-    render(<AccessModeSelect value="folder" onChange={() => {}} />);
+    render(<AccessModeSelect value="ask" onChange={() => {}} />);
     expect(
       screen.getByRole("button", { name: "アクセスモード" }),
     ).toBeTruthy();
@@ -62,7 +62,7 @@ describe("AccessModeSelect", () => {
 
   it("fires onChange with the selected mode", () => {
     const onChange = vi.fn();
-    render(<AccessModeSelect value="folder" onChange={onChange} />);
+    render(<AccessModeSelect value="ask" onChange={onChange} />);
     openSelect("アクセスモード");
     fireEvent.click(screen.getByText("フルアクセス"));
     expect(onChange).toHaveBeenCalledWith("full");
@@ -71,7 +71,7 @@ describe("AccessModeSelect", () => {
 
 describe("SkillPermissionSelect", () => {
   it("renders with the current skill permission label", () => {
-    render(<SkillPermissionSelect value="ask" onChange={() => {}} />);
+    render(<SkillPermissionSelect value="allow" onChange={() => {}} />);
     expect(
       screen.getByRole("button", { name: /スキル/ }),
     ).toBeTruthy();
@@ -80,7 +80,7 @@ describe("SkillPermissionSelect", () => {
 
 describe("SubagentPermissionSelect", () => {
   it("renders with the current subagent permission label", () => {
-    render(<SubagentPermissionSelect value="ask" onChange={() => {}} />);
+    render(<SubagentPermissionSelect value="allow" onChange={() => {}} />);
     expect(
       screen.getByRole("button", { name: /サブエージェント/ }),
     ).toBeTruthy();

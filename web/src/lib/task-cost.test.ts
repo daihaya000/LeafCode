@@ -22,7 +22,7 @@ import {
   hasPositiveTokenUsage,
   sessionUsageFingerprint,
 } from "./task-cost";
-import type { MessageWithParts } from "./types";
+import type { MessageInfo, MessageWithParts } from "./types";
 
 function tokens(input = 1000, output = 500, reasoning = 0): MessageInfo["tokens"] {
   return { input, output, reasoning, ...(reasoning > 0 ? {} : {}) };
