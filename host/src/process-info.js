@@ -2,9 +2,10 @@
  * Windows process identity helpers for the host process
  * (REFACTORING_PLAN P6-a / IMPROVEMENT 4-1: process info group).
  */
-import { runPowerShell } from './port-scanner.js';
+import { runPowerShell as defaultRunPowerShell } from './port-scanner.js';
 
-export function getProcessCommandLine(pid) {
+export function getProcessCommandLine(pid, deps = {}) {
+  const runPowerShell = deps.runPowerShell ?? defaultRunPowerShell;
   try {
     const output = runPowerShell(
       `(Get-CimInstance Win32_Process -Filter 'ProcessId=${Number(pid)}').CommandLine`,
@@ -16,7 +17,8 @@ export function getProcessCommandLine(pid) {
 }
 
 /** Process creation time (Windows FILETIME as string), or null. */
-export function getProcessCreationTime(pid) {
+export function getProcessCreationTime(pid, deps = {}) {
+  const runPowerShell = deps.runPowerShell ?? defaultRunPowerShell;
   try {
     const output = runPowerShell(
       `(Get-CimInstance Win32_Process -Filter 'ProcessId=${Number(pid)}').CreationDate.ToFileTime()`,
@@ -31,7 +33,8 @@ export function getProcessCreationTime(pid) {
  * Whether the PID has a live systray helper child (tray_windows*.exe).
  * `null` means the CIM query failed; that is not proof that the tray is absent.
  */
-export function hasTrayChild(pid) {
+export function hasTrayChild(pid, deps = {}) {
+  const runPowerShell = deps.runPowerShell ?? defaultRunPowerShell;
   try {
     const output = runPowerShell(
       `@(Get-CimInstance Win32_Process -Filter 'ParentProcessId=${Number(pid)}' | Where-Object { $_.Name -like 'tray_windows*' }).Count`,
