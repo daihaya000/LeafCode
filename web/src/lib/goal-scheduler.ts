@@ -36,7 +36,6 @@ import {
   SCHEDULER_INTERVAL_MS,
   STATUS_TIMEOUT_MS,
   STRUCTURED_GRACE_MS,
-  TURN_QUIET_MS,
   type GoalLoopDto,
   type GoalLoopStatus,
   type StatusMap,
@@ -149,7 +148,10 @@ export async function processLoop(loop: GoalLoopDto): Promise<void> {
   }
 
   if (loop.status === "verifying_completed") {
-    if (!transcriptIdleFor(messages, TURN_QUIET_MS)) return;
+    // The engine-idle gate above proves no turn is in flight, so an unfinished
+    // transcript tail (an aborted verification prompt, a mid-stream assistant)
+    // is leftover from an interrupted turn, not live work. Waiting for a quiet
+    // completed assistant that will never come stalls the loop forever (BR-22).
     const compactResult = await (await getAutoCompactGoalLoop())(
       loop,
       ws.absolute_path,
@@ -233,9 +235,12 @@ export async function processLoop(loop: GoalLoopDto): Promise<void> {
   }
 
   if (loop.status !== "queued") return;
-  // Never prompt on top of an in-flight turn (the task's initial prompt, or a
-  // manual send that has not been observed yet).
-  if (!transcriptIdleFor(messages, TURN_QUIET_MS)) return;
+  // The engine-idle gate above proves no turn is in flight, so we must not hold
+  // off on an unfinished transcript tail: an aborted/crashed turn leaves an
+  // unanswered prompt (or a mid-stream assistant) at the tail, and waiting for
+  // a quiet completed assistant that will never come stalls the loop forever
+  // (BR-22). The busy-status check at the top of processLoop is the real guard
+  // against layering a prompt over an in-flight turn.
   // Re-read fresh state: processLoop may have incremented turn_count on a
   // previous tick before the assistant reply landed, and the DTO snapshot we
   // received can lag behind. Checking the stale value lets one extra prompt
@@ -365,6 +370,17 @@ export async function runGoalLoopSchedulerTick(): Promise<void> {
         await processLoop(loop);
       } catch (err) {
         const message = err instanceof Error ? err.message : "ループでエラーが発生しました。";
+        // Re-read the row's current revision before the CAS. `processLoop` bumps
+        // the revision when it claims a turn, so an unexpected exception raised
+        // after the claim (e.g. a DB error in touchSessionActivity) would
+        // otherwise make the snapshot-revision UPDATE a no-op: the error went
+        // unrecorded and the loop stayed `running`, silently re-failing every
+        // tick (BR-30). Re-reading also avoids clobbering a pause/stop from
+        // another writer, since the status predicate still applies.
+        const current = getDb()
+          .prepare("SELECT revision FROM goal_loops WHERE id = ?")
+          .get(loop.id) as { revision: number } | undefined;
+        if (!current) continue;
         getDb()
           .prepare(
             `UPDATE goal_loops
@@ -378,7 +394,7 @@ export async function runGoalLoopSchedulerTick(): Promise<void> {
             Array.from(message).slice(0, 4000).join(""),
             new Date().toISOString(),
             loop.id,
-            loop.revision,
+            current.revision,
           );
       }
     }

@@ -117,6 +117,11 @@ export async function createGoalLoop(input: {
   }
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
+  // The loop this create replaces. If it has an in-flight turn it must be
+  // aborted, not just marked stopped: the engine would otherwise keep working
+  // on the old goal, and the new loop would then wait for those stale turns to
+  // finish before its first prompt (BR-26).
+  const previous = getGoalLoop(input.workspaceId);
   const tx = getDb().transaction(() => {
     getDb()
       .prepare(
@@ -157,6 +162,15 @@ export async function createGoalLoop(input: {
   });
   tx();
   touchSessionActivity(input.workspaceId, input.sessionId, now);
+  if (previous && (previous.status === "running" || previous.status === "verifying_completed")) {
+    // Best-effort, same courtesy as the user pause / stop paths. The row is
+    // already `stopped`, so a late result cannot apply; the abort only stops
+    // the engine from doing stale work on the replaced loop.
+    await ocServer(ws.absolute_path, activeInterruptPath(previous.sessionId), {
+      method: "POST",
+      timeoutMs: ABORT_TIMEOUT_MS,
+    }).catch(() => undefined);
+  }
   if (transcriptReadable) void runGoalLoopSchedulerTick();
   return getGoalLoop(input.workspaceId)!;
 }
@@ -222,8 +236,18 @@ export async function updateGoalLoopStatus(
         );
       return getGoalLoop(workspaceId);
     }
+    // Recover a delivered-but-unapplied turn result. The original scope was
+    // `unknown_delivery` pauses (the prompt may have reached OpenCode before
+    // the client timed out), but user and manual_send pauses have the same
+    // window: the reply lands on the transcript between the scheduler's ticks
+    // (up to SCHEDULER_INTERVAL_MS), and a pause taken in that window used to
+    // re-anchor past it, silently discarding the turn's progress and any
+    // completion claim (BR-23, BR-24). Any other pause reason has no unapplied
+    // reply to recover (results are applied before those pauses fire).
     const recovered =
-      isUnknownPromptDeliveryPause(loop)
+      isUnknownPromptDeliveryPause(loop) ||
+      loop.pauseReason === "user" ||
+      loop.pauseReason === "manual_send"
         ? deliveredGoalResultAfterUnknownPrompt(messages, loop.lastMessageId)
         : null;
     if (recovered) {
@@ -385,6 +409,7 @@ export async function pauseGoalLoopForManualSend(
     }
   }
   const now = new Date().toISOString();
+  const wasInFlight = loop.status === "running" || loop.status === "verifying_completed";
   getDb()
     .prepare(
       `UPDATE goal_loops
@@ -401,5 +426,16 @@ export async function pauseGoalLoopForManualSend(
   // already have parked the loop in a state that is safe to send over.
   const after = getGoalLoop(workspaceId);
   if (!after || after.sessionId !== sessionId) return "noLoop";
-  return MANUAL_SEND_PAUSABLE.includes(after.status) ? "conflict" : "paused";
+  if (MANUAL_SEND_PAUSABLE.includes(after.status)) return "conflict";
+  // Abort the in-flight turn after the loop is parked, like the user pause
+  // path. Without it the engine keeps processing the loop's turn while the
+  // caller's manual prompt is forwarded, and the engine answers the prompt
+  // with SessionBusy (409) because it is still busy (BR-26).
+  if (wasInFlight && ws) {
+    await ocServer(ws.absolute_path, activeInterruptPath(loop.sessionId), {
+      method: "POST",
+      timeoutMs: ABORT_TIMEOUT_MS,
+    }).catch(() => undefined);
+  }
+  return "paused";
 }

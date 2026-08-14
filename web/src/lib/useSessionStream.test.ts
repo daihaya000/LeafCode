@@ -6,6 +6,7 @@ import {
   createInitialStreamState,
   filterCompactionContinueMessages,
   filterGoalLoopMessages,
+  goalLoopTurnReplyIdsForMessages,
   HANG_RETRY_METADATA_KEY,
   MAX_ACTIVE_RECONCILE_MS,
   MESSAGE_REFETCH_TRUST_SSE_MS,
@@ -693,6 +694,43 @@ describe("filterGoalLoopMessages", () => {
     ];
     const out = filterGoalLoopMessages(msgs);
     expect(out.map((m) => m.info.id)).toEqual(["u1"]);
+  });
+});
+
+describe("goalLoopTurnReplyIdsForMessages (BR-29)", () => {
+  function userMsg(id: string, text: string): MessageWithParts {
+    return {
+      info: { id, role: "user" },
+      parts: [{ id: `${id}-p1`, messageID: id, type: "text", text }],
+    };
+  }
+  function assistantMsg(id: string): MessageWithParts {
+    return { info: { id, role: "assistant" }, parts: [] };
+  }
+
+  it("collects only the assistants that follow a marked loop prompt", () => {
+    const msgs: MessageWithParts[] = [
+      assistantMsg("pre"),
+      userMsg("lp", "<!-- webui-goal-loop-prompt -->\n\nturn 1"),
+      assistantMsg("lr1"),
+      assistantMsg("lr2"),
+      userMsg("manual", "手動送信"),
+      assistantMsg("manual-reply"),
+      userMsg("lp2", "<!-- webui-goal-loop-prompt -->\n\nturn 2"),
+      assistantMsg("lr3"),
+    ];
+    const ids = goalLoopTurnReplyIdsForMessages(msgs);
+    expect(ids).toEqual(new Set(["lr1", "lr2", "lr3"]));
+  });
+
+  it("ignores assistants before the first loop prompt", () => {
+    const msgs: MessageWithParts[] = [
+      assistantMsg("pre"),
+      userMsg("u", "タスク初回プロンプト"),
+      assistantMsg("pre-reply"),
+    ];
+    const ids = goalLoopTurnReplyIdsForMessages(msgs);
+    expect(ids.size).toBe(0);
   });
 });
 

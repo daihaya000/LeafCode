@@ -35,18 +35,18 @@
 | **BR-19** | 低 | ✅ **修正済み** | 拡張ポップアップの日本語文言と build guard のコンソールメッセージ →「LeafCode」に統一（popup 2 箇所 + guard 5 箇所・テスト期待値も更新） |
 | **BR-20** | 低 | ✅ **修正済み** | 通知のフォールバックタイトル「OpenCode タスク」→「LeafCode タスク」（テスト期待値も更新） |
 | **BR-21** | 低 | ✅ **修正済み** | IMPROVEMENT.md / OPTIMIZATION.md のヘッダ「対象リポジトリ: OpenCodeWebUI」→「LeafCode」（他の旧名は履歴的言及で変更不要） |
-| **BR-22** | 高 | ⏳ 未修正（発見のみ） | goal loop: transcript 末尾が未完了メッセージだと queued / verifying_completed が永久停止（resume でも次ターンを送信できない） |
-| **BR-23** | 中 | ⏳ 未修正（発見のみ） | goal loop: 応答着弾〜適用前の pause → resume でターン結果が破棄される（progress 未記録・完了主張の喪失） |
-| **BR-24** | 中 | ⏳ 未修正（発見のみ） | goal loop: 検証応答の適用前に pause → resume すると検証プロンプトが二重送信され検証結果が失われる |
-| **BR-25** | 低 | ⏳ 未修正（発見のみ） | GoalLoopPanel の pause ヒント文言が resume の実際の挙動と不一致（unreadable_result / turn_timeout） |
-| **BR-26** | 中 | ⏳ 未修正（発見のみ） | 中断経路の abort 非対称: manual_send pause と createGoalLoop 置換は in-flight ターンを abort しない（user pause / stop は abort する） |
-| **BR-27** | 低 | ⏳ 未修正（発見のみ） | GoalLoopPanel が queued（送信待機）を「実行中」と表示する（running と区別不能） |
-| **BR-28** | 低 | ⏳ 未修正（発見のみ） | docs/specs/goal-loop.md の「pause は abort しない」明文化が遷移 18b / 是正 A.1 と自己矛盾、一時停止ボタンの補助テキスト未実装 |
-| **BR-29** | 低 | ⏳ 未修正（発見のみ） | PartView の stripGoalLoopJson がループ応答以外の assistant メッセージにも適用される（ループセッション内の全メッセージが対象） |
-| **BR-30** | 中 | ⏳ 未修正（発見のみ） | scheduler catch-all が claim 後の想定外例外を revision 不一致で握り潰す（ループは running のままエラー未記録・サイレント再発） |
+| **BR-22** | 高 | ✅ **修正済み** | goal loop: transcript 末尾が未完了メッセージだと queued / verifying_completed が永久停止（resume でも次ターンを送信できない）→ engine idle が確定済みなら transcript の未完を中断ターンの残骸とみなし、両分岐の transcriptIdleFor 待ちを撤廃（busy-status ガードが in-flight 防御の実体） |
+| **BR-23** | 中 | ✅ **修正済み** | goal loop: 応答着弾〜適用前の pause → resume でターン結果が破棄される（progress 未記録・完了主張の喪失）→ resume の応答復元（遷移 20 相当）を user / manual_send pause にも拡張 |
+| **BR-24** | 中 | ✅ **修正済み** | goal loop: 検証応答の適用前に pause → resume すると検証プロンプトが二重送信され検証結果が失われる → BR-23 と同一根（resume の復元拡張）で解決。恒久テストで二重送信ゼロを確認 |
+| **BR-25** | 低 | ✅ **修正済み** | GoalLoopPanel の pause ヒント文言が resume の実際の挙動と不一致（unreadable_result / turn_timeout）→「再開すると次のターンを送信します。」に統一 |
+| **BR-26** | 中 | ✅ **修正済み** | 中断経路の abort 非対称: manual_send pause と createGoalLoop 置換は in-flight ターンを abort しない（user pause / stop は abort する）→ 両経路に abort を追加（恒久テスト 2 本で /abort 発行を確認） |
+| **BR-27** | 低 | ✅ **修正済み** | GoalLoopPanel が queued（送信待機）を「実行中」と表示する（running と区別不能）→ queued に「送信待ち」ラベル |
+| **BR-28** | 低 | ✅ **修正済み** | docs/specs/goal-loop.md の「pause は abort しない」明文化が遷移 18b / 是正 A.1 と自己矛盾、一時停止ボタンの補助テキスト未実装 → 軽微な是正を「abort する」に書き換え + 一時停止ボタンに title 追加（テストで確認） |
+| **BR-29** | 低 | ✅ **修正済み** | PartView の stripGoalLoopJson がループ応答以外の assistant メッセージにも適用される（ループセッション内の全メッセージが対象）→ goalLoopTurnReplyIdsForMessages で「マーカー付きプロンプトの直後の assistant 群」のみ strip 対象に限定 |
+| **BR-30** | 中 | ✅ **修正済み** | scheduler catch-all が claim 後の想定外例外を revision 不一致で握り潰す（ループは running のままエラー未記録・サイレント再発）→ catch-all が現行 revision を読み直してから CAS（status 述語で他書き手の pause/stop は上書きしない） |
 
-**修正推奨順**: BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。**BR-11 は別セッションの `9a641a5c` で修正済み**。**BR-12 はソケット検証追加で修正済み**（local-request.ts・29+63 本 PASS）。**BR-15 は読み取り時正規化で修正済み**（paths.ts 共通関数・db/profiles 適用・40 本 PASS）。**BR-14 / BR-17 / BR-20 は文言修正で修正済み**（notify 9 / ProfilesSettings 11 / proxy route 65 本 PASS・tsc クリーン）。**BR-18 / BR-19 はログ・表示文言の統一で修正済み**（host 68 本・popup 6 / guard 19 本 PASS）。**BR-13 / BR-16 / BR-21 はドキュメント修正で修正済み**（bat-encoding 7 本 PASS）。
-**未修正: BR-22〜30（ループ機能調査・2026-08-14 発見・修正は別途）**。**最終検証（修正ループ・ターン 8）**: web vitest 327 files / **3949 tests 全 PASS**（1 skipped・修正でテスト 6 本追加）/ host **480 本 PASS** / browser-bridge **91 本 PASS** / tsc --noEmit クリーン。修正コミット: `63aacd5c`（BR-12）・`b0bb0658`/`da38ecc6`（BR-15）・`e3b88502`（BR-14/17/20）・`973002a9`（BR-18）・`f338c673`（BR-19）・`ea94f113`（BR-13）・`66fe3329`（BR-16）・`c6836bc7`（BR-21）。BR-11 は別セッションの `9a641a5c` で修正済み。BR-4 は反証（クローズ候補）。
+**修正推奨順**: BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。**BR-11 は別セッションの `9a641a5c` で修正済み**。**BR-12 はソケット検証追加で修正済み**（local-request.ts・29+63 本 PASS）。**BR-15 は読み取り時正規化で修正済み**（paths.ts 共通関数・db/profiles 適用・40 本 PASS）。**BR-14 / BR-17 / BR-20 は文言修正で修正済み**（notify 9 / ProfilesSettings 11 / proxy route 65 本 PASS・tsc クリーン）。**BR-18 / BR-19 はログ・表示文言の統一で修正済み**（host 68 本・popup 6 / guard 19 本 PASS）。**BR-13 / BR-16 / BR-21 はドキュメント修正で修正済み**（bat-encoding 7 本 PASS）。**BR-22〜30 は 2026-08-14 の修正で全て修正済み**（goal-loop 修正ラウンド）。
+**最終検証（修正ループ・ターン 8）**: web vitest 327 files / **3949 tests 全 PASS**（1 skipped・修正でテスト 6 本追加）/ host **480 本 PASS** / browser-bridge **91 本 PASS** / tsc --noEmit クリーン。修正コミット: `63aacd5c`（BR-12）・`b0bb0658`/`da38ecc6`（BR-15）・`e3b88502`（BR-14/17/20）・`973002a9`（BR-18）・`f338c673`（BR-19）・`ea94f113`（BR-13）・`66fe3329`（BR-16）・`c6836bc7`（BR-21）。BR-11 は別セッションの `9a641a5c` で修正済み。BR-4 は反証（クローズ候補）。**BR-22〜30 の最終検証（2026-08-14・goal-loop 修正ラウンド）**: web vitest 327 files / **3975 tests 全 PASS**（1 skipped・修正で恒久テスト 13 本追加）/ tsc --noEmit クリーン。修正コミット: 後述。
 
 # rebrand 追跡調査の完了サマリ（ターン 44・最終版）
 
@@ -412,6 +412,7 @@ host 417→462 本 PASS。tsc --noEmit クリーン。修正はすべてテス�
 > 検証環境: git HEAD `4b35fb53`、Windows / OneDrive
 > スコープ: `web/src/lib/goal-scheduler.ts` / `goal-state.ts` / `goal-db.ts` / `goal-util.ts` / `goal-loop.ts` / `goal-prompt.ts` + `GoalLoopPanel.tsx`。
 > 再現方法: `goal-loop.integration.test.ts` と同一の mock 構成で一時プローブ（`goal-loop-probe.test.ts`・3 本）を作成し**実測 fail を確認**。プローブは検証後に削除済み。既存テスト（goal-loop 84 本 / goal-loop.integration 61 本 / goal-state）は全て PASS のまま（バグ経路はテスト未カバー）。
+> **2026-08-14 修正ラウンドで BR-22〜30 は全て修正済み**（恒久テスト 13 本追加: integration 8 + GoalLoopPanel 3 + useSessionStream 2。web 327 files / **3975 tests 全 PASS**・tsc クリーン）。修正内容の要約は上記状態一覧の各 BR 行、実装は `goal-scheduler.ts`（queued/verifying_completed の transcript 待ち撤廃・catch-all の revision 再読込）/ `goal-db.ts`（resume の応答復元拡張・manual_send pause / 置換の abort）/ `GoalLoopPanel.tsx`（ラベル・ヒント文言・title）/ `useSessionStream.ts` + `TaskView.tsx`（strip 対象限定 `goalLoopTurnReplyIdsForMessages`）/ `docs/specs/goal-loop.md`（軽微な是正の矛盾解消）。
 
 | ID | 優先度 | 要約 | 根拠 / 影響 |
 |----|--------|------|-------------|
@@ -438,4 +439,7 @@ docs の pause-abort 記述の自己矛盾。修正時は恒久テストとし�
 適用範囲過剰（ループセッション内の非ループ応答も剥がれる）、scheduler catch-all のエラー握り潰し
 （プローブ実測: claim 後の例外で running のままエラー未記録）。修正時は恒久テストとして
 「claim 後の想定外例外で paused + scheduler_error になること」を追加する。
+
+**修正サマリ（2026-08-14・goal-loop 修正ラウンド）**: 恒久テスト 13 本を追加し全て PASS。実装:
+(1) **BR-22**: `goal-scheduler.ts` の queued / verifying_completed 分岐で `transcriptIdleFor(messages, TURN_QUIET_MS)` の early return を撤廃。`processLoop` 冒頭の engine-status チェック（busy なら return）が「in-flight ターンの防御」の実体であり、エンジンが idle を報告した時点で transcript の未完（abort された自プロンプト・途中切れ assistant）は中断の残骸でしかない。これにより abort → resume 後も次ターンが送信される（恒久テスト 2 本）。(2) **BR-23 / BR-24**: `goal-db.ts` の resume で `deliveredGoalResultAfterUnknownPrompt` による結果復元を `unknown_delivery` に加えて `user` / `manual_send` pause にも適用。応答着弾〜適用前の 2.5s ウィンドウで pause されても resume 時に適用され、検証応答は二重送信されず `completed` へ到達する（恒久テスト 2 本）。(3) **BR-26**: `pauseGoalLoopForManualSend` と `createGoalLoop` のループ置換で、in-flight ターン（running / verifying_completed）に対して `/abort` を送信（恒久テスト 2 本）。手動送信の SessionBusy（409）連続失敗と旧ループ作業の無駄継続を解消。(4) **BR-25 / BR-27 / BR-28**: `GoalLoopPanel.tsx` で `unreadable_result` / `turn_timeout` のヒントを「再開すると次のターンを送信します。」に統一、queued ラベルを「送信待ち」に変更、一時停止ボタンに title「進行中のターンを中断して一時停止します」を追加。`docs/specs/goal-loop.md` の軽微な是正節の「pause は abort しない」を「abort する（遷移 18b / 是正 A.1 のとおり）」に書き換えて自己矛盾を解消。(5) **BR-29**: `useSessionStream.ts` に `goalLoopTurnReplyIdsForMessages` を追加し、TaskView は「マーカー付きループプロンプトの直後の assistant 群」のみ `stripGoalLoopJson` を有効化。ループセッション内の手動送信応答・ループ前履歴の JSON ブロックは表示に残る（恒久テスト 2 本）。(6) **BR-30**: `goal-scheduler.ts` の catch-all で UPDATE 前に現行行の revision を読み直してから CAS。claim（revision +1）後の想定外例外でも `paused` + `scheduler_error` が確実に記録される（恒久テスト 1 本・`touchSessionActivity` を SQLITE_BUSY で throw）。status 述語により他書き手の pause/stop は上書きしない。
 

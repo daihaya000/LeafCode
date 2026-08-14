@@ -418,6 +418,33 @@ export function filterGoalLoopMessages(
 }
 
 /**
+ * IDs of assistant messages that answer a goal-loop internal prompt (marked
+ * with `GOAL_LOOP_PROMPT_MARKER`). Only these may have their trailing result
+ * JSON block stripped at render time: a loop session also contains ordinary
+ * turns (manual sends, pre-loop history) whose replies must stay visible even
+ * if the model happens to end with a goal-result-shaped JSON block (BR-29).
+ * Run this on the unfiltered message list because the marked prompts
+ * themselves are dropped from the visible list by `filterGoalLoopMessages`.
+ */
+export function goalLoopTurnReplyIdsForMessages(
+  messages: MessageWithParts[],
+): Set<string> {
+  const ids = new Set<string>();
+  let inLoopTurn = false;
+  for (const message of messages) {
+    if (message.info.role === "user") {
+      const first = message.parts.find((p) => p.type === "text");
+      inLoopTurn = Boolean(
+        first && first.type === "text" && isGoalLoopPromptText(first.text),
+      );
+    } else if (message.info.role === "assistant" && inLoopTurn) {
+      ids.add(message.info.id);
+    }
+  }
+  return ids;
+}
+
+/**
  * Hide OpenCode's internal post-compaction continuation turn. OpenCode stores
  * this as a synthetic user text part with `compaction_continue` metadata so
  * the model can resume after automatic context compaction; it is not a user

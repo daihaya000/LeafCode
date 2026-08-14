@@ -88,7 +88,12 @@ vi.mock("@/lib/currency", () => ({
   }),
 }));
 
-vi.mock("@/lib/useSessionStream", () => ({ useSessionStream }));
+vi.mock("@/lib/useSessionStream", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/useSessionStream")>(
+    "@/lib/useSessionStream",
+  );
+  return { ...actual, useSessionStream };
+});
 
 vi.mock("@/lib/useSlashCommands", () => ({
   useSlashCommands: () => slashCommands,

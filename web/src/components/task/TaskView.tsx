@@ -203,6 +203,7 @@ import {
 } from "@/lib/agent-mention";
 import {
   formatElapsed,
+  goalLoopTurnReplyIdsForMessages,
   useSessionStream,
 } from "@/lib/useSessionStream";
 import { useSlashCommands } from "@/lib/useSlashCommands";
@@ -4036,6 +4037,20 @@ export function TaskView({
     return () => setActiveScope(null, taskId);
   }, [shellActive, taskId, task?.directory, task?.sessionId, setActiveScope]);
 
+  /**
+   * Assistant messages that answer a goal-loop internal prompt (marked with
+   * `GOAL_LOOP_PROMPT_MARKER`). Only these should have their trailing result
+   * JSON block stripped: a loop session also contains ordinary turns (manual
+   * sends, pre-loop history) whose replies must stay visible even if the model
+   * happens to end with a goal-result-shaped JSON block (BR-29). Derived from
+   * the unfiltered `stream.messages` because the visible list drops the marked
+   * prompts themselves.
+   */
+  const goalLoopTurnReplyIds = useMemo(
+    () => (goalLoop ? goalLoopTurnReplyIdsForMessages(stream.messages) : new Set<string>()),
+    [goalLoop, stream.messages],
+  );
+
   const timeline = useMemo(
     () =>
       stream.visibleMessages.filter(
@@ -4937,7 +4952,7 @@ export function TaskView({
                               markHangBusy={stream.aborting}
                               skillOverviews={skillOverviewMap}
                               agentOverviews={agentOverviewMap}
-                              stripGoalLoopJson={goalLoop !== null}
+                              stripGoalLoopJson={goalLoopTurnReplyIds.has(m.info.id)}
                             />
                           ))}
                         </div>
@@ -4956,7 +4971,7 @@ export function TaskView({
                         markHangBusy={stream.aborting}
                         skillOverviews={skillOverviewMap}
                         agentOverviews={agentOverviewMap}
-                        stripGoalLoopJson={goalLoop !== null}
+                        stripGoalLoopJson={goalLoopTurnReplyIds.has(m.info.id)}
                       />
                       ),
                     )}

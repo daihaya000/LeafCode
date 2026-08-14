@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   compactFailureError: null as (Error & { status?: number }) | null,
   compactionMarks: [] as { workspaceId: string; sessionId: string }[],
   autoExtractCalls: [] as { loopId: string; assistantMessageId?: string }[],
+  touchActivityFailuresRemaining: 0,
 }));
 
 vi.mock("./oc-server", async () => {
@@ -125,7 +126,13 @@ vi.mock("./db", () => ({
     testDb
       .prepare("SELECT * FROM session_bindings WHERE workspace_id = ? ORDER BY updated_at DESC")
       .all(workspaceId) as unknown[],
-  touchSessionActivity: () => true,
+  touchSessionActivity: () => {
+    if (h.touchActivityFailuresRemaining > 0) {
+      h.touchActivityFailuresRemaining -= 1;
+      throw new Error("SQLITE_BUSY: database is locked");
+    }
+    return true;
+  },
   claimAssistantMemoryExtraction: () => null,
   getSetting: (key: string) =>
     key === "token-saving"
@@ -340,6 +347,7 @@ beforeEach(() => {
   h.compactFailureError = null;
   h.compactionMarks.length = 0;
   h.autoExtractCalls.length = 0;
+  h.touchActivityFailuresRemaining = 0;
   resetTitleRefreshForTest();
 });
 
@@ -1863,5 +1871,198 @@ describe("goal loop rejected claim counter (docs/specs/goal-loop.md 是正 E)", 
     expect(loop.turnCount).toBeLessThanOrEqual(maxTurns);
     // 2 is MAX_REJECTED_CLAIMS.
     expect(h.promptAsyncCount).toBeLessThanOrEqual(maxTurns + 2 + 1);
+  });
+});
+
+describe("goal loop interrupted-turn recovery (BR-22/23/24/26/30)", () => {
+  const markedPrompt = (id: string, turn: string) =>
+    msg(id, "user", undefined, `<!-- webui-goal-loop-prompt -->\n${turn}`);
+
+  it("BR-22: sends the next turn after resume even when the transcript ends in an unanswered loop prompt", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+
+    // First tick sends the loop prompt and marks it running.
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    // The turn is aborted mid-flight: the transcript tail is the loop's own
+    // marked prompt with no reply, while the engine reports idle. Pause →
+    // resume must not wait forever for a quiet completed assistant that will
+    // never come.
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      markedPrompt("aborted-prompt", "aborted turn"),
+    ];
+    await updateGoalLoopStatus("ws-1", "pause");
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+    expect(resumed?.status).toBe("queued");
+
+    const promptsBefore = h.ocCalls.filter((c) => c.path.endsWith("/prompt_async")).length;
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(h.ocCalls.filter((c) => c.path.endsWith("/prompt_async")).length).toBe(
+      promptsBefore + 1,
+    );
+  });
+
+  it("BR-22: resumes a verifying_completed loop whose verification prompt was aborted", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: ["ok"],
+      maxTurns: 3,
+    });
+    // Drive to a completed claim so the loop enters verifying_completed.
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      markedPrompt("loop-prompt", "turn 1"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+
+    // The verification prompt is sent, then the turn is aborted: the tail is
+    // the marked verification prompt with no reply. Resume must still be able
+    // to send the verification prompt again on the next tick.
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      markedPrompt("loop-prompt", "turn 1"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim" }),
+      markedPrompt("verify-prompt", "verification"),
+    ];
+    await updateGoalLoopStatus("ws-1", "pause");
+    await updateGoalLoopStatus("ws-1", "resume");
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+
+    const promptsBefore = h.ocCalls.filter((c) => c.path.endsWith("/prompt_async")).length;
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(getGoalLoop("ws-1")?.turnKind).toBe("verification");
+    expect(h.ocCalls.filter((c) => c.path.endsWith("/prompt_async")).length).toBe(
+      promptsBefore + 1,
+    );
+  });
+
+  it("BR-23: applies a delivered turn result when resuming a user pause taken before application", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    // The reply has landed on the transcript, but the scheduler has not
+    // applied it yet (the window is up to SCHEDULER_INTERVAL_MS) when the user
+    // pauses. Resume must recover and apply it instead of re-anchoring past it.
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      markedPrompt("loop-prompt", "turn 1"),
+      msg("loop-reply", "assistant", { status: "progress", summary: "first result" }),
+    ];
+    await updateGoalLoopStatus("ws-1", "pause");
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+    expect(resumed?.status).toBe("queued");
+    expect(resumed?.turnCount).toBe(1);
+    expect(resumed?.progress.at(-1)?.summary).toBe("first result");
+  });
+
+  it("BR-24: does not resend the verification prompt when resuming after its reply landed", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: ["ok"],
+      maxTurns: 3,
+    });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      markedPrompt("loop-prompt", "turn 1"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(getGoalLoop("ws-1")?.turnKind).toBe("verification");
+
+    const promptsBefore = h.ocCalls.filter((c) => c.path.endsWith("/prompt_async")).length;
+
+    // The verification reply lands; pause before the scheduler applies it.
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      markedPrompt("loop-prompt", "turn 1"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim" }),
+      markedPrompt("verify-prompt", "verification"),
+      msg("verify-reply", "assistant", { status: "verified_completed", summary: "verified" }),
+    ];
+    await updateGoalLoopStatus("ws-1", "pause");
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+
+    // Resume applies the delivered verification reply instead of re-sending
+    // the verification prompt.
+    expect(resumed?.status).toBe("completed");
+    expect(resumed?.turnCount).toBe(1);
+    expect(resumed?.progress.at(-1)?.status).toBe("verified_completed");
+    expect(h.ocCalls.filter((c) => c.path.endsWith("/prompt_async")).length).toBe(
+      promptsBefore,
+    );
+  });
+
+  it("BR-26: aborts the in-flight turn when pausing for a manual send", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    const abortsBefore = h.ocCalls.filter((c) => c.path.endsWith("/abort")).length;
+    const result = await pauseGoalLoopForManualSend("ws-1", "sess-1");
+    expect(result).toBe("paused");
+    expect(h.ocCalls.filter((c) => c.path.endsWith("/abort")).length).toBe(abortsBefore + 1);
+  });
+
+  it("BR-26: aborts the replaced loop's in-flight turn when creating a new loop", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "first" });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    const abortsBefore = h.ocCalls.filter((c) => c.path.endsWith("/abort")).length;
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "second" });
+    expect(h.ocCalls.filter((c) => c.path.endsWith("/abort")).length).toBe(abortsBefore + 1);
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+    expect(getGoalLoop("ws-1")?.goal).toBe("second");
+  });
+
+  it("BR-30: records scheduler_error even when the exception fires after the turn claim", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      markedPrompt("loop-prompt", "turn 1"),
+      msg("loop-reply", "assistant", { status: "progress", summary: "ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+
+    // The next queued tick claims a turn (revision +1), sends the prompt, and
+    // then touches the session. Make that touch throw once so the exception
+    // fires after the claim: the scheduler catch-all must re-read the current
+    // revision so the error is recorded instead of silently disappearing.
+    h.touchActivityFailuresRemaining = 1;
+    await runGoalLoopSchedulerTick();
+
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("paused");
+    expect(loop.pauseReason).toBe("scheduler_error");
+    expect(loop.error).toContain("SQLITE_BUSY");
   });
 });

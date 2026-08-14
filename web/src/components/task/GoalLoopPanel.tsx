@@ -13,7 +13,7 @@ import { Button, cx, formatMessageTime } from "@/components/ui";
 import type { GoalLoopDto, GoalLoopProgress } from "@/lib/goal-loop";
 
 const STATUS_LABEL: Record<GoalLoopDto["status"], string> = {
-  queued: "実行中",
+  queued: "送信待ち",
   running: "実行中",
   paused: "一時停止",
   verifying_completed: "完了検証中",
@@ -32,8 +32,8 @@ const PAUSE_REASON_HINT: Record<Exclude<GoalLoopDto["pauseReason"], "">, string>
   manual_send: "手動送信を検出しました。再開すると次のターンを送信します。",
   turn_limit: "最大ターン数に達しました。上限を増やすと再開できます。",
   unreadable_result:
-    "応答から結果を読み取れませんでした。再開すると同じターンを送り直します。",
-  turn_timeout: "応答が確認できませんでした。再開すると同じターンを送り直します。",
+    "応答から結果を読み取れませんでした。再開すると次のターンを送信します。",
+  turn_timeout: "応答が確認できませんでした。再開すると次のターンを送信します。",
   unknown_delivery:
     "送信の到達を確認できませんでした。再開時に送信済みかを判定し、重複送信は行いません。",
   transcript_unreadable:
@@ -254,6 +254,7 @@ export function GoalLoopPanel({
               size="sm"
               disabled={busy || loop.pauseRequested}
               aria-label="ループを一時停止"
+              title="進行中のターンを中断して一時停止します"
               onClick={() => onAction("pause")}
             >
               <Pause className="h-3.5 w-3.5" />

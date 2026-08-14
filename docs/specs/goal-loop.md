@@ -258,9 +258,9 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
   abort 用に `ABORT_TIMEOUT_MS = 10_000` を新設する。停止操作の PATCH が2分ブロックするのを防ぐ。
 - `normalizeAcceptance` は1件が `MAX_ACCEPTANCE_CHARS` 超なら 400、11件目以降は無言で切り捨てと
   非対称。**`MAX_ACCEPTANCE_ITEMS` 超も 400 にそろえる**（利用者に伝わらない切り捨てをしない）。
-- pause は in-flight ターンを abort しない。エージェントは走り続け、resume の再アンカーで
-  その成果はループの会計から外れる。これは**意図した挙動として明文化**する（作業を殺さない）。
-  `GoalLoopPanel` の一時停止ボタンにその旨を補助テキストで示す。
+- pause は in-flight ターンを abort する（遷移 18b / 是正 A.1 のとおり）。エージェントの作業は中断され、
+  後着結果は pause が先に進めた revision により破棄される。手動送信検出（遷移 19）とループ置換
+  （遷移 1）も同じく abort を送る。`GoalLoopPanel` の一時停止ボタンは title でその旨を補助テキストとして示す。
 
 ## 影響ファイル
 

@@ -123,7 +123,7 @@ describe("GoalLoopPanel", () => {
   });
 
   it.each([
-    ["queued", "実行中"],
+    ["queued", "送信待ち"],
     ["running", "実行中"],
     ["paused", "一時停止"],
     ["verifying_completed", "完了検証中"],
@@ -272,6 +272,29 @@ describe("GoalLoopPanel", () => {
       />,
     );
     expect(screen.queryByText(/再開すると次のターンを送信します/)).toBeNull();
+  });
+
+  it.each(["unreadable_result", "turn_timeout"] as const)(
+    "says resume sends the next turn after a %s pause (not a resend of the same turn)",
+    (pauseReason) => {
+      render(
+        <GoalLoopPanel
+          loop={baseLoop({ status: "paused", pauseReason })}
+          busy={false}
+          onAction={vi.fn()}
+        />,
+      );
+      expect(screen.getByText(/再開すると次のターンを送信します/)).toBeTruthy();
+      expect(screen.queryByText(/同じターンを送り直します/)).toBeNull();
+    },
+  );
+
+  it("annotates the pause button with the abort helper text", () => {
+    render(
+      <GoalLoopPanel loop={baseLoop({ status: "running" })} busy={false} onAction={vi.fn()} />,
+    );
+    const btn = screen.getByRole("button", { name: "ループを一時停止" });
+    expect(btn.getAttribute("title")).toContain("中断");
   });
 
   it("says the turn budget counts goal turns only", () => {
