@@ -5,7 +5,7 @@ import { mirrorWebDir, resolveMirrorRoot } from "./web-build-mirror.mjs";
 import { resolveHostControlUrl } from "./lib/host-control.mjs";
 import { parseListeningPids } from "../host/src/port-plan.js";
 
-export { parseListeningPids, resolveHostControlUrl };
+export { parseListeningPids };
 
 const defaultWebDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "web");
 

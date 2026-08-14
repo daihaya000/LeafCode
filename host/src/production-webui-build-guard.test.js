@@ -7,9 +7,9 @@ import {
   main,
   parseListeningPids,
   requestHostRestartWebUi,
-  resolveHostControlUrl,
   stopProductionWebUi,
 } from "../../scripts/production-webui-build-guard.mjs";
+import { resolveHostControlUrl } from "../../scripts/lib/host-control.mjs";
 
 const webDir = "C:\\workspace\\OpenCodeWebUI\\web";
 const nextStart = `"C:\\Program Files\\nodejs\\node.exe" "${webDir}\\node_modules\\next\\dist\\bin\\next" start --port 3000`;
