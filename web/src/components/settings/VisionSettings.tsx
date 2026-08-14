@@ -121,7 +121,7 @@ export function VisionSettings() {
         setOllamaMessage(
           [
             ...(data.steps ?? []),
-            "OpenCode の再起動後に解析モデルとして利用できます。",
+            "LeafCode の再起動後に解析モデルとして利用できます。",
           ].join(" / "),
         );
         if (data.modelValue) {
@@ -247,8 +247,8 @@ export function VisionSettings() {
           <div>
             <h3 className="text-sm font-semibold text-text">画像事前解析</h3>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">
-              画像非対応モデルの使用時に、OpenCodeへ登録済みの画像対応モデルで画像を事前解析し、テキストとして取り込みます。
-              解析モデルはOpenCode登録モデルに一本化されており、ローカルOllamaも下の「ローカルOllama」からOpenCodeへ登録して使用します。
+              画像非対応モデルの使用時に、LeafCodeへ登録済みの画像対応モデルで画像を事前解析し、テキストとして取り込みます。
+              解析モデルはLeafCode登録モデルに一本化されており、ローカルOllamaも下の「ローカルOllama」からLeafCodeへ登録して使用します。
             </p>
             <p className="mt-1 text-xs text-faint">
               現在の状態:{" "}
@@ -287,7 +287,7 @@ export function VisionSettings() {
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label className="block text-xs font-medium text-muted" htmlFor="qwen-opencode-model">
-              OpenCode登録モデル（画像対応）
+              LeafCode登録モデル（画像対応）
             </label>
             <select
               id="qwen-opencode-model"
@@ -368,7 +368,7 @@ export function VisionSettings() {
         </div>
         <p className="mt-1 max-w-2xl leading-5">
           起動時の自動セットアップは行いません。必要なときにこのボタンで、インストール →
-          モデル取得 → OpenCodeへのプロバイダー登録 をまとめて実行します。
+          モデル取得 → LeafCodeへのプロバイダー登録 をまとめて実行します。
         </p>
         <dl className="mt-2 grid gap-1.5 sm:grid-cols-3">
           <div>
@@ -471,7 +471,7 @@ export function VisionSettings() {
         <h4 className="text-sm font-semibold text-text">使い方</h4>
         <ol className="mt-2 list-decimal space-y-1 pl-5">
           <li>
-            画像対応モデルをOpenCodeに接続します。クラウドのプロバイダーは「プロバイダー/モデル」タブ、
+            画像対応モデルをLeafCodeに接続します。クラウドのプロバイダーは「プロバイダー/モデル」タブ、
             ローカルOllamaは上の「Ollamaをセットアップ」で <code className="font-mono">opencode.jsonc</code> に登録されます。
           </li>
           <li>登録したモデルを「事前解析モデル」で選び、有効化して保存します。</li>
@@ -485,7 +485,7 @@ export function VisionSettings() {
           </li>
         </ol>
         <p className="mt-3 text-faint">
-          プロバイダーを新規登録した直後は、OpenCode の再起動後に解析へ利用できます。
+          プロバイダーを新規登録した直後は、LeafCode の再起動後に解析へ利用できます。
         </p>
       </div>
     </section>

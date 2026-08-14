@@ -417,7 +417,7 @@ const [error, setError] = useState<string | null>(null);
             <h2 className="mb-3 text-sm font-semibold text-muted">アドオン</h2>
             <p className="mb-3 text-xs text-faint">
               サイドバーに表示するウィジェットの有効/無効を切り替えます。
-              OpenCode 本体のプラグインとは別物です。
+              LeafCode 本体のプラグインとは別物です。
             </p>
             <AddonSettings />
           </section>

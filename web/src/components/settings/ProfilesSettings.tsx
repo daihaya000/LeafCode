@@ -415,7 +415,7 @@ export function ProfilesSettings() {
       setActionSuccess(
         result.installed.length > 0
           ? profile.active
-            ? "WebUI依存を追加しました。OpenCode hostを再起動してください。"
+            ? "WebUI依存を追加しました。LeafCode hostを再起動してください。"
             : "WebUI依存を追加しました。"
           : "WebUI依存は既に適用済みです。",
       );
@@ -573,7 +573,7 @@ export function ProfilesSettings() {
       {/* Host unavailable notice */}
       {hostOk === false && (
         <p className="mb-4 text-xs text-faint">
-          トレイホストが利用できないため、切替後の OpenCode 自動再起動は行われません。手動で再起動してください。
+          トレイホストが利用できないため、切替後の LeafCode 自動再起動は行われません。手動で再起動してください。
         </p>
       )}
 
@@ -970,7 +970,7 @@ export function ProfilesSettings() {
               「{switchConfirm.name}」に切り替えますか？
             </h3>
             <p className="mt-2 text-sm text-muted">
-              OpenCode が再起動され、<strong className="text-text">進行中のタスクは中断されます</strong>。
+              LeafCode が再起動され、<strong className="text-text">進行中のタスクは中断されます</strong>。
               切替は WebUI・エンジン・ターミナルのすべてに影響します。
             </p>
             <div className="mt-4 flex justify-end gap-2">
@@ -1016,7 +1016,7 @@ export function ProfilesSettings() {
       {restarting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" aria-live="assertive">
           <div className="rounded-2xl border border-border bg-surface px-8 py-6 text-center shadow-xl">
-            <p className="text-sm text-muted" aria-busy="true">OpenCode を再起動しています…</p>
+            <p className="text-sm text-muted" aria-busy="true">LeafCode を再起動しています…</p>
           </div>
         </div>
       )}

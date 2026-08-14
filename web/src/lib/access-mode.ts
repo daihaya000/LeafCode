@@ -13,7 +13,7 @@ export const ACCESS_MODE_OPTIONS: {
     label: "確認する",
     title:
       "ファイル書き込み（edit / write / apply_patch）は毎回承認を求めます。" +
-      "bash などは OpenCode の設定に従います",
+      "bash などは LeafCode の設定に従います",
   },
   {
     value: "full",

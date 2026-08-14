@@ -259,7 +259,7 @@ describe("ExtensionsSettings", () => {
       options: { scope: "team" },
     });
     expect(
-      await screen.findByText("変更を反映するには OpenCode の再起動が必要です。"),
+      await screen.findByText("変更を反映するには LeafCode の再起動が必要です。"),
     ).toBeTruthy();
   });
 
@@ -390,7 +390,7 @@ describe("ExtensionsSettings", () => {
       { enabled: false },
     );
     expect(
-      await screen.findByText("変更を反映するには OpenCode の再起動が必要です。"),
+      await screen.findByText("変更を反映するには LeafCode の再起動が必要です。"),
     ).toBeTruthy();
   });
 
@@ -398,14 +398,14 @@ describe("ExtensionsSettings", () => {
     const { rerender } = render(<ExtensionsSettings activeSection="skills" />);
     fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
     expect(
-      await screen.findByText("変更を反映するには OpenCode の再起動が必要です。"),
+      await screen.findByText("変更を反映するには LeafCode の再起動が必要です。"),
     ).toBeTruthy();
 
     rerender(<ExtensionsSettings activeSection="mcp" />);
 
     // The banner survives the section switch (same mount, state preserved)…
     expect(
-      screen.getByText("変更を反映するには OpenCode の再起動が必要です。"),
+      screen.getByText("変更を反映するには LeafCode の再起動が必要です。"),
     ).toBeTruthy();
     // …and the MCP section is shown in place of the skills section.
     expect(screen.getByRole("heading", { name: "MCP サーバー" })).toBeTruthy();
@@ -480,7 +480,7 @@ describe("ExtensionsSettings", () => {
     fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
 
     const restart = await screen.findByRole("button", {
-      name: "OpenCode を再起動",
+      name: "LeafCode を再起動",
     });
     await waitFor(() => expect(restart).toHaveProperty("disabled", true));
     expect(
@@ -494,7 +494,7 @@ describe("ExtensionsSettings", () => {
     fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
 
     const restart = await screen.findByRole("button", {
-      name: "OpenCode を再起動",
+      name: "LeafCode を再起動",
     });
     // Unconfirmed (hostOk=null): the button stays disabled, but the
     // "use the tray host" hint is not shown — it is only for confirmed
@@ -518,7 +518,7 @@ describe("ExtensionsSettings", () => {
     fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
 
     const restart = await screen.findByRole("button", {
-      name: "OpenCode を再起動",
+      name: "LeafCode を再起動",
     });
     const skillLoadsBefore = getJson.mock.calls.filter(
       ([p]) => p === "/api/extensions/skills",
@@ -529,7 +529,7 @@ describe("ExtensionsSettings", () => {
     await waitFor(
       () => {
         expect(
-          screen.queryByText("変更を反映するには OpenCode の再起動が必要です。"),
+          screen.queryByText("変更を反映するには LeafCode の再起動が必要です。"),
         ).toBeNull();
       },
       { timeout: 5000 },

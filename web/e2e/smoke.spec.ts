@@ -114,7 +114,7 @@ test("desktop composer keeps selection labels readable", async ({ page }) => {
 
 test("has the expected document title", async ({ page }) => {
   await page.goto("/");
-  await expect(page).toHaveTitle(/OpenCode/);
+  await expect(page).toHaveTitle(/LeafCode/);
 });
 
 test("settings page renders its sections", async ({ page }) => {

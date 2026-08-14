@@ -1668,7 +1668,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
           {loaded && !engineOk && (
             <p className="mx-auto mt-3 max-w-2xl rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning">
-              エンジン未接続。設定またはトレイから OpenCode を再起動してください。
+              エンジン未接続。設定またはトレイから LeafCode を再起動してください。
             </p>
           )}
 

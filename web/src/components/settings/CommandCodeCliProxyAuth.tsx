@@ -35,7 +35,7 @@ export function CommandCodeCliProxyAuth({ showHeading = true }: { showHeading?: 
       setKey("");
       setConnected(true);
       setState("saved");
-      setMessage("保存しました。反映にはOpenCodeの再起動が必要です。");
+      setMessage("保存しました。反映にはLeafCodeの再起動が必要です。");
     } catch (cause) {
       if (!mountedRef.current) return;
       setState("error");

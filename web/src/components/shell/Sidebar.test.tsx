@@ -1766,7 +1766,7 @@ describe("Sidebar engine health polling", () => {
     ).toBeTruthy();
 
     const banner = await screen.findByText(
-      "エンジン未接続。自動で再確認中です。続く場合は設定またはトレイから OpenCode を再起動してください。",
+      "エンジン未接続。自動で再確認中です。続く場合は設定またはトレイから LeafCode を再起動してください。",
       undefined,
       { timeout: 3000 },
     );
@@ -1778,7 +1778,7 @@ describe("Sidebar engine health polling", () => {
       () => {
         expect(
           screen.queryByText(
-            "エンジン未接続。自動で再確認中です。続く場合は設定またはトレイから OpenCode を再起動してください。",
+            "エンジン未接続。自動で再確認中です。続く場合は設定またはトレイから LeafCode を再起動してください。",
           ),
         ).toBeNull();
         expect(

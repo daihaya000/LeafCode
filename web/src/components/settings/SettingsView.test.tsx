@@ -330,7 +330,7 @@ describe("SettingsView", () => {
 
     expect(await screen.findByText("現在のバージョン")).toBeTruthy();
     expect(screen.getByText(/WebUI: コミット abc1234/)).toBeTruthy();
-    expect(screen.getByText("OpenCode CLI: バージョン 1.18.14")).toBeTruthy();
+    expect(screen.getByText("LeafCode CLI: バージョン 1.18.14")).toBeTruthy();
     expect(screen.getByText("Next.js: バージョン 16.3.0")).toBeTruthy();
     expect(screen.queryByText("利用可能なアップデート")).toBeNull();
   });
@@ -635,10 +635,10 @@ describe("SettingsView", () => {
     await screen.findByRole("tab", { name: "エンジン" });
     fireEvent.click(screen.getByRole("tab", { name: "エンジン" }));
     await screen.findByText("WebUI 接続中");
-    fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
+    fireEvent.click(screen.getByRole("button", { name: "LeafCode を再起動" }));
     expect(screen.getByRole("dialog", { name: "再起動の確認" })).toBeTruthy();
     expect(
-      screen.getByText("OpenCode（バックエンド）を再起動しますか？"),
+      screen.getByText("LeafCode（バックエンド）を再起動しますか？"),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "再起動する" }));
 
@@ -650,7 +650,7 @@ describe("SettingsView", () => {
       target: "opencode",
     });
     expect(screen.getByRole("status").textContent).toContain(
-      "OpenCode（バックエンド）を再起動しています…",
+      "LeafCode（バックエンド）を再起動しています…",
     );
   });
 
@@ -709,7 +709,7 @@ describe("SettingsView", () => {
     await screen.findByRole("tab", { name: "エンジン" });
     fireEvent.click(screen.getByRole("tab", { name: "エンジン" }));
     await screen.findByText("WebUI 接続中");
-    fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
+    fireEvent.click(screen.getByRole("button", { name: "LeafCode を再起動" }));
     fireEvent.click(screen.getByRole("button", { name: "再起動する" }));
 
     await waitFor(() => {

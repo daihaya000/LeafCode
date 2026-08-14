@@ -608,7 +608,7 @@ export function ExtensionsSettings({
         }
       }
       if (!success) {
-        throw new Error("OpenCode の再起動を確認できませんでした");
+        throw new Error("LeafCode の再起動を確認できませんでした");
       }
       if (mountedRef.current) setRestartNeeded(false);
       await reloadAll();
@@ -673,8 +673,8 @@ export function ExtensionsSettings({
       if (!mountedRef.current) return;
       setPluginFormMessage(
         editingPluginId
-          ? "更新しました。OpenCode の再起動後に反映されます。"
-          : "登録しました。OpenCode の再起動後に利用できます。",
+          ? "更新しました。LeafCode の再起動後に反映されます。"
+          : "登録しました。LeafCode の再起動後に利用できます。",
       );
       resetPluginForm();
       setRestartNeeded(true);
@@ -697,7 +697,7 @@ export function ExtensionsSettings({
           className="space-y-2 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3"
         >
           <p className="text-sm text-warning">
-            変更を反映するには OpenCode の再起動が必要です。
+            変更を反映するには LeafCode の再起動が必要です。
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -707,7 +707,7 @@ export function ExtensionsSettings({
               disabled={hostOk !== true}
               onClick={() => void restartOpencode()}
             >
-              OpenCode を再起動
+              LeafCode を再起動
             </Button>
             {hostOk === false && (
               <span className="text-xs text-faint">

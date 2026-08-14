@@ -1760,7 +1760,7 @@ describe("HomeView engine health polling", () => {
     render(<HomeView />);
 
     // Initial fetch reports engine down -> warning banner appears.
-    const warning = await screen.findByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。");
+    const warning = await screen.findByText("エンジン未接続。設定またはトレイから LeafCode を再起動してください。");
     expect(warning).toBeTruthy();
 
     // Engine becomes reachable; next 3s poll tick should clear the warning.
@@ -1768,7 +1768,7 @@ describe("HomeView engine health polling", () => {
     await waitFor(
       () =>
         expect(
-          screen.queryByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。"),
+          screen.queryByText("エンジン未接続。設定またはトレイから LeafCode を再起動してください。"),
         ).toBeNull(),
       { timeout: 8000 },
     );
@@ -1781,7 +1781,7 @@ describe("HomeView engine health polling", () => {
     // Flush the initial load promises (refreshProjects + refreshEngine).
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(
-      screen.getByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。"),
+      screen.getByText("エンジン未接続。設定またはトレイから LeafCode を再起動してください。"),
     ).toBeTruthy();
 
     const tasksCallsBefore = getJson.mock.calls.filter(

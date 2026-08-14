@@ -239,5 +239,5 @@ export async function verifyCopy(
       // try the next marker
     }
   }
-  throw new Error("複製先が OpenCode の設定ディレクトリとして認識できません。");
+  throw new Error("複製先が LeafCode の設定ディレクトリとして認識できません。");
 }

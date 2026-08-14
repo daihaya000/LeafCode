@@ -437,7 +437,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             error:
-              "OpenCode のプロバイダ情報を取得できませんでした。しばらくしてから再試行してください。",
+              "LeafCode のプロバイダ情報を取得できませんでした。しばらくしてから再試行してください。",
           },
           { status: err instanceof OcError && err.status === 503 ? 503 : 502 },
         );

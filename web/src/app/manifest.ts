@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "LeafCode",
     short_name: "LeafCode",
-    description: "Workspace Manager for OpenCode agents",
+    description: "Workspace Manager for LeafCode agents",
     start_url: "/",
     display: "standalone",
     background_color: "#111113",

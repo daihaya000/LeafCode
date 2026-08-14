@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "LeafCode",
-  description: "Workspace Manager for OpenCode agents",
+  description: "Workspace Manager for LeafCode agents",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

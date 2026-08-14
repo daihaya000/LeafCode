@@ -94,7 +94,7 @@ export function swapLink(
 
   if (!isValidProfileDir(target)) {
     throw new Error(
-      `${target} は OpenCode の設定ディレクトリとして認識できません。`,
+      `${target} は LeafCode の設定ディレクトリとして認識できません。`,
     );
   }
 

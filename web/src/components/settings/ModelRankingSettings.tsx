@@ -40,7 +40,7 @@ export function ModelRankingSettings() {
             プロバイダー/モデルのコスパランキング
           </h2>
           <p className="mt-1 text-xs text-faint">
-            セッション履歴の出力・推論トークン ÷ OpenCode の報告費用または設定価格で比較します。
+            セッション履歴の出力・推論トークン ÷ LeafCode の報告費用または設定価格で比較します。
           </p>
         </div>
         <Button

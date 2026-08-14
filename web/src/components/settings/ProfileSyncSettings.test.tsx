@@ -55,7 +55,7 @@ describe("ProfileSyncSettings", () => {
   it("renders the master and target rows after loading", async () => {
     render(<ProfileSyncSettings />);
     expect(
-      await screen.findByText("マスター (opencode)"),
+      await screen.findByText("マスター (LeafCode)"),
     ).toBeTruthy();
     expect(screen.getByText("Codex")).toBeTruthy();
     expect(screen.getByText("Claude")).toBeTruthy();
@@ -72,7 +72,7 @@ describe("ProfileSyncSettings", () => {
       },
     });
     render(<ProfileSyncSettings />);
-    await screen.findByText("マスター (opencode)");
+    await screen.findByText("マスター (LeafCode)");
 
     fireEvent.click(screen.getByRole("button", { name: /同期を実行|ファイルを同期/ }));
     await waitFor(() => {
@@ -86,7 +86,7 @@ describe("ProfileSyncSettings", () => {
   it("shows an error when the sync fails", async () => {
     h.sendJson.mockResolvedValue({ ok: false, error: "同期に失敗しました" });
     render(<ProfileSyncSettings />);
-    await screen.findByText("マスター (opencode)");
+    await screen.findByText("マスター (LeafCode)");
 
     fireEvent.click(screen.getByRole("button", { name: /同期を実行|ファイルを同期/ }));
     expect((await screen.findByRole("alert")).textContent).toContain(
@@ -96,7 +96,7 @@ describe("ProfileSyncSettings", () => {
 
   it("opens a target file via the open button", async () => {
     render(<ProfileSyncSettings />);
-    await screen.findByText("マスター (opencode)");
+    await screen.findByText("マスター (LeafCode)");
 
     fireEvent.click(screen.getAllByText("ファイルを開く")[0]);
     await waitFor(() => {

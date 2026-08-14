@@ -140,7 +140,7 @@ export function ProfileSyncSettings() {
   return (
     <section>
       <h2 className="mb-3 text-sm font-semibold text-muted">
-        プロファイル同期（opencode → codex / claude / Cursor）
+        プロファイル同期（LeafCode → codex / claude / Cursor）
       </h2>
       <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
         <p className="text-xs text-faint">
@@ -175,7 +175,7 @@ export function ProfileSyncSettings() {
         {loadState === "ready" && status && (
           <div className="space-y-3">
             <MasterStatusRow
-              label="マスター (opencode)"
+              label="マスター (LeafCode)"
               path={status.master.path}
               exists={status.master.exists}
               error={status.master.error}
