@@ -166,13 +166,18 @@ export function GoalLoopPanel({
   // available in the conversation transcript.
   const currentProgress = loop.progress.at(-1);
 
-  const badgeText = `${STATUS_LABEL[loop.status]} ${loop.turnCount}/${loop.maxTurns}`;
-  // `turnCount` counts goal turns only; completion-verification turns are not
-  // charged to the budget, so say so rather than letting the ratio look stuck.
+  // The badge shows the turn that is running or up next (1-based), so it reads
+  // "1/N" right after the loop starts. `turnCount` counts completed goal turns:
+  // while `running` the claim already bumped turn_count, so it is the active
+  // turn number; while `queued` the next turn has not been claimed yet, so add
+  // 1. Completion-verification turns are not charged to the budget and do not
+  // advance the ratio.
   // 完走モードでは検証ターン自体が存在しない。
+  const shownTurn = loop.status === "queued" ? loop.turnCount + 1 : loop.turnCount;
+  const badgeText = `${STATUS_LABEL[loop.status]} ${shownTurn}/${loop.maxTurns}`;
   const badgeAria = loop.forceFullRun
-    ? `ループ状態: ${STATUS_LABEL[loop.status]}、完走モード、Goalターン ${loop.turnCount} / ${loop.maxTurns}`
-    : `ループ状態: ${STATUS_LABEL[loop.status]}、Goalターン ${loop.turnCount} / ${loop.maxTurns}（完了検証ターンは含みません）`;
+    ? `ループ状態: ${STATUS_LABEL[loop.status]}、完走モード、Goalターン ${shownTurn} / ${loop.maxTurns}`
+    : `ループ状態: ${STATUS_LABEL[loop.status]}、Goalターン ${shownTurn} / ${loop.maxTurns}（完了検証ターンは含みません）`;
   const pauseHint =
     loop.status === "paused" && loop.pauseReason !== ""
       ? PAUSE_REASON_HINT[loop.pauseReason]

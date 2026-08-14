@@ -155,6 +155,43 @@ describe("GoalLoopPanel", () => {
     expect(badge?.getAttribute("aria-label")).toContain("完走モード");
   });
 
+  it.each([
+    ["queued", 0, "1/10", "1 / 10"],
+    ["running", 3, "3/10", "3 / 10"],
+    ["running", 0, "0/10", "0 / 10"],
+    ["completed", 3, "3/10", "3 / 10"],
+  ] as const)(
+    "shows the running-or-next turn %s with turnCount %s",
+    (status, turnCount, badgeText, ariaText) => {
+      render(
+        <GoalLoopPanel
+          loop={baseLoop({ status, turnCount })}
+          busy={false}
+          onAction={vi.fn()}
+        />,
+      );
+      const badge = screen.getByRole("region", { name: "ループ" }).querySelector(
+        "span[aria-label]",
+      );
+      expect(badge?.textContent).toContain(badgeText);
+      expect(badge?.getAttribute("aria-label")).toContain(ariaText);
+    },
+  );
+
+  it("does not advance the turn ratio during a verification turn", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ status: "running", turnKind: "verification", turnCount: 3 })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    const badge = screen.getByRole("region", { name: "ループ" }).querySelector(
+      "span[aria-label]",
+    );
+    expect(badge?.textContent).toContain("3/10");
+  });
+
   it("shows pause button while running and calls onAction", () => {
     const onAction = vi.fn();
     render(
