@@ -100,7 +100,17 @@ export function LoginForm({ onLogin }: LoginFormProps) {
         onSubmit={submit}
         className="w-full max-w-sm space-y-4 rounded-2xl border border-border bg-surface p-6 shadow-sm"
       >
-        <h1 className="text-center text-lg font-semibold text-text">LeafCode</h1>
+        <h1 className="flex items-center justify-center gap-2 text-center text-lg font-semibold text-text">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon-192.png"
+            alt=""
+            width={22}
+            height={22}
+            className="h-[22px] w-[22px] shrink-0 rounded-[6px] object-contain"
+          />
+          <span>LeafCode</span>
+        </h1>
         <p className="text-center text-xs text-muted">ユーザー名とパスワードでログインしてください</p>
         <label className="block">
           <span className="mb-1 block text-xs text-muted">ユーザー名</span>
