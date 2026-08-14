@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { execFileSync } from "node:child_process";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { normalizeWebuiEnv } from "../scripts/lib/env-compat.mjs";
 import { resolveNextDistDir } from "./src/lib/dist-dir";
@@ -48,6 +49,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_LEAFCODE_WORKFLOW_MODE: process.env.LEAFCODE_WORKFLOW_MODE ?? "false",
     NEXT_PUBLIC_LEAFCODE_WORKFLOW_GRAPH: process.env.LEAFCODE_WORKFLOW_GRAPH ?? "false",
     NEXT_PUBLIC_LEAFCODE_WORKFLOW_GRAPH_EDIT: process.env.LEAFCODE_WORKFLOW_GRAPH_EDIT ?? "false",
+    NEXT_PUBLIC_HOST_NAME: process.env.COMPUTERNAME || hostname(),
   },
   serverExternalPackages: ["better-sqlite3"],
   // Always inside this project: Turbopack rejects a distDir that navigates out

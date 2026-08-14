@@ -63,6 +63,7 @@ const BUILD_COMMIT = process.env.NEXT_PUBLIC_BUILD_COMMIT?.trim() || "";
 const BUILD_COMMIT_LABEL = BUILD_COMMIT ? BUILD_COMMIT.slice(0, 7) : "";
 const BUILD_COMMIT_DATE = process.env.NEXT_PUBLIC_BUILD_COMMIT_DATE?.trim() || "";
 const BUILD_COMMIT_DATE_LABEL = formatHeaderDate(BUILD_COMMIT_DATE);
+const HOST_NAME = process.env.NEXT_PUBLIC_HOST_NAME?.trim() || "";
 
 export function formatHeaderDate(value: string): string {
   const date = new Date(value);
@@ -1076,24 +1077,34 @@ export function Sidebar({
             <span className="truncate">LeafCode</span>
           </span>
           {BUILD_COMMIT_LABEL && (
-            <span
-              className="ml-6 inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
-              title={
-                BUILD_COMMIT_DATE
-                  ? `Build commit: ${BUILD_COMMIT} (${BUILD_COMMIT_DATE})`
-                  : `Build commit: ${BUILD_COMMIT}`
-              }
-              aria-label={
-                BUILD_COMMIT_DATE_LABEL
-                  ? `Build commit ${BUILD_COMMIT_LABEL} ${BUILD_COMMIT_DATE_LABEL}`
-                  : `Build commit ${BUILD_COMMIT}`
-              }
-            >
-              <span>{BUILD_COMMIT_LABEL}</span>
-              {BUILD_COMMIT_DATE_LABEL && (
-                <time dateTime={BUILD_COMMIT_DATE} className="text-faint">
-                  {BUILD_COMMIT_DATE_LABEL}
-                </time>
+            <span className="ml-6 flex shrink-0 items-center gap-1">
+              <span
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
+                title={
+                  BUILD_COMMIT_DATE
+                    ? `Build commit: ${BUILD_COMMIT} (${BUILD_COMMIT_DATE})`
+                    : `Build commit: ${BUILD_COMMIT}`
+                }
+                aria-label={
+                  BUILD_COMMIT_DATE_LABEL
+                    ? `Build commit ${BUILD_COMMIT_LABEL} ${BUILD_COMMIT_DATE_LABEL}`
+                    : `Build commit ${BUILD_COMMIT}`
+                }
+              >
+                <span>{BUILD_COMMIT_LABEL}</span>
+                {BUILD_COMMIT_DATE_LABEL && (
+                  <time dateTime={BUILD_COMMIT_DATE} className="text-faint">
+                    {BUILD_COMMIT_DATE_LABEL}
+                  </time>
+                )}
+              </span>
+              {HOST_NAME && (
+                <span
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
+                  title={HOST_NAME}
+                >
+                  {HOST_NAME}
+                </span>
               )}
             </span>
           )}
