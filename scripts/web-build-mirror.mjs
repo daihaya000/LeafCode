@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
+  existsSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   rmSync,
@@ -103,6 +105,37 @@ function shouldCopy(relPath) {
   );
 }
 
+/**
+ * Classify a source dirent for mirroring.
+ *
+ * On Windows, OneDrive cloud files are reparse points: `Dirent.isSymbolicLink()`
+ * is true and `Dirent.isFile()` is false, but `lstat()` reports a regular file.
+ * Skipping those leaves empty directories in the mirror (Next then fails with
+ * `Cannot find module 'next/dist/compiled/commander'`). Real junctions and
+ * symlinks — the ones bundlers canonicalize through — are
+ * `lstat().isSymbolicLink() === true` and must stay skipped.
+ *
+ * @param {{ isFile(): boolean, isDirectory(): boolean, isSymbolicLink(): boolean }} dirent
+ * @param {{ isFile(): boolean, isDirectory(): boolean, isSymbolicLink(): boolean } | null} lstat
+ * @returns {"skip" | "dir" | "file"}
+ */
+export function sourceEntryKind(dirent, lstat) {
+  if (dirent.isSymbolicLink() || (!dirent.isFile() && !dirent.isDirectory())) {
+    if (!lstat || lstat.isSymbolicLink()) return "skip";
+    if (lstat.isDirectory()) return "dir";
+    if (lstat.isFile()) return "file";
+    return "skip";
+  }
+  if (dirent.isDirectory()) return "dir";
+  if (dirent.isFile()) return "file";
+  return "skip";
+}
+
+/** True when the mirrored `next` CLI can boot (`commander` is the first import). */
+export function isMirroredNextCliReady(webDir) {
+  return existsSync(join(webDir, "node_modules", "next", "dist", "compiled", "commander", "index.js"));
+}
+
 /** Same content already in place? Hard links share mtime/size with the source. */
 function isUpToDate(sourceStat, targetStat) {
   return (
@@ -138,20 +171,29 @@ function syncDir(sourceDir, targetDir, rootDir, counters) {
 
   for (const entry of sourceEntries) {
     if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) continue;
-    if (entry.isFile() && SKIP_FILES.has(entry.name)) continue;
-    // Reparse points in the source are skipped: mirroring them would
-    // reintroduce the canonicalization problem hard links exist to avoid.
-    if (entry.isSymbolicLink()) continue;
+    // Name-based: OneDrive cloud files report Dirent.isFile() === false.
+    if (!entry.isDirectory() && SKIP_FILES.has(entry.name)) continue;
 
     const from = join(sourceDir, entry.name);
     const to = join(targetDir, entry.name);
+
+    let lstat = null;
+    if (entry.isSymbolicLink() || (!entry.isFile() && !entry.isDirectory())) {
+      try {
+        lstat = lstatSync(from);
+      } catch {
+        continue;
+      }
+    }
+    const kind = sourceEntryKind(entry, lstat);
+    if (kind === "skip") continue;
+
     keep.add(entry.name);
 
-    if (entry.isDirectory()) {
+    if (kind === "dir") {
       syncDir(from, to, rootDir, counters);
       continue;
     }
-    if (!entry.isFile()) continue;
 
     const relPath = relative(rootDir, from);
     const sourceStat = statSync(from);

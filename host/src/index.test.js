@@ -471,6 +471,20 @@ test('resolveOccupiedPort waits out ghost sockets before falling back', () => {
   );
 });
 
+test('spawnWeb re-syncs the production mirror when next/dist/compiled/commander is missing', () => {
+  const src = readFileSync(fileURLToPath(new URL('./index.js', import.meta.url)), 'utf8');
+  assert.match(
+    src,
+    /isMirroredNextCliReady\(WEB_MIRROR_DIR\)/,
+    'production start must detect an incomplete Next.js CLI payload',
+  );
+  assert.match(
+    src,
+    /syncMirror\(\{ installRoot: REPO_ROOT, mirrorRoot: WEB_MIRROR_ROOT \}\)/,
+    'production start must re-sync the mirror instead of looping next start',
+  );
+});
+
 test('auto-restart resolves the port instead of blind respawning onto a stuck socket', () => {
   const src = readFileSync(fileURLToPath(new URL('./index.js', import.meta.url)), 'utf8');
   assert.match(

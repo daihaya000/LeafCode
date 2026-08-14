@@ -1,15 +1,42 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  isMirroredNextCliReady,
   mirrorDistDir,
   mirrorSlug,
   mirrorWebDir,
   resolveMirrorRoot,
+  sourceEntryKind,
   syncMirror,
 } from "../../scripts/web-build-mirror.mjs";
+
+function dirent({ file = false, dir = false, link = false }) {
+  return {
+    isFile: () => file,
+    isDirectory: () => dir,
+    isSymbolicLink: () => link,
+  };
+}
+
+function stats({ file = false, dir = false, link = false }) {
+  return {
+    isFile: () => file,
+    isDirectory: () => dir,
+    isSymbolicLink: () => link,
+  };
+}
 
 function sandbox() {
   const root = mkdtempSync(join(tmpdir(), "ocw-mirror-"));
@@ -114,4 +141,56 @@ test("syncMirror: refuses a mirror inside the installation (it would mirror itse
     () => syncMirror({ installRoot: install, mirrorRoot: join(install, "mirror") }),
     /must not live inside/,
   );
+});
+
+test("sourceEntryKind: regular files and directories do not need lstat", () => {
+  assert.equal(sourceEntryKind(dirent({ file: true }), null), "file");
+  assert.equal(sourceEntryKind(dirent({ dir: true }), null), "dir");
+});
+
+test("sourceEntryKind: real junctions and file symlinks stay skipped", () => {
+  assert.equal(
+    sourceEntryKind(dirent({ link: true, dir: true }), stats({ link: true, dir: true })),
+    "skip",
+  );
+  assert.equal(
+    sourceEntryKind(dirent({ link: true }), stats({ link: true, file: true })),
+    "skip",
+  );
+  assert.equal(sourceEntryKind(dirent({ link: true }), null), "skip");
+});
+
+test("sourceEntryKind: OneDrive cloud files (Dirent=link, lstat=file) are mirrored", () => {
+  // Windows OneDrive: readdir Dirent reports FILE_ATTRIBUTE_REPARSE_POINT as a
+  // symlink, but lstat() says the hydrated cloud file is a regular file.
+  assert.equal(
+    sourceEntryKind(dirent({ link: true }), stats({ file: true })),
+    "file",
+  );
+  assert.equal(
+    sourceEntryKind(dirent({}), stats({ file: true })),
+    "file",
+  );
+});
+
+test("isMirroredNextCliReady: empty commander dir is not ready", () => {
+  const root = mkdtempSync(join(tmpdir(), "ocw-nextcli-"));
+  const webDir = join(root, "web");
+  const commander = join(webDir, "node_modules", "next", "dist", "compiled", "commander");
+  mkdirSync(commander, { recursive: true });
+  assert.equal(isMirroredNextCliReady(webDir), false);
+  writeFileSync(join(commander, "index.js"), "module.exports = {};\n");
+  assert.equal(isMirroredNextCliReady(webDir), true);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("syncMirror: skips real directory junctions so bundlers cannot canonicalize back", () => {
+  const { install, mirror } = sandbox();
+  mkdirSync(join(install, "outside"), { recursive: true });
+  writeFileSync(join(install, "outside", "secret.ts"), "export {};\n");
+  symlinkSync(join(install, "outside"), join(install, "web", "linked"), "junction");
+  syncMirror({ installRoot: install, mirrorRoot: mirror });
+  assert.equal(existsSync(join(mirror, "web", "linked")), false);
+  assert.equal(existsSync(join(mirror, "web", "src", "app.ts")), true);
+  rmSync(join(mirror, ".."), { recursive: true, force: true });
 });

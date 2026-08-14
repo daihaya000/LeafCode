@@ -91,7 +91,13 @@ import {
 // unrelated app that happens to occupy the port). Import-safe: the guard only
 // runs main() when executed directly.
 import { isThisWebUiNextStart } from '../../scripts/production-webui-build-guard.mjs';
-import { mirrorDistDir, mirrorWebDir, resolveMirrorRoot } from '../../scripts/web-build-mirror.mjs';
+import {
+  isMirroredNextCliReady,
+  mirrorDistDir,
+  mirrorWebDir,
+  resolveMirrorRoot,
+  syncMirror,
+} from '../../scripts/web-build-mirror.mjs';
 import {
   deleteUser,
   hasUsers,
@@ -1156,6 +1162,22 @@ async function spawnWeb() {
   }
   if (plan.needsBuild) throw new Error('LeafCode production build is unavailable');
   const useProd = plan.useProd;
+
+  // OneDrive can leave the mirror with empty `next/dist/compiled/*` dirs
+  // (Dirent reports cloud files as symlinks). Re-sync instead of looping
+  // `next start` on a CLI that cannot even load commander.
+  if (useProd && !isMirroredNextCliReady(WEB_MIRROR_DIR)) {
+    log('Production mirror is missing the Next.js CLI payload; re-syncing…');
+    const mirror = syncMirror({ installRoot: REPO_ROOT, mirrorRoot: WEB_MIRROR_ROOT });
+    log(
+      `Mirror re-synced ${mirror.mirrorRoot} (linked ${mirror.linked}, copied ${mirror.copied}, unchanged ${mirror.unchanged}, removed ${mirror.removed}, ${mirror.durationMs}ms)`,
+    );
+    if (!isMirroredNextCliReady(WEB_MIRROR_DIR)) {
+      throw new Error(
+        `Production mirror is missing next/dist/compiled/commander under ${WEB_MIRROR_DIR}`,
+      );
+    }
+  }
 
   // Production serves the mirrored project, so `next start` is invoked
   // directly there instead of through npm in the installation.
