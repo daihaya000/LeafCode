@@ -131,6 +131,7 @@
 > - **実データの旧名パス参照ゼロ（ターン 40）**: `%APPDATA%\leafcode\webui.db` の `settings` テーブルを読み取り専用で確認 → `key/value` に「open/webui/opencode-webui」を含む行は **0 件**（設定値にパス参照なし）。`provider-model-state.json` にも `opencode-webui` 参照なし（プロジェクトパスがキー・リポジトリ名 LeafCode とは無関係）。→ BR-15 の影響対象（旧パス残存）はこの環境の実データに**ゼロ**と最終確認。
 > - **実データ JSON の一括確認（ターン 41）**: `%APPDATA%\leafcode` 配下の全 JSON 8 ファイルを「opencode-webui」参照の有無で確認（中身は非出力・機微情報保護）→ **`profiles.json` のみ参照あり**（BR-15 で記録済みの「default（移行前バックアップ）」プロファイル・`external: true` で旧パス `opencode-webui\profiles\main` を指す・opencode-webui ディレクトリ残存中は有効）。他 7 ファイル（host-control / login-throttle-ip / login-throttle / provider-model-state / provider-response-cache / trusted-devices / users）は参照**ゼロ**。→ 実データの旧名参照は BR-15 既知の 1 エントリのみと確定。
 > - **✅ バッジ付き仕様の参照先整合（ターン 42）**: `docs/specs/README.md` のバッジ付き仕様 2 本（bat-encoding-safety / host-log-viewer）の参照先は**全て実在**（`host/src/bat-encoding.test.js` / `HostLogPanel.tsx` / `log-buffer.js` / `log-file.js`・`git ls-files` で確認）で、rebrand 後もバッジ判定は正確。host-log-viewer.md のパス誤記載（`%APPDATA%\opencode-webui`）は BR-16 で記録済み。→ 健全（BR-16 のみ残）。
+> - **BR-1〜10 解決確認メモの現 HEAD 突き合わせ（ターン 43）**: 前ラウンドの解決確認メモを再突き合わせ → BR-1（`index.js:32` import あり）/ BR-5（`sync-profiles.mjs:70,78,93` isDistributable 注入）/ BR-6（`index.js:1722` `stopOpencodeProcessTree(pids, {opencodeUrl...})`・行番号はシフト・内容一致）/ BR-7（`lock-file.js:56,88` 引数伝搬）は全てメモと一致。BR-2,3,8,9,10 はテスト PASS（ターン 1・17・ソース変更なし）。→ メモは現 HEAD と整合。
 
 ---
 
