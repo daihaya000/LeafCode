@@ -16,13 +16,13 @@ import type { NextResponse } from "next/server";
  */
 
 /**
- * Default freshness in SECONDS (the Cache-Control unit). Mirrors the client
- * default in stale-cache.ts (30s fresh / 600s stale, milliseconds there) —
- * both describe the same reuse window, so keep them in step
+ * Default freshness in SECONDS (the Cache-Control unit). Single source of
+ * truth for the standard reuse window (30s fresh / 600s stale); the client
+ * cache (stale-cache.ts) derives its millisecond values from these
  * (REFACTORING_PLAN P4-c / IMPROVEMENT 9-1).
  */
-const DEFAULT_MAX_AGE_SECONDS = 30;
-const DEFAULT_SWR_SECONDS = 600;
+export const DEFAULT_MAX_AGE_SECONDS = 30;
+export const DEFAULT_SWR_SECONDS = 600;
 
 export function withReadCache(
   res: NextResponse,
