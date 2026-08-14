@@ -128,6 +128,7 @@
 > - **leafcode / LeafCode / LEAFCODE の大小文字使い分け（ターン 37）**: 3 種は**意図的な使い分け**で混在なし: (a) ファイルパス・データディレクトリは**小文字 `leafcode`**（`data-dir.mjs` の `DATA_DIR_NAME` 等・全パス参照が小文字で統一）、(b) 表示・識別子（トレイメニュー title / FW 規則名 'LeafCode' / ショートカット説明 / Console.Title / User-Agent / metadata・manifest name / タブタイトル / サービスステータス / waitUntilReady ラベル）は**パスカルケース `LeafCode`**、(c) 環境変数は**大文字 `LEAFCODE_*`**。実コードのパスに大文字 `LeafCode` は無し（テストデータ `C:\one\LeafCode` 等は識別子として使用・問題なし）。→ 健全。
 > - **CI ワークフローの rebrand 追従（ターン 38）**: `.github/workflows`（ci.yml / encoding-check.yml）に旧名ヒット**ゼロ**。ci.yml は web（lint/typecheck/vitest・node 24）と e2e（smoke・node 24）で標準コマンド（npm ci / lint / typecheck / test / e2e:smoke・パッケージ名非依存）。encoding-check.yml も **node-version 24 に更新済み**（前ラウンド OR-17 で記録した「encoding-check は node 20、ci.yml は node 24 と不統一」は**解消済み**）・bat エンコードテスト + host テスト。→ 健全。
 > - **config.json と docs の残り（ターン 39）**: ルート `config.json` はこのリポジトリ用の OpenCode エージェント設定（build タスクを deny・`$schema: https://opencode.ai/config.json`）で rebrand と無関係・問題なし。docs の残り（ui-components / verification / browser-bridge-setup / opencode/ 配下）の旧名は `provider-model-management.md:20` の**既知の 1 行のみ**（BR-16 で記録済み）。→ 健全。
+> - **実データの旧名パス参照ゼロ（ターン 40）**: `%APPDATA%\leafcode\webui.db` の `settings` テーブルを読み取り専用で確認 → `key/value` に「open/webui/opencode-webui」を含む行は **0 件**（設定値にパス参照なし）。`provider-model-state.json` にも `opencode-webui` 参照なし（プロジェクトパスがキー・リポジトリ名 LeafCode とは無関係）。→ BR-15 の影響対象（旧パス残存）はこの環境の実データに**ゼロ**と最終確認。
 
 ---
 
