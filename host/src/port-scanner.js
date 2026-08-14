@@ -9,12 +9,13 @@ import { parseListeningPids } from './port-plan.js';
 // build guard agree on what counts as "our" production WebUI (never kill an
 // unrelated app that happens to occupy the port). Import-safe: the guard only
 // runs main() when executed directly.
-import { isThisWebUiNextStart } from '../../scripts/production-webui-build-guard.mjs';
+import { isThisWebUiNextStart as defaultIsThisWebUiNextStart } from '../../scripts/production-webui-build-guard.mjs';
 
 const execFileAsync = promisify(execFile);
 
-export function runPowerShell(command) {
-  return execFileSync(
+export function runPowerShell(command, deps = {}) {
+  const exec = deps.execFileSync ?? execFileSync;
+  return exec(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-Command', command],
     {
@@ -26,15 +27,15 @@ export function runPowerShell(command) {
   ).trim();
 }
 
-
-export function captureNetstat() {
-  const output = runNetstat();
+export function captureNetstat(deps = {}) {
+  const output = runNetstat(deps);
   return output == null ? null : { output };
 }
 
-export async function captureNetstatAsync() {
+export async function captureNetstatAsync(deps = {}) {
+  const exec = deps.execFileAsync ?? execFileAsync;
   try {
-    const { stdout } = await execFileAsync('netstat.exe', ['-ano'], {
+    const { stdout } = await exec('netstat.exe', ['-ano'], {
       encoding: 'utf8',
       windowsHide: true,
       timeout: 5000,
@@ -46,9 +47,10 @@ export async function captureNetstatAsync() {
   }
 }
 
-export function runNetstat() {
+export function runNetstat(deps = {}) {
+  const exec = deps.execSync ?? execSync;
   try {
-    return execSync('netstat -ano', {
+    return exec('netstat -ano', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       // Bounded so a degraded network stack cannot hang the caller (this is
@@ -66,8 +68,8 @@ export function runNetstat() {
  *   Only pass one when no process has been started or killed since it was
  *   taken — anything that waits for a port to change state must re-run netstat.
  */
-export function getListeningPids(port, snapshot) {
-  const output = snapshot?.output ?? runNetstat();
+export function getListeningPids(port, snapshot, deps = {}) {
+  const output = snapshot?.output ?? runNetstat(deps);
   if (output == null) return [];
   try {
     return parseListeningPids(output, port);
@@ -115,7 +117,8 @@ export function parseCommandLineJson(output) {
  * @param {number[]} pids
  * @returns {Map<number, string>}
  */
-export function getCommandLineMap(pids) {
+export function getCommandLineMap(pids, deps = {}) {
+  const run = deps.runPowerShell ?? runPowerShell;
   const ids = [
     ...new Set(
       (Array.isArray(pids) ? pids : [])
@@ -128,7 +131,7 @@ export function getCommandLineMap(pids) {
   const filter = ids.map((id) => `ProcessId=${id}`).join(' OR ');
   let output;
   try {
-    output = runPowerShell(
+    output = run(
       `ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process -Filter '${filter}' | Select-Object ProcessId, CommandLine)`,
     );
   } catch {
@@ -146,17 +149,18 @@ export function getCommandLineMap(pids) {
  * @param {number[]} listenerPids
  * @returns {(pid: number) => boolean}
  */
-export function makeOwnedWebListenerPredicate(listenerPids, webDir) {
-  const commandLines = getCommandLineMap(listenerPids);
+export function makeOwnedWebListenerPredicate(listenerPids, webDir, deps = {}) {
+  const commandLines = getCommandLineMap(listenerPids, deps);
+  const isOurNext = deps.isThisWebUiNextStart ?? defaultIsThisWebUiNextStart;
   return (pid) => {
     const commandLine = commandLines.get(Number(pid));
     if (!commandLine) return false;
-    return isThisWebUiNextStart(commandLine, webDir);
+    return isOurNext(commandLine, webDir);
   };
 }
 
-export function isPortInUse(port, snapshot) {
-  return getListeningPids(port, snapshot).length > 0;
+export function isPortInUse(port, snapshot, deps = {}) {
+  return getListeningPids(port, snapshot, deps).length > 0;
 }
 
 /**
@@ -164,11 +168,10 @@ export function isPortInUse(port, snapshot) {
  * point-in-time decision anyway, and re-running netstat per candidate cost up
  * to 20 x ~150 ms on the fallback path.
  */
-export function findFreePort(startPort, maxAttempts = 20) {
-  const snapshot = captureNetstat();
+export function findFreePort(startPort, maxAttempts = 20, deps = {}) {
+  const snapshot = captureNetstat(deps);
   for (let port = startPort; port < startPort + maxAttempts; port += 1) {
-    if (!isPortInUse(port, snapshot)) return port;
+    if (!isPortInUse(port, snapshot, deps)) return port;
   }
   return null;
 }
-
