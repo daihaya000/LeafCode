@@ -27,6 +27,7 @@ function payload(label: string): DiffFilesPayload {
         binary: false,
         untracked: false,
         hunks: [],
+        modifiedAt: "2026-08-14T03:30:00.000Z",
       },
     ],
   };
@@ -287,6 +288,16 @@ describe("DiffPane directory race", () => {
     await screen.findByText("file.ts");
     expect(screen.getByText("external.ts")).toBeTruthy();
     expect(screen.queryByText("変更はありません")).toBeNull();
+  });
+
+  it("shows the last modified time per file", async () => {
+    getJson.mockImplementation(mockMetaApisResponse);
+
+    render(
+      <DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />,
+    );
+    await screen.findByText("file.ts");
+    expect(screen.getByText(/更新 08\/14/)).toBeTruthy();
   });
 
   it("explains when the current-session filter hides changes and reveals them via すべて表示", async () => {

@@ -190,6 +190,8 @@ export type DiffFile = {
   binary: boolean;
   untracked: boolean;
   hunks: DiffHunk[];
+  /** Last on-disk modification time (ISO), when the file still exists. */
+  modifiedAt?: string;
 };
 
 export type DiffFilesPayload = {

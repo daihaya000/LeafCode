@@ -59,12 +59,17 @@ describe("GET /api/diff/files untracked safety", () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      files: { path: string; hunks: { lines: { t: string; text: string }[] }[] }[];
+      files: {
+        path: string;
+        hunks: { lines: { t: string; text: string }[] }[];
+        modifiedAt?: string;
+      }[];
     };
     const safe = body.files.find((f) => f.path === "safe.txt");
     expect(safe?.hunks[0]?.lines.some((l) => l.text.includes("hello"))).toBe(
       true,
     );
+    expect(safe?.modifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it("does not follow an untracked symlink outside the workspace", async () => {

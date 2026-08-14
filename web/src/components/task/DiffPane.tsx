@@ -46,6 +46,18 @@ type SessionRow = {
 
 type SessionFilter = "all" | "current" | "external";
 
+function formatModifiedAt(iso: string | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function FileDiffBlock({
   file,
   expanded,
@@ -118,6 +130,14 @@ function FileDiffBlock({
           {file.binary && (
             <span className="shrink-0 rounded-full bg-surface-3 px-2 py-0.5 text-[10px] text-muted">
               バイナリ
+            </span>
+          )}
+          {file.modifiedAt && (
+            <span
+              className="shrink-0 text-[10px] whitespace-nowrap text-faint"
+              title={`最終更新: ${new Date(file.modifiedAt).toLocaleString("ja-JP")}`}
+            >
+              更新 {formatModifiedAt(file.modifiedAt)}
             </span>
           )}
           {externalChange && (

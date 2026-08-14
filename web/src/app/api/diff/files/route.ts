@@ -234,6 +234,18 @@ export async function GET(req: NextRequest) {
 
     const additions = files.reduce((n, f) => n + f.additions, 0);
     const deletions = files.reduce((n, f) => n + f.deletions, 0);
+    // Last on-disk modification time per file. Deleted/unreadable files stay
+    // undefined. The lexical isUnder guard keeps the stat inside the workspace.
+    for (const f of files) {
+      if (f.modifiedAt) continue;
+      const abs = path.resolve(dir, f.path);
+      if (!isUnder(dir, abs)) continue;
+      try {
+        f.modifiedAt = fs.statSync(abs).mtime.toISOString();
+      } catch {
+        /* deleted or unreadable */
+      }
+    }
     const payload: DiffFilesPayload = {
       git: true,
       branch,
