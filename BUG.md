@@ -32,7 +32,7 @@
 **修正推奨順**: BR-11（高・機能停止）→ BR-12（中・セキュリティ）→ BR-15（中・移行後機能）→ BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20（低・表示/ドキュメント）。BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。
 **未修正 10 件のうち実測済み**: BR-11（コード照合）/ BR-12（一時テスト）/ BR-15（一時テスト）。BR-13 / BR-14 / BR-16 / BR-17 / BR-18 / BR-19 / BR-20 はコード・ドキュメント確認のみ。
 
-# rebrand 追跡調査の完了サマリ（ターン 29・最終版）
+# rebrand 追跡調査の完了サマリ（ターン 35・最終版）
 
 **調査範囲**: rebrand 8 コミット（`5c17cc20` UI/UA/内部識別子・`802bfe8a` npm 名/SW キャッシュ/GitHub 参照・`fe439fc5` データディレクトリ移行・`0dc01130` env リネーム shim・`a1316e3f` ランチャー/FW/MCP/ビルドミラー/ログ prefix・`5f260f65` + `2dd9bbeb` 表示文言の二重リネーム・`27ce8787`/`3ea008f8` アイコン）+ auth 2 コミット（`af543e20` ログイン強制 / `ec47229c` ループバック admin）+ next 16.3.1 更新。全 rebrand コミットの差分ファイルを漏れなく精査（env shim・dataDir 移行・package 名・FW 規則・テスト追従・e2e・ドキュメント・.gitignore・プロンプト・通知・拡張 UI・実データ DB と host.log まで）。
 
@@ -43,7 +43,7 @@
 - **表示/ドキュメント 7**: BR-13（README ミラーパス + 改名移行中の矛盾表現）/ BR-14（「OpenCode host」二重置換の取り違え・唯一の名前誤用）/ BR-16（docs/specs 5 ファイルの旧データパス）/ BR-17（proxy.ts 403 文言）/ BR-18（host ログ 5 箇所）/ BR-19（拡張ポップアップ + build guard コンソール）/ BR-20（通知フォールバック「OpenCode タスク」）
 - **反証 1**: BR-4（SettingsView タブ切替の編集喪失 → jsdom 実測で onBlur 保存が機能・クローズ候補）
 
-**健全確認（バグではないと確認した項目）**: env shim の全 entry point 適用（host / next.config / instrumentation / MCP / bat / Launcher.cs）・dataDir 移行の host/web 両側実行・npm パッケージ名 + lock 全追従・FW 規則名の orphan 除去整合（旧 add 名と delete 名一致）・e2e セレクタと実 UI 整合・goal-loop プロンプトマーカーとログ source 名 `webui` の内部識別子としての維持（変更リスクあり）・二重リネームの全数突き合わせ（誤りは BR-14 のみ）・.gitignore 追従・next 16 での instrumentation register 有効（BR-11 修正の前提）・host/browser-bridge テスト追従（env 名のみで意味不変）・`GITHUB_REPO = daihaya000/LeafCode` の実在確認（webfetch・public）・動的タブタイトル/エラーページ整合・OR-1〜23 との関連なし（BR-16/OR-16 のみ整合注意）・実環境 host.log の起動正常。
+**健全確認（バグではないと確認した項目）**: env shim の全 entry point 適用（host / next.config / instrumentation / MCP / bat / Launcher.cs）・dataDir 移行の host/web 両側実行・npm パッケージ名 + lock 全追従・FW 規則名の orphan 除去整合（旧 add 名と delete 名一致）・e2e セレクタと実 UI 整合・goal-loop プロンプトマーカーとログ source 名 `webui` の内部識別子としての維持（変更リスクあり）・二重リネームの全数突き合わせ（誤りは BR-14 のみ）・.gitignore 追従・next 16 での instrumentation register 有効（BR-11 修正の前提）・host/browser-bridge テスト追従（env 名のみで意味不変）・`GITHUB_REPO = daihaya000/LeafCode` の実在確認（webfetch・public）・動的タブタイトル/エラーページ整合・OR-1〜23 との関連なし（BR-16/OR-16 のみ整合注意）・実環境 host.log の起動正常・LoginGate 強制遷移のループなし（全体ラップ + fetchAuthRequirement フェイルセーフ）・audit IP（x-ocw-client-ip）の偽装耐性（Caddyfile に trusted_proxies なし = Caddy が XFF を実 IP に置換）・実物 Caddyfile の host-only handle 5 パス設定・/api/remote プレースホルダーと devcontainer 実装。
 
 **検証**: web vitest 327 files / 3943 tests・host 480 本・browser-bridge 91 本・tsc --noEmit — 全てクリーン（調査差分は BUG.md のみ・一時テストは全て削除済み・各ターンでコミット済み）。
 
