@@ -8,11 +8,19 @@ import { existsSync } from 'fs';
 
 let cachedNpmCli = null;
 
+/** Test hook: forget the resolved npm CLI path so the next call re-resolves. */
+export function __resetNpmCliCacheForTest() {
+  cachedNpmCli = null;
+}
+
 /**
  * Run npm through its JavaScript CLI instead of a .cmd shell shim. This keeps
  * every argument separate and avoids Node's shell:true quoting vulnerability.
  */
-export function spawnNpm(args, options) {
+export function spawnNpm(args, options, deps = {}) {
+  const execFileSyncImpl = deps.execFileSync ?? execFileSync;
+  const existsImpl = deps.existsSync ?? existsSync;
+  const spawnImpl = deps.spawn ?? spawn;
   if (!cachedNpmCli) {
     const candidates = [
       process.env.npm_execpath,
@@ -20,7 +28,7 @@ export function spawnNpm(args, options) {
     ].filter(Boolean);
 
     try {
-      const npmCommands = execFileSync('where.exe', ['npm.cmd'], {
+      const npmCommands = execFileSyncImpl('where.exe', ['npm.cmd'], {
         encoding: 'utf8',
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'ignore'],
@@ -37,13 +45,13 @@ export function spawnNpm(args, options) {
       // The normal Node-adjacent candidate above still covers standard installs.
     }
 
-    cachedNpmCli = candidates.find((candidate) => existsSync(candidate)) || null;
+    cachedNpmCli = candidates.find((candidate) => existsImpl(candidate)) || null;
     if (!cachedNpmCli) {
       throw new Error('npm-cli.js was not found. Reinstall Node.js with npm included.');
     }
   }
 
-  return spawn(process.execPath, [cachedNpmCli, ...args], {
+  return spawnImpl(process.execPath, [cachedNpmCli, ...args], {
     ...options,
     shell: false,
   });
