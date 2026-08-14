@@ -129,6 +129,7 @@
 > - **CI ワークフローの rebrand 追従（ターン 38）**: `.github/workflows`（ci.yml / encoding-check.yml）に旧名ヒット**ゼロ**。ci.yml は web（lint/typecheck/vitest・node 24）と e2e（smoke・node 24）で標準コマンド（npm ci / lint / typecheck / test / e2e:smoke・パッケージ名非依存）。encoding-check.yml も **node-version 24 に更新済み**（前ラウンド OR-17 で記録した「encoding-check は node 20、ci.yml は node 24 と不統一」は**解消済み**）・bat エンコードテスト + host テスト。→ 健全。
 > - **config.json と docs の残り（ターン 39）**: ルート `config.json` はこのリポジトリ用の OpenCode エージェント設定（build タスクを deny・`$schema: https://opencode.ai/config.json`）で rebrand と無関係・問題なし。docs の残り（ui-components / verification / browser-bridge-setup / opencode/ 配下）の旧名は `provider-model-management.md:20` の**既知の 1 行のみ**（BR-16 で記録済み）。→ 健全。
 > - **実データの旧名パス参照ゼロ（ターン 40）**: `%APPDATA%\leafcode\webui.db` の `settings` テーブルを読み取り専用で確認 → `key/value` に「open/webui/opencode-webui」を含む行は **0 件**（設定値にパス参照なし）。`provider-model-state.json` にも `opencode-webui` 参照なし（プロジェクトパスがキー・リポジトリ名 LeafCode とは無関係）。→ BR-15 の影響対象（旧パス残存）はこの環境の実データに**ゼロ**と最終確認。
+> - **実データ JSON の一括確認（ターン 41）**: `%APPDATA%\leafcode` 配下の全 JSON 8 ファイルを「opencode-webui」参照の有無で確認（中身は非出力・機微情報保護）→ **`profiles.json` のみ参照あり**（BR-15 で記録済みの「default（移行前バックアップ）」プロファイル・`external: true` で旧パス `opencode-webui\profiles\main` を指す・opencode-webui ディレクトリ残存中は有効）。他 7 ファイル（host-control / login-throttle-ip / login-throttle / provider-model-state / provider-response-cache / trusted-devices / users）は参照**ゼロ**。→ 実データの旧名参照は BR-15 既知の 1 エントリのみと確定。
 
 ---
 
