@@ -72,6 +72,8 @@ function mockGetJson(overrides?: {
   autoOptimize?: string | null;
   autoShowModel?: string | null;
   providers?: typeof PROVIDERS;
+  visionModel?: string | null;
+  visionModels?: { value: string; label: string; group: string }[];
 }) {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/settings/default-model") {
@@ -91,6 +93,22 @@ function mockGetJson(overrides?: {
     }
     if (path === "/api/settings/auto-show-model") {
       return Promise.resolve({ value: overrides?.autoShowModel ?? null });
+    }
+    if (path === "/api/qwen-native/settings") {
+      return Promise.resolve({
+        enabled: true,
+        opencodeModel: overrides?.visionModel ?? "",
+        timeoutMs: 120_000,
+      });
+    }
+    if (path === "/api/qwen-native/models") {
+      return Promise.resolve({
+        models:
+          overrides?.visionModels ?? [
+            { value: "openai::gpt-4o", label: "GPT-4o", group: "OpenAI" },
+            { value: "ollama::qwen2.5vl:7b", label: "qwen2.5vl:7b", group: "Ollama" },
+          ],
+      });
     }
     if (path === "/api/extensions/provider-models") {
       if (overrides?.fail) {
@@ -1158,5 +1176,65 @@ describe("ProviderModelsSettings", () => {
     resolveFirst({ ok: true });
     await waitFor(() => expect(orderCalls).toBe(2));
     await waitFor(() => expect(screen.queryByText("並び順を保存中…")).toBeNull());
+  });
+
+  it("renders the image pre-analysis model section after the generation model", async () => {
+    render(<ProviderModelsSettings />);
+
+    const section = await screen.findByRole("region", {
+      name: "画像事前解析モデル",
+    });
+    const generationHeading = screen.getByRole("heading", {
+      name: "タイトル / NextAction 生成モデル",
+    });
+    const autoHeading = screen.getByRole("heading", { name: "Autoモード" });
+    expect(generationHeading.compareDocumentPosition(section)).toBe(4);
+    expect(section.compareDocumentPosition(autoHeading)).toBe(4);
+  });
+
+  it("loads the saved image pre-analysis model into the selector", async () => {
+    mockGetJson({ visionModel: "openai::gpt-4o" });
+    render(<ProviderModelsSettings />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "画像事前解析モデル" }),
+      ).toHaveProperty("value", "openai::gpt-4o");
+    });
+  });
+
+  it("saves the image pre-analysis model as an always-enabled setting", async () => {
+    render(<ProviderModelsSettings />);
+
+    const select = await screen.findByRole("combobox", {
+      name: "画像事前解析モデル",
+    });
+    fireEvent.click(select);
+    fireEvent.click(await screen.findByRole("option", { name: /GPT-4o/ }));
+
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith("PUT", "/api/qwen-native/settings", {
+        enabled: true,
+        opencodeModel: "openai::gpt-4o",
+        timeoutMs: 120_000,
+      });
+    });
+  });
+
+  it("saves the image pre-analysis timeout on blur", async () => {
+    render(<ProviderModelsSettings />);
+    await screen.findByRole("combobox", { name: "画像事前解析モデル" });
+
+    const timeout = screen.getByLabelText("画像事前解析タイムアウト（秒）");
+    fireEvent.change(timeout, { target: { value: "300" } });
+    fireEvent.blur(timeout);
+
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith("PUT", "/api/qwen-native/settings", {
+        enabled: true,
+        opencodeModel: "",
+        timeoutMs: 300_000,
+      });
+    });
   });
 });

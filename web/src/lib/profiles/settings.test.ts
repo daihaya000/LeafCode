@@ -49,6 +49,22 @@ describe("readQwenNativeSettings / writeQwenNativeSettings", () => {
     expect(settings.timeoutMs).toBe(QWEN_NATIVE_DEFAULTS.timeoutMs);
   });
 
+  it("treats the feature as always enabled even when the file saved enabled:false", () => {
+    fs.writeFileSync(
+      path.join(testDir, "qwen-native-settings.json"),
+      JSON.stringify({
+        enabled: false,
+        opencodeModel: "ollama::qwen2.5vl:7b",
+        timeoutMs: 120_000,
+      }),
+      "utf8",
+    );
+    const settings = readQwenNativeSettings();
+    expect(settings.enabled).toBe(true);
+    expect(settings.opencodeModel).toBe("ollama::qwen2.5vl:7b");
+    expect(settings.timeoutMs).toBe(120_000);
+  });
+
   it("ignores invalid numeric fields", () => {
     fs.writeFileSync(
       path.join(testDir, "qwen-native-settings.json"),

@@ -17,17 +17,18 @@ export type ProfileSetupSettings = {
 /**
  * 画像事前解析は OpenCode 登録モデルへ一本化している。ローカル Ollama も
  * `opencode.jsonc` の provider として登録し、`providerID::modelID` で参照する
- * （設定画面「画像解析」タブのセットアップボタンが登録まで行う）。
+ * （設定画面「プロバイダー/モデル」タブのプロバイダー登録が行う）。
  */
 export type QwenNativeSettings = {
   enabled: boolean;
-  /** `providerID::modelID`。未設定の間は事前解析を有効化できない。 */
+  /** `providerID::modelID`。未設定の間は事前解析を利用できない。 */
   opencodeModel: string;
   timeoutMs: number;
 };
 
 export const QWEN_NATIVE_DEFAULTS: QwenNativeSettings = {
-  enabled: false,
+  // 画像事前解析は既定有効機能。モデルを選択すると自動で利用可能になる。
+  enabled: true,
   opencodeModel: "",
   timeoutMs: VISION_ANALYSIS_TIMEOUT_DEFAULT_MS,
 };
@@ -84,8 +85,9 @@ export function readQwenNativeSettings(): QwenNativeSettings {
     ) as Partial<QwenNativeSettings>;
     return {
       // 旧 `source: "endpoint"` 設定（baseUrl/model/apiKey）は読み捨てる。
-      // OpenCode モデル未選択なら enabled でも利用不可として扱われる。
-      enabled: parsed.enabled === true,
+      // 画像事前解析は既定有効。旧UIが保存した enabled 値は無視して常に有効とし、
+      // OpenCode モデル未選択の間だけ利用不可として扱われる。
+      enabled: true,
       opencodeModel:
         typeof parsed.opencodeModel === "string" ? parsed.opencodeModel.trim() : "",
       timeoutMs:

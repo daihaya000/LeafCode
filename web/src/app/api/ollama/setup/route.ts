@@ -17,9 +17,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 900;
 
 /**
- * 設定画面「画像解析」タブのセットアップボタン。
- * 起動時の自動セットアップは廃止し、この明示操作でのみ
- * インストール → モデルPull → OpenCode provider 登録 を行う。
+ * 旧「画像解析」タブのセットアップボタン用。現行UIからは呼び出されていない
+ * （インストール → モデルPull → OpenCode provider 登録 を一括実行する）。
  */
 export async function POST(req: Request) {
   const denied = await requireAuthorized(req);

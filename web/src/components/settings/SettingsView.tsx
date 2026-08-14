@@ -23,7 +23,6 @@ import { GeneralSettingsTab } from "./GeneralSettingsTab";
 import { ProjectSettingsTab } from "./ProjectSettingsTab";
 import { ModelRankingSettings } from "@/components/settings/ModelRankingSettings";
 import { MemorySettings } from "@/components/settings/MemorySettings";
-import { VisionSettings } from "@/components/settings/VisionSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
 import { Button, cx, Spinner } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
@@ -65,8 +64,7 @@ type SettingsTab =
   | "ranking"
   | "profiles"
   | "users"
-  | "memory"
-  | "vision";
+  | "memory";
 
 
 
@@ -283,7 +281,6 @@ const [error, setError] = useState<string | null>(null);
     { key: "addons", label: "アドオン" },
     { key: "users", label: "ユーザー" },
     { key: "memory", label: "メモリ" },
-    { key: "vision", label: "画像解析" },
   ];
   const tabRefs = useRef<Partial<Record<SettingsTab, HTMLButtonElement>>>({});
   const moveTab = (index: number) => {
@@ -586,7 +583,6 @@ const [error, setError] = useState<string | null>(null);
         )}
 
         {activeTab === "memory" && <MemorySettings />}
-        {activeTab === "vision" && <VisionSettings />}
       </main>
       </div>
     </div>

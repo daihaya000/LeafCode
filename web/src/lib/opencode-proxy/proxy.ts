@@ -300,7 +300,7 @@ export async function proxy(
                 return NextResponse.json(
                   {
                     error: nativeError
-                      ? "画像の事前解析に失敗しました。設定の「画像解析」タブで選んだ解析モデルが利用できる状態か確認してください。"
+                      ? "画像の事前解析に失敗しました。設定の「プロバイダー/モデル」タブで選んだ解析モデルが利用できる状態か確認してください。"
                       : "image input is not supported by the selected model",
                   },
                   { status: nativeError ? 502 : 400 },

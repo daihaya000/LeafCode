@@ -23,15 +23,14 @@ export class QwenNativeVisionError extends Error {
  * 事前解析は OpenCode 登録モデルのみを使う（OpenAI互換エンドポイント直指定は廃止）。
  * ローカル Ollama も `opencode.jsonc` の provider として登録して利用する。
  * `LEAFCODE_QWEN_MODEL` に `providerID::modelID` を渡すと設定ファイルより優先される。
+ * 画像事前解析は既定有効機能（enabled 固定）で、モデル未選択の間だけ無効になる。
  */
 function resolveSettings() {
   const fileSettings = readQwenNativeSettings();
   const envModel = process.env.LEAFCODE_QWEN_MODEL?.trim();
   const opencodeModel = envModel || fileSettings.opencodeModel;
   return {
-    enabled:
-      (process.env.LEAFCODE_QWEN_NATIVE === "1" || fileSettings.enabled) &&
-      opencodeModel.length > 0,
+    enabled: opencodeModel.length > 0,
     opencodeModel,
     timeoutMs: fileSettings.timeoutMs || QWEN_NATIVE_DEFAULTS.timeoutMs,
   };

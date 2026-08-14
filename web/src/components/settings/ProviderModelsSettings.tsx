@@ -9,6 +9,12 @@ import { AutoRouteOverridesEditor } from "@/components/settings/AutoRouteOverrid
 import { getJson, sendJson } from "@/lib/client";
 import { clearProviderModelsCache } from "@/lib/provider-models-cache";
 import {
+  VISION_ANALYSIS_TIMEOUT_DEFAULT_MS,
+  VISION_ANALYSIS_TIMEOUT_MAX_MS,
+  VISION_ANALYSIS_TIMEOUT_MIN_MS,
+  clampVisionAnalysisTimeoutMs,
+} from "@/lib/image-send-timeout";
+import {
   AUTO_OPTIMIZE_SETTING_KEY,
   AUTO_ROUTE_OVERRIDES_SETTING_KEY,
   AUTO_SHOW_MODEL_SETTING_KEY,
@@ -598,6 +604,12 @@ export function ProviderModelsSettings() {
   const [defaultModelEffort, setDefaultModelEffort] = useState<string>("");
   const [generationModel, setGenerationModel] = useState<string>("");
   const [generationModelEffort, setGenerationModelEffort] = useState<string>("");
+  const [visionModel, setVisionModel] = useState<string>("");
+  const [visionModelOptions, setVisionModelOptions] = useState<ModelOption[]>([]);
+  const [visionTimeoutSeconds, setVisionTimeoutSeconds] = useState<string>(
+    String(VISION_ANALYSIS_TIMEOUT_DEFAULT_MS / 1000),
+  );
+  const [visionError, setVisionError] = useState<string | null>(null);
   const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
     readAutoOptimizeMode(),
   );
@@ -1009,6 +1021,54 @@ export function ProviderModelsSettings() {
     return () => { active = false; };
   }, []);
 
+  // 画像事前解析は既定有効機能。設定ファイルの enabled を常に true として保存する。
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const [settings, models] = await Promise.all([
+        getJson<{ opencodeModel?: string; timeoutMs?: number }>(
+          "/api/qwen-native/settings",
+        ).catch(() => null),
+        getJson<{ models?: ModelOption[] }>("/api/qwen-native/models").catch(
+          () => null,
+        ),
+      ]);
+      if (!active) return;
+      if (models?.models) setVisionModelOptions(models.models);
+      if (settings) {
+        if (typeof settings.opencodeModel === "string") {
+          setVisionModel(settings.opencodeModel);
+        }
+        if (typeof settings.timeoutMs === "number" && settings.timeoutMs > 0) {
+          setVisionTimeoutSeconds(String(Math.round(settings.timeoutMs / 1000)));
+        }
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const saveVisionSettings = useCallback(
+    async (opencodeModel: string, timeoutMs: number) => {
+      try {
+        await sendJson("PUT", "/api/qwen-native/settings", {
+          enabled: true,
+          opencodeModel: opencodeModel.trim(),
+          timeoutMs: clampVisionAnalysisTimeoutMs(timeoutMs),
+        });
+        if (mountedRef.current) setVisionError(null);
+      } catch (err) {
+        if (mountedRef.current) {
+          setVisionError(
+            err instanceof Error
+              ? err.message
+              : "画像事前解析設定の保存に失敗しました",
+          );
+        }
+      }
+    },
+    [],
+  );
+
   /**
    * 取得済みのローカルモデルをそのまま登録する。手入力フォームでは
    * 画像入力対応（`attachment` / `modalities`）を表現できず、VLモデルが
@@ -1318,6 +1378,69 @@ export function ProviderModelsSettings() {
               </Button>
             )}
           </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="vision-model-heading">
+        <h2
+          id="vision-model-heading"
+          className="mb-3 text-sm font-semibold text-muted"
+        >
+          画像事前解析モデル
+        </h2>
+        <p className="mb-3 text-xs text-faint">
+          画像非対応モデルを使うときに、このモデルで添付画像を事前解析してテキストとして取り込みます。
+          既定で有効な機能で、モデルを選ぶと自動で利用できます。ローカルOllamaは上の
+          「ローカルOllamaを登録」でプロバイダー登録すると選択できます。
+        </p>
+        <div className="rounded-xl border border-border bg-surface px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <ModelSelect
+              value={visionModel}
+              options={visionModelOptions}
+              ariaLabel="画像事前解析モデル"
+              emptyLabel="選択してください"
+              onChange={(value) => {
+                setVisionModel(value);
+                void saveVisionSettings(
+                  value,
+                  clampVisionAnalysisTimeoutMs(Number(visionTimeoutSeconds) * 1000),
+                );
+              }}
+              className="min-w-56 flex-1"
+            />
+            <label className="flex items-center gap-2 text-xs text-muted">
+              タイムアウト
+              <input
+                type="number"
+                min={VISION_ANALYSIS_TIMEOUT_MIN_MS / 1000}
+                max={VISION_ANALYSIS_TIMEOUT_MAX_MS / 1000}
+                step={1}
+                className="h-8 w-24 rounded-lg border border-border bg-bg px-2 font-mono text-sm text-text outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                value={visionTimeoutSeconds}
+                onChange={(event) => setVisionTimeoutSeconds(event.target.value)}
+                onBlur={() => {
+                  const timeoutMs = clampVisionAnalysisTimeoutMs(
+                    Number(visionTimeoutSeconds) * 1000,
+                  );
+                  setVisionTimeoutSeconds(String(Math.round(timeoutMs / 1000)));
+                  void saveVisionSettings(visionModel, timeoutMs);
+                }}
+                aria-label="画像事前解析タイムアウト（秒）"
+              />
+              <span>秒</span>
+            </label>
+          </div>
+          {visionModelOptions.length === 0 && (
+            <p className="mt-2 text-xs text-warning">
+              画像対応モデルが見つかりません。プロバイダー接続、またはローカルOllamaの登録を行ってください。
+            </p>
+          )}
+          {visionError && (
+            <p role="alert" className="mt-2 text-xs text-danger">
+              {visionError}
+            </p>
+          )}
         </div>
       </section>
 
