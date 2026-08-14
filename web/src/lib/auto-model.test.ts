@@ -1282,6 +1282,372 @@ describe("EMPTY_ROUTE_OVERRIDES", () => {
 });
 
 // ---------------------------------------------------------------------------
+// candidate-based resolution (config)
+// ---------------------------------------------------------------------------
+
+describe("chooseAutoModel candidate resolution", () => {
+  it("adopts the first resolvable kind:model candidate when connected and not limited", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "beta", modelID: PREMIUM_MODEL, variant: "high" },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(decision).toMatchObject({ providerID: "beta", modelID: PREMIUM_MODEL, variant: "high" });
+    expect(decision?.candidateIndex).toBe(0);
+    expect(decision?.usedPreset).toBeUndefined();
+  });
+
+  it("respects the connected filter for kind:model candidates", () => {
+    const decision = choose({
+      connected: ["alpha"],
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "beta", modelID: PREMIUM_MODEL },
+              ],
+            },
+          },
+        },
+      },
+    });
+    // beta not connected → skipped, no candidate-wide fallback (default "preset")
+    expect(decision?.modelID).toBe(CHEAP_MODEL); // preset cheap
+    expect(decision?.usedPreset).toBe(true);
+  });
+
+  it("skips an unavailable kind:model candidate and adopts the next resolvable one", () => {
+    const decision = choose({
+      connected: ["beta"],
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "alpha", modelID: CHEAP_MODEL },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(decision?.modelID).toBe(PREMIUM_MODEL);
+  });
+
+  it("skips a usage-limited kind:model candidate", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "alpha", modelID: CHEAP_MODEL },
+              ],
+            },
+          },
+        },
+      },
+      usage: { alpha: { usedPercent: 100, limited: true } },
+    });
+    // alpha limited → skipped → preset fallback to cheapest available (beta)
+    expect(decision?.providerID).toBe("beta");
+    expect(decision?.modelID).toBe(PREMIUM_MODEL);
+  });
+
+  it("resolves kind:cost candidates through pickBest within the band", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [{ kind: "cost", cost: "premium" }],
+            },
+          },
+        },
+      },
+    });
+    expect(decision?.providerID).toBe("beta");
+    expect(decision?.modelID).toBe(PREMIUM_MODEL);
+    expect(decision?.candidateIndex).toBe(0);
+  });
+
+  it("resolves kind:strongest through pickBest over the whole pool", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [{ kind: "strongest" }],
+            },
+          },
+        },
+      },
+    });
+    expect(decision?.providerID).toBe("beta");
+    expect(decision?.modelID).toBe(PREMIUM_MODEL);
+  });
+
+  it("uses the candidate's own variant when the model supports it", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "alpha", modelID: MID_MODEL, variant: "high" },
+              ],
+            },
+          },
+        },
+      },
+    });
+    // MID declares all variants, so "high" is honored without needing the fallback order
+    expect(decision).toMatchObject({ modelID: MID_MODEL, variant: "high" });
+  });
+
+  it("falls back to variantFallbackOrder when the candidate variant is unsupported or absent", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [{ kind: "cost", cost: "cheap" }],
+              variantFallbackOrder: ["high", "medium"],
+            },
+          },
+        },
+      },
+    });
+    // cost candidate declares no variant → falls to variantFallbackOrder
+    expect(decision?.variant).toBe("high");
+  });
+
+  it("treats variant: '' as 'no effort' without consulting the fallback order", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "alpha", modelID: CHEAP_MODEL, variant: "" },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(decision?.variant).toBe("");
+  });
+
+  it("uses preset candidates when the config cell has an empty candidate list", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [],
+            },
+          },
+        },
+      },
+    });
+    expect(decision?.modelID).toBe(CHEAP_MODEL);
+    // Empty list is the default preset, not a §3-5 fallback, so no flag.
+    expect(decision?.usedPreset).toBeUndefined();
+  });
+
+  it("reports the candidate index and reason when a configured candidate is adopted", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "cost", cost: "premium" },
+                { kind: "model", providerID: "alpha", modelID: CHEAP_MODEL },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(decision?.candidateIndex).toBe(0);
+    expect(decision?.reason).toContain("候補1");
+    expect(decision?.reason).toContain(PREMIUM_MODEL);
+  });
+
+  it("notes skipped candidates in the reason when adopting a later candidate", () => {
+    const decision = choose({
+      connected: ["beta"],
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "alpha", modelID: CHEAP_MODEL },
+                { kind: "model", providerID: "beta", modelID: PREMIUM_MODEL },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(decision?.candidateIndex).toBe(1);
+    expect(decision?.reason).toContain("候補2");
+    expect(decision?.reason).toContain("候補1〜1は利用不可");
+  });
+
+  it("falls back to the preset list when fallback is 'preset' and all candidates are unusable", () => {
+    const decision = choose({
+      connected: ["beta"],
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "nope", modelID: "does-not-exist" },
+              ],
+              fallback: "preset",
+            },
+          },
+        },
+      },
+    });
+    expect(decision).not.toBeNull();
+    expect(decision?.usedPreset).toBe(true);
+  });
+
+  it("uses the strongest candidate when fallback is 'strongest'", () => {
+    const decision = choose({
+      connected: ["beta"],
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [{ kind: "model", providerID: "nope", modelID: "does-not-exist" }],
+              fallback: "strongest",
+            },
+          },
+        },
+      },
+    });
+    expect(decision?.providerID).toBe("beta");
+    expect(decision?.modelID).toBe(PREMIUM_MODEL);
+    expect(decision?.usedPreset).toBeUndefined();
+  });
+
+  it("returns null when fallback is 'error' and no candidate resolves", () => {
+    const decision = choose({
+      connected: ["beta"],
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [{ kind: "model", providerID: "nope", modelID: "does-not-exist" }],
+              fallback: "error",
+            },
+          },
+        },
+      },
+    });
+    expect(decision).toBeNull();
+  });
+
+  it("returns null when fallback is 'error' and the pool is empty", () => {
+    const decision = choose({
+      connected: [],
+      tier: "standard",
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [],
+              fallback: "error",
+            },
+          },
+        },
+      },
+    });
+    expect(decision).toBeNull();
+  });
+
+  it("builds an escalation from the candidate after the adopted one", () => {
+    const decision = choose({
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "alpha", modelID: CHEAP_MODEL, variant: "low" },
+                { kind: "model", providerID: "beta", modelID: PREMIUM_MODEL, variant: "high" },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(decision?.modelID).toBe(CHEAP_MODEL);
+    expect(decision?.escalation).toEqual({
+      providerID: "beta",
+      modelID: PREMIUM_MODEL,
+      variant: "high",
+    });
+  });
+
+  it("escalates to the highest effort on the only model when no alternate provider exists", () => {
+    const decision = choose({
+      connected: ["beta"],
+      config: {
+        version: 2,
+        modes: {
+          cost: {
+            standard: {
+              candidates: [
+                { kind: "model", providerID: "beta", modelID: PREMIUM_MODEL },
+              ],
+            },
+          },
+        },
+      },
+    });
+    // Candidate resolves at the fallback effort (low); escalation re-targets the
+    // same model at the escalation-variant order (high), so it is kept.
+    expect(decision).toMatchObject({ modelID: PREMIUM_MODEL, variant: "low" });
+    expect(decision?.escalation).toEqual({
+      providerID: "beta",
+      modelID: PREMIUM_MODEL,
+      variant: "high",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // v2 types & presetTierRoute
 // ---------------------------------------------------------------------------
 

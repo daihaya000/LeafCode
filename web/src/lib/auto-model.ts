@@ -246,28 +246,6 @@ export function isRouteOverridesEmpty(overrides: RouteOverrides): boolean {
   return Object.keys(overrides).length === 0;
 }
 
-/** Resolve the effective cost band order for a tier, honoring override. */
-function resolveCostOrder(
-  mode: AutoOptimizeMode,
-  tier: AutoTier,
-  overrides: RouteOverrides,
-): ModelCostTier[] | null {
-  const override = overrides[tier]?.costOrder;
-  if (override !== undefined) return override === null ? null : [...override];
-  return MODE_COST_ORDER[mode][tier];
-}
-
-/** Resolve the effective variant order for a tier, honoring override. */
-function resolveVariantOrder(
-  mode: AutoOptimizeMode,
-  tier: AutoTier,
-  overrides: RouteOverrides,
-): IntelligenceVariant[] {
-  const override = overrides[tier]?.variantOrder;
-  if (override !== undefined) return [...override];
-  return MODE_VARIANT_ORDER[mode][tier];
-}
-
 export type AutoDecision = {
   providerID: string;
   modelID: string;
@@ -277,6 +255,10 @@ export type AutoDecision = {
   mode: AutoOptimizeMode;
   /** Display string (Japanese, machine-generated from templates). */
   reason: string;
+  /** 採用した候補の 0 始まりインデックス。プリセット由来は undefined */
+  candidateIndex?: number;
+  /** プリセットへフォールバックして解決したか */
+  usedPreset?: boolean;
   escalation?: {
     providerID: string;
     modelID: string;
@@ -600,7 +582,7 @@ function pickBest(
 
 function pickVariant(
   model: AutoCandidateModel,
-  order: IntelligenceVariant[],
+  order: readonly IntelligenceVariant[],
 ): IntelligenceVariant | "" {
   const available = new Set<IntelligenceVariant>(
     getIntelligenceVariants(model),
@@ -612,9 +594,192 @@ function pickVariant(
 }
 
 /**
+ * Resolve a single candidate to a concrete model from the pool, or `null` if
+ * it cannot be adopted (spec §3-3). `kind: "model"` checks exact identity and
+ * only skips on `usage.limited`; `cost` / `strongest` delegate to `pickBest`,
+ * so the usage reroute logic applies there.
+ */
+function resolveCandidate(
+  pool: Candidate[],
+  candidate: AutoRouteCandidate,
+  usage?: AutoProviderUsage,
+): Candidate | undefined {
+  if (candidate.kind === "model") {
+    const match = pool.find(
+      (c) => c.providerID === candidate.providerID && c.modelID === candidate.modelID,
+    );
+    if (!match) return undefined;
+    if (usage && usage[match.providerID]?.limited) return undefined;
+    return match;
+  }
+  if (candidate.kind === "cost") {
+    return pickBest(
+      pool.filter((c) => c.cost === candidate.cost),
+      usage,
+    );
+  }
+  return pickBest(pool, usage);
+}
+
+/**
+ * Candidate's effort determination (spec §3-4). `""` forces no effort; a named
+ * variant is used when the model supports it; otherwise the fallback order is
+ * walked. Missing key (`undefined`) means "auto" → fallback order.
+ */
+function resolveCandidateVariant(
+  model: AutoCandidateModel,
+  candidate: AutoRouteCandidate,
+  fallbackOrder: readonly IntelligenceVariant[],
+): IntelligenceVariant | "" {
+  if (candidate.variant === "") return "";
+  const available = new Set<IntelligenceVariant>(getIntelligenceVariants(model));
+  if (
+    candidate.variant !== undefined &&
+    available.has(candidate.variant)
+  ) {
+    return candidate.variant;
+  }
+  return pickVariant(model, fallbackOrder);
+}
+
+type ResolvedCandidate = {
+  chosen: Candidate;
+  index: number;
+  variant: IntelligenceVariant | "";
+  fellBack: boolean;
+  usedPreset: boolean;
+};
+
+/**
+ * Convert a v1 per-tier override (costOrder / variantOrder) into a v2 route
+ * (spec §4-1). `costOrder: X[]` → cost candidates; `null` → strongest; the two
+ * axes stay independent because the v1 model resolved them separately.
+ */
+function legacyRouteToTierRoute(override: TierRouteOverride): AutoTierRoute {
+  const candidates: AutoRouteCandidate[] =
+    override.costOrder === null
+      ? [{ kind: "strongest" }]
+      : (override.costOrder ?? []).map((cost) => ({ kind: "cost", cost }));
+  return {
+    candidates,
+    ...(override.variantOrder !== undefined
+      ? { variantFallbackOrder: [...override.variantOrder] as readonly IntelligenceVariant[] }
+      : {}),
+  };
+}
+
+/**
+ * Build an `AutoDecision` from a resolved candidate (reason templates, the
+ * candidateIndex / usedPreset flags, and the escalation, spec §3-6 / §3-7).
+ */
+function buildDecision(
+  pool: Candidate[],
+  resolution: ResolvedCandidate,
+  tier: AutoTier,
+  mode: AutoOptimizeMode,
+  hasImages: boolean,
+  usage: AutoProviderUsage | undefined,
+  candidates: readonly AutoRouteCandidate[],
+  fromConfig: boolean,
+  fallbackOrder: readonly IntelligenceVariant[],
+): AutoDecision {
+  const { chosen, index, variant } = resolution;
+
+  let reason: string;
+  if (fromConfig && index >= 0) {
+    reason = `${TIER_LABEL[tier]}のため候補${index + 1}（${chosen.modelID}${variant ? ` / ${variant}` : ""}）を採用しました`;
+    if (index > 0) reason += `（候補1〜${index}は利用不可）`;
+  } else {
+    reason = `${TIER_LABEL[tier]}のため${autoOptimizeModeLabel(mode)}で選択しました`;
+  }
+  if (hasImages) reason += REASON_IMAGES_SUFFIX;
+  if (!fromConfig && resolution.fellBack) reason += REASON_FALLBACK_SUFFIX;
+
+  const decision: AutoDecision = {
+    providerID: chosen.providerID,
+    modelID: chosen.modelID,
+    variant,
+    tier,
+    mode,
+    reason,
+  };
+  if (fromConfig && index >= 0) decision.candidateIndex = index;
+  if (resolution.usedPreset) decision.usedPreset = true;
+
+  // Escalation (spec §3-7): from the adopted index +1 onward, re-run §3-3
+  // and take the first resolvable candidate. If none, fall back to the old
+  // logic (different provider preferred, then strongest). Omit when identical.
+  const adoptedList =
+    fromConfig && index >= 0
+      ? candidates.slice(index + 1)
+      : [];
+  let escalationChosen: Candidate | undefined;
+  let escalationVariant: IntelligenceVariant | "" = "";
+  if (adoptedList.length > 0) {
+    const nextFirst = firstResolvable(pool, adoptedList, fallbackOrder, usage);
+    if (nextFirst) {
+      const candidate = adoptedList[nextFirst.index];
+      escalationChosen = nextFirst.chosen;
+      escalationVariant = candidate
+        ? resolveCandidateVariant(nextFirst.chosen.model, candidate, fallbackOrder)
+        : "";
+    }
+  }
+  if (!escalationChosen) {
+    const alternateProviderCandidates = pool.filter(
+      (candidate) => candidate.providerID !== chosen.providerID,
+    );
+    escalationChosen = pickBest(
+      alternateProviderCandidates.length > 0
+        ? alternateProviderCandidates
+        : pool,
+      usage,
+    );
+    escalationVariant = escalationChosen
+      ? pickVariant(escalationChosen.model, ESCALATION_VARIANT_ORDER)
+      : "";
+  }
+  if (escalationChosen) {
+    const identical =
+      escalationChosen.providerID === chosen.providerID &&
+      escalationChosen.modelID === chosen.modelID &&
+      escalationVariant === variant;
+    if (!identical) {
+      decision.escalation = {
+        providerID: escalationChosen.providerID,
+        modelID: escalationChosen.modelID,
+        variant: escalationVariant,
+      };
+    }
+  }
+
+  return decision;
+}
+
+/** Walk `candidates` in priority order and return the first adoptable one. */
+function firstResolvable(
+  pool: Candidate[],
+  candidates: readonly AutoRouteCandidate[],
+  fallbackOrder: readonly IntelligenceVariant[],
+  usage?: AutoProviderUsage,
+): { chosen: Candidate; index: number } | undefined {
+  for (let i = 0; i < candidates.length; i++) {
+    const chosen = resolveCandidate(pool, candidates[i], usage);
+    if (chosen) return { chosen, index: i };
+  }
+  return undefined;
+}
+
+/**
  * Resolve a concrete `{ providerID, modelID, variant }` for the given tier
  * from the connected + enabled model set. Returns `null` when no candidate
  * survives filtering (the caller answers 400).
+ *
+ * Resolution is driven by the effective `AutoTierRoute` (spec §3): the config
+ * cell for the mode+tier when present (falling back to preset.candidates when
+ * its own list is empty), else the mode preset. `overrides` is a transitional
+ * legacy (v1) bridge converted into a route; callers are migrated to `config`
+ * in a later step.
  */
 export function chooseAutoModel(input: {
   /** `/provider` response `all`. */
@@ -632,15 +797,18 @@ export function chooseAutoModel(input: {
   hasImages: boolean;
   /** CodexBar utilization, when its addon is enabled and snapshot is usable. */
   usage?: AutoProviderUsage;
-  /** Per-tier overrides; missing fields fall back to the preset for `mode`. */
+  /** v2 routing config; missing cell falls back to the preset. */
+  config?: AutoRouteConfig;
+  /** v1 per-tier overrides (transitional bridge). */
   overrides?: RouteOverrides;
 }): AutoDecision | null {
   const { providers, connected, disabled, tier, mode, hasImages, usage } = input;
+  const config = input.config ?? EMPTY_AUTO_ROUTE_CONFIG;
   const overrides = input.overrides ?? EMPTY_ROUTE_OVERRIDES;
   const connectedSet = connected === undefined ? null : new Set(connected);
 
   // Candidate construction mirrors `listProviderModels`.
-  const candidates: Candidate[] = [];
+  const pool: Candidate[] = [];
   for (const provider of providers) {
     const providerID = provider.id;
     if (!providerID) continue;
@@ -650,7 +818,7 @@ export function chooseAutoModel(input: {
       if (!modelID || !model) continue;
       if (disabled[`${providerID}::${modelID}`]) continue;
       if (hasImages && !supportsImages(model)) continue;
-      candidates.push({
+      pool.push({
         providerID,
         modelID,
         key: `${providerID}::${modelID}`,
@@ -660,77 +828,80 @@ export function chooseAutoModel(input: {
       });
     }
   }
-  if (candidates.length === 0) return null;
+  if (pool.length === 0) return null;
 
-  const costOrder = resolveCostOrder(mode, tier, overrides);
-  let chosen: Candidate | undefined;
-  let fellBack = false;
-  if (costOrder === null) {
-    chosen = pickBest(candidates, usage);
-  } else {
-    for (const [index, cost] of costOrder.entries()) {
-      const best = pickBest(candidates.filter((c) => c.cost === cost), usage);
-      if (best) {
-        chosen = best;
-        fellBack = index > 0;
-        break;
-      }
-    }
-    // Every cost band is covered by `costOrder`, so a non-empty candidate
-    // list always resolves; keep a defensive fallback anyway.
-    if (!chosen) chosen = pickBest(candidates, usage);
-  }
-  if (!chosen) return null;
+  // Effective route (spec §3-1). The v1 override is bridged into a route so
+  // existing callers keep working; `config` takes precedence.
+  const legacyRoute = overrides[tier];
+  const configured = config.modes[mode]?.[tier];
+  const preset = presetTierRoute(mode, tier);
+  const hasConfigCandidates =
+    configured !== undefined && configured.candidates.length > 0;
+  const effectiveRoute =
+    hasConfigCandidates ? configured
+    : legacyRoute ? legacyRouteToTierRoute(legacyRoute)
+    : preset;
+  const candidates =
+    effectiveRoute.candidates.length > 0
+      ? effectiveRoute.candidates
+      : preset.candidates;
+  const fallbackOrder = effectiveRoute.variantFallbackOrder ?? preset.variantFallbackOrder ?? [];
 
-  const variant = pickVariant(
-    chosen.model,
-    resolveVariantOrder(mode, tier, overrides),
-  );
+  const first = firstResolvable(pool, candidates, fallbackOrder, usage);
 
-  let reason = `${TIER_LABEL[tier]}のため${autoOptimizeModeLabel(mode)}で選択しました`;
-  if (hasImages) reason += REASON_IMAGES_SUFFIX;
-  if (fellBack) reason += REASON_FALLBACK_SUFFIX;
-
-  const decision: AutoDecision = {
-    providerID: chosen.providerID,
-    modelID: chosen.modelID,
-    variant,
-    tier,
-    mode,
-    reason,
-  };
-
-  // Escalation target for the one-shot automatic retry. Prefer another
-  // provider when one is available: a provider-level outage (for example a
-  // 529 overload response) is unlikely to be fixed by changing only the
-  // model or reasoning effort within that same provider. Fall back to the
-  // strongest candidate overall for single-provider setups.
-  const alternateProviderCandidates = candidates.filter(
-    (candidate) => candidate.providerID !== decision.providerID,
-  );
-  const strongest = pickBest(
-    alternateProviderCandidates.length > 0
-      ? alternateProviderCandidates
-      : candidates,
-    usage,
-  );
-  if (strongest) {
-    const escalationVariant = pickVariant(
-      strongest.model,
-      ESCALATION_VARIANT_ORDER,
+  // Normal resolution path (spec §3-3 / §3-4).
+  if (first) {
+    const candidate = candidates[first.index];
+    const resolution: ResolvedCandidate = {
+      chosen: first.chosen,
+      index: first.index,
+      variant:
+        candidate
+          ? resolveCandidateVariant(first.chosen.model, candidate, fallbackOrder)
+          : "",
+      fellBack: first.index > 0,
+      usedPreset: false,
+    };
+    return buildDecision(
+      pool, resolution, tier, mode, hasImages, usage,
+      candidates, hasConfigCandidates, fallbackOrder,
     );
-    const identical =
-      strongest.providerID === decision.providerID &&
-      strongest.modelID === decision.modelID &&
-      escalationVariant === decision.variant;
-    if (!identical) {
-      decision.escalation = {
-        providerID: strongest.providerID,
-        modelID: strongest.modelID,
-        variant: escalationVariant,
+  }
+
+  // All candidates unusable (spec §3-5).
+  const fallback = effectiveRoute.fallback ?? "preset";
+  if (fallback === "error") return null;
+
+  let resolution: ResolvedCandidate | undefined;
+  if (fallback === "preset") {
+    const presetFirst = firstResolvable(pool, preset.candidates, fallbackOrder, usage);
+    if (presetFirst) {
+      const presetCandidate = preset.candidates[presetFirst.index];
+      resolution = {
+        chosen: presetFirst.chosen,
+        index: presetFirst.index,
+        variant:
+          presetCandidate
+            ? resolveCandidateVariant(presetFirst.chosen.model, presetCandidate, fallbackOrder)
+            : "",
+        fellBack: true,
+        usedPreset: true,
       };
     }
   }
-
-  return decision;
+  if (!resolution) {
+    const best = pickBest(pool, usage);
+    if (!best) return null;
+    resolution = {
+      chosen: best,
+      index: -1,
+      variant: pickVariant(best.model, fallbackOrder),
+      fellBack: false,
+      usedPreset: fallback === "preset",
+    };
+  }
+  return buildDecision(
+    pool, resolution, tier, mode, hasImages, usage,
+    preset.candidates, false, preset.variantFallbackOrder ?? [],
+  );
 }
