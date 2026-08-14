@@ -2101,8 +2101,8 @@ function onHostExit() {
 function buildTrayMenu() {
   return {
     icon: TRAY_ICON,
-    title: 'OpenCode WebUI',
-    tooltip: 'OpenCode WebUI Host',
+    title: 'LeafCode',
+    tooltip: 'LeafCode Host',
     items: [
       {
         title: 'Open browser',

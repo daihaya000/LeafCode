@@ -184,10 +184,10 @@ describe("AppShell", () => {
       </AppShell>,
     );
 
-    // The old top bar had an "OpenCodeWebUI" brand link and its own メニュー
+    // The old top bar had a "LeafCode" brand link and its own メニュー
     // button; those moved into per-page headers, so AppShell must not render
     // them anymore.
-    expect(queryByText("OpenCodeWebUI")).toBeNull();
+    expect(queryByText("LeafCode")).toBeNull();
     expect(queryByLabelText("メニュー")).toBeNull();
   });
 

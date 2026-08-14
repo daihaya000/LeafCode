@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "OpenCode WebUI",
-    short_name: "OpenCodeWebUI",
+    name: "LeafCode",
+    short_name: "LeafCode",
     description: "Workspace Manager for OpenCode agents",
     start_url: "/",
     display: "standalone",

@@ -1313,7 +1313,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               height={28}
               className="h-7 w-7 shrink-0 rounded-[6px] object-contain sm:h-8 sm:w-8"
             />
-            <span>OpenCodeWebUI</span>
+            <span>LeafCode</span>
           </h1>
           <div className="mx-auto mb-3 flex max-w-5xl items-center justify-start gap-2 overflow-x-auto px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <GhostSelect

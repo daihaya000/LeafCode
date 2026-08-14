@@ -23,7 +23,7 @@ function powershellLiteral(value: string): string {
 
 async function updateFromLatestRelease(root: string) {
   const response = await fetch(GITHUB_API, {
-    headers: { Accept: "application/vnd.github+json", "User-Agent": "OpenCodeWebUI" },
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "LeafCode" },
     signal: AbortSignal.timeout(120_000),
   });
   if (!response.ok && response.status !== 404) {
@@ -50,7 +50,7 @@ async function updateFromLatestRelease(root: string) {
   try {
     const archive = join(work, "release.zip");
     const archiveResponse = await fetch(downloadUrl, {
-      headers: { Accept: "application/octet-stream", "User-Agent": "OpenCodeWebUI" },
+      headers: { Accept: "application/octet-stream", "User-Agent": "LeafCode" },
       signal: AbortSignal.timeout(120_000),
     });
     if (!archiveResponse.ok) throw new Error(`リリースZIPの取得に失敗しました（HTTP ${archiveResponse.status}）`);

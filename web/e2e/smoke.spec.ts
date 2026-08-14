@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 test("home renders the composer shell", async ({ page }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "OpenCodeWebUI" }),
+    page.getByRole("heading", { name: "LeafCode" }),
   ).toBeVisible();
   await expect(
     page.getByPlaceholder("タスクを説明してください…（Ctrl+Enter で開始）"),

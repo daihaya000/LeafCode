@@ -3625,7 +3625,7 @@ export function TaskView({
   // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
     if (!shellActive) return;
-    const base = task?.title ? `${task.title} · OpenCodeWebUI` : "OpenCodeWebUI";
+    const base = task?.title ? `${task.title} · LeafCode` : "LeafCode";
     const needsAttention =
       stream.permissions.length > 0 || stream.questions.length > 0;
     if (needsAttention) {
@@ -3639,7 +3639,7 @@ export function TaskView({
       applyFaviconBadge("idle");
     }
     return () => {
-      document.title = "OpenCodeWebUI";
+      document.title = "LeafCode";
       applyFaviconBadge("idle");
     };
   }, [

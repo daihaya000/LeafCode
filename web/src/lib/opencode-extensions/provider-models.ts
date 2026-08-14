@@ -162,9 +162,9 @@ function normalizeProviderResponse(value: unknown): ProviderResponse {
 const PROVIDER_RESPONSE_CACHE_TTL_MS = 5_000;
 type ProviderResponseCache = { at: number; data: ProviderResponse };
 type ProviderModelsGlobal = typeof globalThis & {
-  __opencodeWebuiProviderResponseCache?: ProviderResponseCache | null;
-  __opencodeWebuiProviderResponsePending?: Promise<ProviderResponse> | null;
-  __opencodeWebuiProviderRevalidating?: boolean;
+  __leafCodeProviderResponseCache?: ProviderResponseCache | null;
+  __leafCodeProviderResponsePending?: Promise<ProviderResponse> | null;
+  __leafCodeProviderRevalidating?: boolean;
 };
 const providerModelsGlobal = globalThis as ProviderModelsGlobal;
 
@@ -222,9 +222,9 @@ function writeDiskCache(data: ProviderResponse): void {
 
 /** Test-only: drop the shared `/provider` cache between tests. */
 export function __clearProviderResponseCacheForTest(): void {
-  providerModelsGlobal.__opencodeWebuiProviderResponseCache = null;
-  providerModelsGlobal.__opencodeWebuiProviderResponsePending = null;
-  providerModelsGlobal.__opencodeWebuiProviderRevalidating = false;
+  providerModelsGlobal.__leafCodeProviderResponseCache = null;
+  providerModelsGlobal.__leafCodeProviderResponsePending = null;
+  providerModelsGlobal.__leafCodeProviderRevalidating = false;
   try {
     fs.rmSync(DISK_CACHE_FILE(), { force: true });
   } catch {
@@ -234,11 +234,11 @@ export function __clearProviderResponseCacheForTest(): void {
 
 async function fetchProviderResponse(): Promise<ProviderResponse> {
   const now = Date.now();
-  const cached = providerModelsGlobal.__opencodeWebuiProviderResponseCache;
+  const cached = providerModelsGlobal.__leafCodeProviderResponseCache;
   if (cached && now - cached.at < PROVIDER_RESPONSE_CACHE_TTL_MS) {
     return cached.data;
   }
-  const pending = providerModelsGlobal.__opencodeWebuiProviderResponsePending;
+  const pending = providerModelsGlobal.__leafCodeProviderResponsePending;
   if (pending) return pending;
 
   // Stale-while-revalidate: if we have a disk cache that is older than the
@@ -256,7 +256,7 @@ async function fetchProviderResponse(): Promise<ProviderResponse> {
       const age = now - disk.at;
       if (age < PROVIDER_RESPONSE_CACHE_TTL_MS) {
         // Disk cache is still fresh — promote to in-memory and return.
-        providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
+        providerModelsGlobal.__leafCodeProviderResponseCache = {
           at: disk.at,
           data: disk.data,
         };
@@ -264,7 +264,7 @@ async function fetchProviderResponse(): Promise<ProviderResponse> {
       }
       if (age < DISK_CACHE_STALE_MS) {
         // Disk cache is stale but usable — return immediately and refresh.
-        providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
+        providerModelsGlobal.__leafCodeProviderResponseCache = {
           at: disk.at,
           data: disk.data,
         };
@@ -279,19 +279,19 @@ async function fetchProviderResponse(): Promise<ProviderResponse> {
     timeoutMs: 3000,
   }).then((response) => {
     const data = normalizeProviderResponse(response);
-    providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
+    providerModelsGlobal.__leafCodeProviderResponseCache = {
       at: Date.now(),
       data,
     };
     writeDiskCache(data);
     return data;
   });
-  providerModelsGlobal.__opencodeWebuiProviderResponsePending = request;
+  providerModelsGlobal.__leafCodeProviderResponsePending = request;
   try {
     return await request;
   } finally {
-    if (providerModelsGlobal.__opencodeWebuiProviderResponsePending === request) {
-      providerModelsGlobal.__opencodeWebuiProviderResponsePending = null;
+    if (providerModelsGlobal.__leafCodeProviderResponsePending === request) {
+      providerModelsGlobal.__leafCodeProviderResponsePending = null;
     }
   }
 }
@@ -299,18 +299,18 @@ async function fetchProviderResponse(): Promise<ProviderResponse> {
 /**
  * Background revalidation: fetch a fresh `/provider` response and update
  * both in-memory and disk caches. Failures are silently swallowed so the
- * stale data remains usable. Deduplicated via the `__opencodeWebuiProviderRevalidating`
+ * stale data remains usable. Deduplicated via the `__leafCodeProviderRevalidating`
  * flag to prevent overlapping background fetches.
  */
 async function revalidateProviderResponse(): Promise<void> {
-  if (providerModelsGlobal.__opencodeWebuiProviderRevalidating) return;
-  providerModelsGlobal.__opencodeWebuiProviderRevalidating = true;
+  if (providerModelsGlobal.__leafCodeProviderRevalidating) return;
+  providerModelsGlobal.__leafCodeProviderRevalidating = true;
   try {
     const response = await ocServer<ProviderResponse>(null, "/provider", {
       timeoutMs: 3000,
     });
     const data = normalizeProviderResponse(response);
-    providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
+    providerModelsGlobal.__leafCodeProviderResponseCache = {
       at: Date.now(),
       data,
     };
@@ -318,7 +318,7 @@ async function revalidateProviderResponse(): Promise<void> {
   } catch {
     /* keep stale data on failure */
   } finally {
-    providerModelsGlobal.__opencodeWebuiProviderRevalidating = false;
+    providerModelsGlobal.__leafCodeProviderRevalidating = false;
   }
 }
 

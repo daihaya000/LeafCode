@@ -15,12 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OpenCode WebUI",
+  title: "LeafCode",
   description: "Workspace Manager for OpenCode agents",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "OpenCodeWebUI",
+    title: "LeafCode",
   },
   icons: {
     apple: "/apple-touch-icon.png",

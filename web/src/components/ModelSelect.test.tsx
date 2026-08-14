@@ -104,7 +104,7 @@ describe("ModelSelect", () => {
     expect(listbox.style.minWidth).toBe("400px");
   });
 
-  it("uses the OpenCodeWebUI icon for Auto", () => {
+  it("uses the LeafCode icon for Auto", () => {
     render(<ModelSelect value="auto" options={options} onChange={vi.fn()} />);
 
     expect(

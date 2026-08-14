@@ -17,7 +17,7 @@ test.describe("home composer", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "OpenCodeWebUI" }),
+      page.getByRole("heading", { name: "LeafCode" }),
     ).toBeVisible();
   });
 
@@ -85,7 +85,7 @@ test.describe("home composer", () => {
     await page.setViewportSize({ width: 375, height: 700 });
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "OpenCodeWebUI" }),
+      page.getByRole("heading", { name: "LeafCode" }),
     ).toBeVisible();
 
     await expect

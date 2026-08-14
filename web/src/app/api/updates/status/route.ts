@@ -146,7 +146,7 @@ async function checkOpenCode(): Promise<UpdateStatus> {
     const [healthResponse, registryResponse] = await Promise.all([
       fetch(`${OPENCODE_BASE_URL}/global/health`, { cache: "no-store", signal: AbortSignal.timeout(3000) }),
       fetch(`https://registry.npmjs.org/${OPENCODE_PACKAGE}/latest`, {
-        headers: { Accept: "application/json", "User-Agent": "OpenCodeWebUI" },
+        headers: { Accept: "application/json", "User-Agent": "LeafCode" },
         cache: "no-store",
         signal: AbortSignal.timeout(5000),
       }),
@@ -199,7 +199,7 @@ async function checkNextJs(): Promise<UpdateStatus> {
       // Abbreviated packument: version list without the full metadata payload.
       headers: {
         Accept: "application/vnd.npm.install-v1+json",
-        "User-Agent": "OpenCodeWebUI",
+        "User-Agent": "LeafCode",
       },
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),

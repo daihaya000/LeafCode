@@ -86,7 +86,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
         onSubmit={submit}
         className="w-full max-w-sm space-y-4 rounded-2xl border border-border bg-surface p-6 shadow-sm"
       >
-        <h1 className="text-center text-lg font-semibold text-text">OpenCodeWebUI</h1>
+        <h1 className="text-center text-lg font-semibold text-text">LeafCode</h1>
         <p className="text-center text-xs text-muted">ユーザー名とパスワードでログインしてください</p>
         <label className="block">
           <span className="mb-1 block text-xs text-muted">ユーザー名</span>

@@ -103,6 +103,6 @@ export function detectDevcontainer(projectRoot: string): DevcontainerInfo {
     mode: "host-fallback",
     parseError,
     message:
-      "Dev Container detected. OpenCode WebUI Phase 3 attaches the host project path for now; full container lifecycle is not implemented yet.",
+      "Dev Container detected. LeafCode Phase 3 attaches the host project path for now; full container lifecycle is not implemented yet.",
   };
 }

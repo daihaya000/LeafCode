@@ -1073,7 +1073,7 @@ export function Sidebar({
               height={18}
               className="h-4.5 w-4.5 shrink-0 rounded-[3px] object-contain"
             />
-            <span className="truncate">OpenCodeWebUI</span>
+            <span className="truncate">LeafCode</span>
           </span>
           {BUILD_COMMIT_LABEL && (
             <span
