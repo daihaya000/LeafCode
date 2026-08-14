@@ -10,8 +10,8 @@ function localReq() {
 }
 
 
-const ENV_KEY = "OPENCODE_WEBUI_PUBLIC_URL";
-const CADDY_LOCAL_ENV_KEY = "OPENCODE_WEBUI_CADDY_LOCAL_URL";
+const ENV_KEY = "LEAFCODE_PUBLIC_URL";
+const CADDY_LOCAL_ENV_KEY = "LEAFCODE_CADDY_LOCAL_URL";
 let saved: string | undefined;
 let savedCaddyLocal: string | undefined;
 

@@ -79,8 +79,8 @@ test('findCaddy resolves the real install via `where.exe` when PATH is unrestric
 test('ensureCaddyfile seeds deploy/Caddyfile from the bundled example on first run', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'ocw-caddyfile-'));
   const tempCaddyfile = join(tempDir, 'Caddyfile');
-  const previous = process.env.OPENCODE_WEBUI_CADDYFILE;
-  process.env.OPENCODE_WEBUI_CADDYFILE = tempCaddyfile;
+  const previous = process.env.LEAFCODE_CADDYFILE;
+  process.env.LEAFCODE_CADDYFILE = tempCaddyfile;
   try {
     // Re-import with a cache-busting query so CADDYFILE picks up the env
     // override above (it is computed once at module load time).
@@ -105,8 +105,8 @@ test('ensureCaddyfile seeds deploy/Caddyfile from the bundled example on first r
       'an existing Caddyfile must not be overwritten by a later call',
     );
   } finally {
-    if (previous === undefined) delete process.env.OPENCODE_WEBUI_CADDYFILE;
-    else process.env.OPENCODE_WEBUI_CADDYFILE = previous;
+    if (previous === undefined) delete process.env.LEAFCODE_CADDYFILE;
+    else process.env.LEAFCODE_CADDYFILE = previous;
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -118,9 +118,9 @@ test('ensureCaddyfile never throws even when the write target is unwritable', as
   // missing parent directory) is caught and reported as `false` instead of
   // crashing the host.
   const tempDir = mkdtempSync(join(tmpdir(), 'ocw-no-example-'));
-  const previous = process.env.OPENCODE_WEBUI_CADDYFILE;
+  const previous = process.env.LEAFCODE_CADDYFILE;
   const bogusPath = join(tempDir, 'missing-parent', 'Caddyfile');
-  process.env.OPENCODE_WEBUI_CADDYFILE = bogusPath;
+  process.env.LEAFCODE_CADDYFILE = bogusPath;
   try {
     const mod = await import(`./index.js?caddyfile-badparent=${Date.now()}`);
     let result;
@@ -130,8 +130,8 @@ test('ensureCaddyfile never throws even when the write target is unwritable', as
     assert.equal(result, false);
     assert.equal(existsSync(bogusPath), false);
   } finally {
-    if (previous === undefined) delete process.env.OPENCODE_WEBUI_CADDYFILE;
-    else process.env.OPENCODE_WEBUI_CADDYFILE = previous;
+    if (previous === undefined) delete process.env.LEAFCODE_CADDYFILE;
+    else process.env.LEAFCODE_CADDYFILE = previous;
     rmSync(tempDir, { recursive: true, force: true });
   }
 });

@@ -30,10 +30,10 @@ describe("agents extension", () => {
     projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "agents-ext-project-"));
     origAppData = process.env.APPDATA;
     origConfigDir = process.env.OPENCODE_CONFIG_DIR;
-    origProjectRoot = process.env.OPENCODE_WEBUI_PROJECT_ROOT;
+    origProjectRoot = process.env.LEAFCODE_PROJECT_ROOT;
     process.env.APPDATA = base;
     process.env.OPENCODE_CONFIG_DIR = base;
-    process.env.OPENCODE_WEBUI_PROJECT_ROOT = projectRoot;
+    process.env.LEAFCODE_PROJECT_ROOT = projectRoot;
     // Computed after the env vars above are set: the state path is keyed on
     // the (resolved) config directory, so it must be derived per-test rather
     // than hardcoded.
@@ -47,7 +47,7 @@ describe("agents extension", () => {
   afterEach(() => {
     process.env.APPDATA = origAppData;
     process.env.OPENCODE_CONFIG_DIR = origConfigDir;
-    process.env.OPENCODE_WEBUI_PROJECT_ROOT = origProjectRoot;
+    process.env.LEAFCODE_PROJECT_ROOT = origProjectRoot;
     vi.unstubAllGlobals();
     fs.rmSync(base, { recursive: true, force: true });
     fs.rmSync(projectRoot, { recursive: true, force: true });

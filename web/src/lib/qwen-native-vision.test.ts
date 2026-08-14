@@ -47,8 +47,8 @@ import {
 } from "./qwen-native-vision";
 import { IMAGE_SEND_SETUP_SLACK_MS } from "./image-send-timeout";
 
-const previousEnabled = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
+const previousEnabled = process.env.LEAFCODE_QWEN_NATIVE;
+const previousModel = process.env.LEAFCODE_QWEN_MODEL;
 
 beforeEach(() => {
   __resetQwenNativeVisionCachesForTest();
@@ -65,14 +65,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (previousEnabled === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-  else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousEnabled;
-  if (previousModel === undefined) delete process.env.OPENCODE_WEBUI_QWEN_MODEL;
-  else process.env.OPENCODE_WEBUI_QWEN_MODEL = previousModel;
+  if (previousEnabled === undefined) delete process.env.LEAFCODE_QWEN_NATIVE;
+  else process.env.LEAFCODE_QWEN_NATIVE = previousEnabled;
+  if (previousModel === undefined) delete process.env.LEAFCODE_QWEN_MODEL;
+  else process.env.LEAFCODE_QWEN_MODEL = previousModel;
 });
 
 it("stays unavailable while no OpenCode model is selected", () => {
-  process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
+  process.env.LEAFCODE_QWEN_NATIVE = "1";
   expect(isQwenNativeVisionAvailable()).toBe(false);
 });
 
@@ -226,9 +226,9 @@ it("rejects an empty tool id list instead of sending tools:{}", async () => {
   ).toEqual({ bash: false });
 });
 
-it("prefers OPENCODE_WEBUI_QWEN_MODEL over the saved model", async () => {
+it("prefers LEAFCODE_QWEN_MODEL over the saved model", async () => {
   h.settings = { enabled: true, opencodeModel: "openai::gpt-4o", timeoutMs: 120_000 };
-  process.env.OPENCODE_WEBUI_QWEN_MODEL = "anthropic::claude-vision";
+  process.env.LEAFCODE_QWEN_MODEL = "anthropic::claude-vision";
 
   await analyzeNativeImages("What is shown?", [
     { dataUrl: "data:image/png;base64,AA==", mime: "image/png" },

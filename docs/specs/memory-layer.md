@@ -159,13 +159,13 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
 サーバーはホストのDBを直接開く(`better-sqlite3`)。
 
 - DBパス: `web/src/lib/paths.ts` の `dbPath()` と同一。MCP起動時に env
-  `OPENCODE_WEBUI_DATA_DIR` で絶対パスを渡す(エージェントの作業ディレクトリから相対解決しない)。
+  `LEAFCODE_DATA_DIR` で絶対パスを渡す(エージェントの作業ディレクトリから相対解決しない)。
 - 同時アクセス: WebサーバーとMCPが別プロセスで同じSQLiteを開く。接続時に
   `busy_timeout`(5000ms)と `journal_mode = WAL` を必ず設定する(web側 `db.ts:116` はWAL済み)。
   書込は memories 系テーブルのみに限定し、他テーブルには触れない。
 - ワークスペース解決は起動時引数の `--workspace` で固定する(セッションごとに1プロセス)。
   **env 変数展開(`{env:VAR}`)は `browser-bridge/scripts/install-mcp.mjs` が
-  `{env:OPENCODE_WEBUI_BROWSER_BROKER}` 等で既に使っており、MCP 設定の `environment` 値では
+  `{env:LEAFCODE_BROWSER_BROKER}` 等で既に使っており、MCP 設定の `environment` 値では
   実績がある**。未検証なのは**コマンド引数への変数展開**のみ(`docs/opencode/` に記述なし)。
   サポートされない場合は、`opencode.json` を配置する側(プロファイル同期の仕組み、
   `sync-engine.ts` 系)でワークスペースごとに固定引数を書き込む wrapper 方式にする。

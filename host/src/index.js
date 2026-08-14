@@ -2,6 +2,9 @@ import { spawn, execFile, execFileSync, execSync } from 'child_process';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
+import { normalizeWebuiEnv } from '../../scripts/lib/env-compat.mjs';
+// Legacy OPENCODE_WEBUI_* env vars keep working: copy onto LEAFCODE_* first.
+normalizeWebuiEnv();
 import {
   existsSync,
   mkdirSync,
@@ -145,20 +148,20 @@ const CONTROL_FILE = join(DATA_DIR, 'host-control.json');
 const BROWSER_BRIDGE_PAIRING_FILE = join(DATA_DIR, 'browser-bridge-pairing.json');
 /** Preferred OpenCode serve port. Override with OPENCODE_PORT. May bump on ghost sockets. */
 let OPENCODE_PORT = readPort(process.env.OPENCODE_PORT, 4096);
-let WEBUI_PORT = readPort(process.env.OPENCODE_WEBUI_PORT, 3000);
+let WEBUI_PORT = readPort(process.env.LEAFCODE_PORT, 3000);
 /** Localhost control plane for WebUI / tray restart actions. */
-const CONTROL_PORT = readPort(process.env.OPENCODE_WEBUI_HOST_CONTROL_PORT, 18765);
+const CONTROL_PORT = readPort(process.env.LEAFCODE_HOST_CONTROL_PORT, 18765);
 let CONTROL_URL = `http://127.0.0.1:${CONTROL_PORT}`;
 /** Secret for signing host-issued WebUI session cookies. Generated once per host run. */
 const CONTROL_SECRET = randomBytes(32).toString('base64url');
 /** Local-only Browser Bridge Broker. This port is never exposed through Caddy. */
-const BROWSER_BRIDGE_PORT = readPort(process.env.OPENCODE_WEBUI_BROWSER_BROKER_PORT, 18766);
+const BROWSER_BRIDGE_PORT = readPort(process.env.LEAFCODE_BROWSER_BROKER_PORT, 18766);
 
 /** True when the host should run without a tray icon. */
 export function isHeadless() {
   return (
     process.env.OPENCODE_HEADLESS === '1' ||
-    process.env.OPENCODE_WEBUI_HEADLESS === '1' ||
+    process.env.LEAFCODE_HEADLESS === '1' ||
     process.argv.includes('--headless')
   );
 }
@@ -166,9 +169,9 @@ export function isHeadless() {
 /** Bind address for Next.js. Default 127.0.0.1 (loopback only) so the WebUI
  *  is not exposed to the LAN/VPN without an explicit opt-in. OpenCode engine
  *  also stays on 127.0.0.1. To allow phone/LAN access, either enable the
- *  Caddy reverse proxy (OPENCODE_WEBUI_CADDY=1, recommended) or set
- *  OPENCODE_WEBUI_HOST=0.0.0.0 to bind every interface. */
-const WEBUI_HOST = process.env.OPENCODE_WEBUI_HOST || '127.0.0.1';
+ *  Caddy reverse proxy (LEAFCODE_CADDY=1, recommended) or set
+ *  LEAFCODE_HOST=0.0.0.0 to bind every interface. */
+const WEBUI_HOST = process.env.LEAFCODE_HOST || '127.0.0.1';
 let WEBUI_URL = `http://127.0.0.1:${WEBUI_PORT}`;
 let OPENCODE_URL = `http://127.0.0.1:${OPENCODE_PORT}`;
 
@@ -190,11 +193,11 @@ function setWebuiPort(port) {
   WEBUI_URL = `http://127.0.0.1:${WEBUI_PORT}`;
 }
 
-/** Optional Caddy reverse proxy (TLS / remote). Enable with OPENCODE_WEBUI_CADDY=1.
+/** Optional Caddy reverse proxy (TLS / remote). Enable with LEAFCODE_CADDY=1.
  *  Caddyfile path defaults to deploy/Caddyfile (auto-created from the example). */
-const CADDY_ENABLED = process.env.OPENCODE_WEBUI_CADDY === '1';
+const CADDY_ENABLED = process.env.LEAFCODE_CADDY === '1';
 const CADDYFILE =
-  process.env.OPENCODE_WEBUI_CADDYFILE || join(REPO_ROOT, 'deploy', 'Caddyfile');
+  process.env.LEAFCODE_CADDYFILE || join(REPO_ROOT, 'deploy', 'Caddyfile');
 const CADDYFILE_EXAMPLE = join(REPO_ROOT, 'deploy', 'Caddyfile.example');
 
 
@@ -450,7 +453,7 @@ function writeLogFileHeader() {
   const writer = getLogFileWriter();
   if (!writer) return;
   const mode =
-    process.env.OPENCODE_WEBUI_MODE ||
+    process.env.LEAFCODE_MODE ||
     (process.env.NODE_ENV === 'production' ? 'prod' : 'auto');
   const header = `=== opencode-webui-host start version=${HOST_VERSION} pid=${process.pid} mode=${mode} ts=${new Date().toISOString()} ===`;
   writer.writeRaw(header);
@@ -607,7 +610,7 @@ function openBrowser(url) {
 }
 
 function shouldOpenBrowser() {
-  return process.env.OPENCODE_WEBUI_NO_BROWSER !== '1' && readBrowserConfig().autoOpenBrowser;
+  return process.env.LEAFCODE_NO_BROWSER !== '1' && readBrowserConfig().autoOpenBrowser;
 }
 
 
@@ -905,7 +908,7 @@ export function ensureCaddyfile() {
 function spawnCaddy() {
   const caddyPath = findCaddy();
   if (!caddyPath) {
-    error('Caddy enabled but not found on PATH. Install Caddy or unset OPENCODE_WEBUI_CADDY.');
+    error('Caddy enabled but not found on PATH. Install Caddy or unset LEAFCODE_CADDY.');
     return;
   }
   if (!ensureCaddyfile()) {
@@ -1124,7 +1127,7 @@ async function spawnWeb() {
   removeLegacyInRepoBuild();
   let hasBuild = existsSync(join(WEB_DIST_DIR, 'BUILD_ID'));
   let buildStale = hasBuild && isWebBuildStale(WEB_DIR, WEB_DIST_DIR);
-  let plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);
+  let plan = getWebLaunchPlan(process.env.LEAFCODE_MODE, hasBuild, buildStale);
   if (plan.needsBuild) {
     const rebuildReason = hasBuild && buildStale ? 'stale' : 'missing';
     try {
@@ -1144,7 +1147,7 @@ async function spawnWeb() {
     }
     hasBuild = existsSync(join(WEB_DIST_DIR, 'BUILD_ID'));
     buildStale = hasBuild && isWebBuildStale(WEB_DIR, WEB_DIST_DIR);
-    plan = getPostBuildLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);
+    plan = getPostBuildLaunchPlan(process.env.LEAFCODE_MODE, hasBuild, buildStale);
     if (plan.staleAfterBuild) {
       log(
         'Sources changed while the WebUI build ran; starting the fresh build anyway (the next restart will rebuild)',
@@ -1176,24 +1179,24 @@ async function spawnWeb() {
       ...process.env,
       // The mirror is a copy: git-backed features must still act on the
       // installation (web/src/lib/install-root.ts).
-      OPENCODE_WEBUI_INSTALL_ROOT: REPO_ROOT,
+      LEAFCODE_INSTALL_ROOT: REPO_ROOT,
       OPENCODE_BASE_URL: OPENCODE_URL,
       OPENCODE_PORT: String(OPENCODE_PORT),
-      OPENCODE_WEBUI_HOST: WEBUI_HOST,
-      OPENCODE_WEBUI_PORT: String(WEBUI_PORT),
-      OPENCODE_WEBUI_HOST_CONTROL_URL: CONTROL_URL,
+      LEAFCODE_HOST: WEBUI_HOST,
+      LEAFCODE_PORT: String(WEBUI_PORT),
+      LEAFCODE_HOST_CONTROL_URL: CONTROL_URL,
       // Packaged WebUI launches should expose the Workflow entry point by
       // default. Preserve an explicit false/0 override for safe rollout.
-      OPENCODE_WEBUI_WORKFLOW_MODE:
-        process.env.OPENCODE_WEBUI_WORKFLOW_MODE ?? 'true',
+      LEAFCODE_WORKFLOW_MODE:
+        process.env.LEAFCODE_WORKFLOW_MODE ?? 'true',
       // Read-only Graph is the packaged rollout default. Keep semantic edit
       // opt-in separately in the WebUI environment.
-      OPENCODE_WEBUI_WORKFLOW_GRAPH:
-        process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH ?? 'true',
+      LEAFCODE_WORKFLOW_GRAPH:
+        process.env.LEAFCODE_WORKFLOW_GRAPH ?? 'true',
       // Keep semantic Graph editing opt-in until all acceptance gates pass.
       // Preserve an explicit true/1 override for controlled rollout.
-      OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT:
-        process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? 'false',
+      LEAFCODE_WORKFLOW_GRAPH_EDIT:
+        process.env.LEAFCODE_WORKFLOW_GRAPH_EDIT ?? 'false',
       ...browserBridgeManager.environment(),
       PORT: String(WEBUI_PORT),
       // Production serves the mirror's own `.next`, which is the default, so
@@ -1203,10 +1206,10 @@ async function spawnWeb() {
       // When Caddy fronts the WebUI with HTTPS, advertise its public origin so
       // /api/access shows the reachable URL instead of http://IP:3000.
       ...(detectCaddyPublicUrl()
-        ? { OPENCODE_WEBUI_PUBLIC_URL: detectCaddyPublicUrl() }
+        ? { LEAFCODE_PUBLIC_URL: detectCaddyPublicUrl() }
         : {}),
       ...(detectCaddyLoopbackUrl()
-        ? { OPENCODE_WEBUI_CADDY_LOCAL_URL: detectCaddyLoopbackUrl() }
+        ? { LEAFCODE_CADDY_LOCAL_URL: detectCaddyLoopbackUrl() }
         : {}),
     },
   });
@@ -1573,7 +1576,7 @@ async function resolvePortPlan(preCaptured) {
   );
   if (webui.port !== WEBUI_PORT) {
     setWebuiPort(webui.port);
-    process.env.OPENCODE_WEBUI_PORT = String(WEBUI_PORT);
+    process.env.LEAFCODE_PORT = String(WEBUI_PORT);
   }
   if (webui.reuse) {
     // Reusing a responsive WebUI is usually right, but a stale/missing build
@@ -1588,7 +1591,7 @@ async function resolvePortPlan(preCaptured) {
     const ownedListenerPids = listenerPids.filter(isOurs);
     const decision = decideWebReuseOnStale({
       reuse: true,
-      mode: process.env.OPENCODE_WEBUI_MODE,
+      mode: process.env.LEAFCODE_MODE,
       hasBuild,
       buildStale,
       ownedListenerPids,

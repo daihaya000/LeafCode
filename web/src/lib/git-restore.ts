@@ -190,8 +190,8 @@ async function attempt(root: string): Promise<void> {
  * from instrumentation.ts so it can't block server startup.
  */
 export async function runStartupGitRestore(rootArg?: string): Promise<void> {
-  if (process.env.OPENCODE_WEBUI_SKIP_GIT_RESTORE === "1") {
-    log("OPENCODE_WEBUI_SKIP_GIT_RESTORE=1 のためスキップします。");
+  if (process.env.LEAFCODE_SKIP_GIT_RESTORE === "1") {
+    log("LEAFCODE_SKIP_GIT_RESTORE=1 のためスキップします。");
     return;
   }
   if (inFlight) return;

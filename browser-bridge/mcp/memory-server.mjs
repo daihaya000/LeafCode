@@ -6,6 +6,7 @@ import path, { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { dataDir } from '../../scripts/lib/data-dir.mjs';
+import { normalizeWebuiEnv } from '../../scripts/lib/env-compat.mjs';
 import {
   MEMORY_KINDS,
   inspectMemoryContent,
@@ -44,8 +45,8 @@ function dbPath(dataDir) {
 }
 
 function resolveDataDir(env) {
-  if (typeof env.OPENCODE_WEBUI_DATA_DIR === 'string' && env.OPENCODE_WEBUI_DATA_DIR.trim() !== '') {
-    return path.resolve(env.OPENCODE_WEBUI_DATA_DIR);
+  if (typeof env.LEAFCODE_DATA_DIR === 'string' && env.LEAFCODE_DATA_DIR.trim() !== '') {
+    return path.resolve(env.LEAFCODE_DATA_DIR);
   }
   // Shared data-dir resolution (win32: %APPDATA%\leafcode, else
   // ~/.leafcode), aligned with scripts/lib/data-dir.mjs.
@@ -57,7 +58,7 @@ export function resolveWorkspace({ argv, env }) {
     if (argv[i] === '--workspace' && argv[i + 1] !== undefined) return argv[i + 1];
     if (argv[i].startsWith('--workspace=')) return argv[i].slice('--workspace='.length);
   }
-  return env.OPENCODE_WEBUI_MEMORY_WORKSPACE ?? null;
+  return env.LEAFCODE_MEMORY_WORKSPACE ?? null;
 }
 
 function textResult(value) {
@@ -123,7 +124,7 @@ function readWriteApprovalSetting(db, fallback) {
 
 function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
   if (!workspaceId) {
-    throw new Error('memory-mcp requires a workspace (--workspace=<id> or OPENCODE_WEBUI_MEMORY_WORKSPACE)');
+    throw new Error('memory-mcp requires a workspace (--workspace=<id> or LEAFCODE_MEMORY_WORKSPACE)');
   }
 
   // Keep MCP writes auditable even when it starts before the WebUI has opened
@@ -386,9 +387,10 @@ export function createMemoryMcpServer({ dbPath: dbPathValue, workspaceId, writeA
 }
 
 export async function runStdio({ env = process.env, argv = process.argv.slice(2), stdin = process.stdin, stdout = process.stdout } = {}) {
+  normalizeWebuiEnv(env);
   const dataDir = resolveDataDir(env);
   const workspaceId = resolveWorkspace({ argv, env });
-  const writeApproval = env.OPENCODE_WEBUI_MEMORY_WRITE_APPROVAL === '1';
+  const writeApproval = env.LEAFCODE_MEMORY_WRITE_APPROVAL === '1';
   const { server, db } = createMemoryMcpServer({ dbPath: dbPath(dataDir), workspaceId, writeApproval });
   const transport = new StdioServerTransport(stdin, stdout, { maxBufferSize: 1024 * 1024 });
   await server.connect(transport);

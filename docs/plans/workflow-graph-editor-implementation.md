@@ -45,7 +45,7 @@
 
 ### 1.4 Semantic Graph編集の公開範囲
 
-**決定:** Phase 4で編集UIとAPIを実装するが、`OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT`はPhase 5の汎用Schedulerと全品質ゲートが完了するまで既定falseとする。
+**決定:** Phase 4で編集UIとAPIを実装するが、`LEAFCODE_WORKFLOW_GRAPH_EDIT`はPhase 5の汎用Schedulerと全品質ゲートが完了するまで既定falseとする。
 
 初回公開で追加可能な型:
 
@@ -128,7 +128,7 @@ Phase 5 Scheduler汎用化
 - [ ] `WorkflowGraphDraft`、Graph Node／Edge、port、viewport、execution snapshot v2の型を追加する。
 - [ ] Graph型はReact Flow型をexportせず、純粋なJSON DTOとする。
 - [ ] `isWorkflowGraphEnabled()`と`isWorkflowGraphEditEnabled()`を追加する。
-- [ ] 親`OPENCODE_WEBUI_WORKFLOW_MODE=false`時はGraph／Graph Editを必ずfalseにする。
+- [ ] 親`LEAFCODE_WORKFLOW_MODE=false`時はGraph／Graph Editを必ずfalseにする。
 - [ ] 初期既定はGraph=false、Graph Edit=falseとし、旧UIへrollback可能にする。
 
 **テスト**
@@ -727,7 +727,7 @@ git diff --check
 - [ ] keyboard-only、reduced motion、Attention focus、Drawer／bottom sheet focus returnを確認。
 - [ ] 既存WorkflowのSession／Attempt／artifact／usage件数がmigration前後で一致する。
 - [ ] unsupported Node、Registry version mismatch、CAS conflict、Browser Bridge未承認で安全Pauseする。
-- [ ] `OPENCODE_WEBUI_WORKFLOW_GRAPH=false`で旧UIへ即時rollbackできる。
+- [ ] `LEAFCODE_WORKFLOW_GRAPH=false`で旧UIへ即時rollbackできる。
 
 **完了コミット:** `Workflow Graph Editorを有効化`
 

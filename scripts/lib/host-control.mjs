@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { normalizeWebuiEnv } from "./env-compat.mjs";
 
 /**
  * Shared host-control base-URL resolution.
@@ -9,7 +10,7 @@ import { join } from "node:path";
  * - `web/src/lib/host-control.ts` (web / TypeScript, via `host-control.d.ts`)
  * - `scripts/production-webui-build-guard.mjs` (CLI / Node ESM)
  *
- * Order: `OPENCODE_WEBUI_HOST_CONTROL_URL` env → `host-control.json` in the
+ * Order: `LEAFCODE_HOST_CONTROL_URL` env → `host-control.json` in the
  * machine-local data dir (win32: `%APPDATA%/leafcode/`, else
  * `~/.leafcode/`, per data-dir.mjs) → default
  * port. Non-loopback URLs are rejected at every step so restart/voice-input
@@ -49,7 +50,9 @@ export function resolveHostControlUrl({
   exists = existsSync,
   read = readFileSync,
 } = {}) {
-  const fromEnv = env.OPENCODE_WEBUI_HOST_CONTROL_URL?.trim();
+  // Legacy OPENCODE_WEBUI_HOST_CONTROL_URL keeps working (rebrand shim).
+  normalizeWebuiEnv(env);
+  const fromEnv = env.LEAFCODE_HOST_CONTROL_URL?.trim();
   if (fromEnv) {
     const cleaned = fromEnv.replace(/\/+$/, "");
     if (isLoopbackControlUrl(cleaned)) return cleaned;

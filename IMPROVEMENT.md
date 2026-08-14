@@ -585,7 +585,7 @@ web 側（TS）から参照できる形にする（TS が `.mjs` を import で�
 >   TS が `.mjs` を型解決するには `.d.mts` 宣言の同梱が必要。
 > - 非 win32 の dataDir 解決が web（`paths.ts`: `~/.opencode-webui`）と
 >   MCP（`resolveDataDir`: `~/.local/share/opencode-webui`）で**不一致**。実運用では
->   `OPENCODE_WEBUI_DATA_DIR` 注入で回避されるが、未注入フォールバックがずれている。
+>   `LEAFCODE_DATA_DIR` 注入で回避されるが、未注入フォールバックがずれている。
 > - 選択肢 A: `shared/*.mjs` を正本とし web 側から import（tsconfig paths + vitest alias +
 >   Turbopack resolveAlias の 3 箇所に設定追加 + `.d.mts` 同梱。browser-bridge は
 >   `npm ci` 単体で動くため web の node_modules に依存できない制約は守れる）。

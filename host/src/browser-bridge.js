@@ -32,6 +32,11 @@ export function createBrowserBridgeManager(deps) {
   const environment = () => {
     if (!broker) return {};
     return {
+      LEAFCODE_BROWSER_BROKER: broker.url,
+      LEAFCODE_BROWSER_BROKER_TOKEN: broker.internalToken,
+      // Legacy names: existing opencode.json MCP entries reference
+      // {env:OPENCODE_WEBUI_BROWSER_BROKER}; keep both alive during the
+      // rebrand so those configs keep resolving.
       OPENCODE_WEBUI_BROWSER_BROKER: broker.url,
       OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: broker.internalToken,
     };

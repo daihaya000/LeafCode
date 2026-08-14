@@ -30,8 +30,8 @@ test('stdio MCP initializes, lists tools, and keeps protocol stdout clean', asyn
     cwd: process.cwd(),
     env: {
       ...process.env,
-      OPENCODE_WEBUI_BROWSER_BROKER: `http://127.0.0.1:${port}`,
-      OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: token,
+      LEAFCODE_BROWSER_BROKER: `http://127.0.0.1:${port}`,
+      LEAFCODE_BROWSER_BROKER_TOKEN: token,
     },
     stderr: 'pipe',
   });

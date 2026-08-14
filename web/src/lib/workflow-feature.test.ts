@@ -59,14 +59,14 @@ describe("resolveWorkflowModeServer", () => {
 
   test("falls back to the env var when no DB row exists", () => {
     getSetting.mockReturnValue(null);
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_MODE", "true");
+    vi.stubEnv("LEAFCODE_WORKFLOW_MODE", "true");
     expect(resolveWorkflowModeServer()).toBe(true);
   });
 
   test("defaults to off when neither DB nor env is set", () => {
     getSetting.mockReturnValue(null);
-    delete process.env.OPENCODE_WEBUI_WORKFLOW_MODE;
-    delete process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE;
+    delete process.env.LEAFCODE_WORKFLOW_MODE;
+    delete process.env.NEXT_PUBLIC_LEAFCODE_WORKFLOW_MODE;
     expect(resolveWorkflowModeServer()).toBe(false);
   });
 });

@@ -153,8 +153,8 @@ npm run install:browser-bridge-mcp
       "command": ["node", "<absolute-path>/browser-bridge/mcp/server.mjs"],
       "enabled": true,
       "environment": {
-        "OPENCODE_WEBUI_BROWSER_BROKER": "{env:OPENCODE_WEBUI_BROWSER_BROKER}",
-        "OPENCODE_WEBUI_BROWSER_BROKER_TOKEN": "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}"
+        "LEAFCODE_BROWSER_BROKER": "{env:LEAFCODE_BROWSER_BROKER}",
+        "LEAFCODE_BROWSER_BROKER_TOKEN": "{env:LEAFCODE_BROWSER_BROKER_TOKEN}"
       }
     }
   }

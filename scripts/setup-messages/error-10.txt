@@ -1,2 +1,2 @@
 [OpenCode WebUI] ビルド出力ディレクトリを解決できませんでした。
-[OpenCode WebUI] 復旧案内: Node.jsが利用可能か確認し、OPENCODE_WEBUI_DIST_DIRの設定値を見直してください。
+[OpenCode WebUI] 復旧案内: Node.jsが利用可能か確認し、LEAFCODE_DIST_DIRの設定値を見直してください。

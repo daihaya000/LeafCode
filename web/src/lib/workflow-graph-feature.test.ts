@@ -27,30 +27,30 @@ describe("workflow graph feature flags", () => {
     ["true", true],
     ["1", true],
   ])("resolves graph flag %s to %s", (raw, expected) => {
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_MODE", "true");
+    vi.stubEnv("LEAFCODE_WORKFLOW_MODE", "true");
     if (raw === undefined) {
-      delete process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH;
+      delete process.env.LEAFCODE_WORKFLOW_GRAPH;
     } else {
-      vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_GRAPH", raw);
+      vi.stubEnv("LEAFCODE_WORKFLOW_GRAPH", raw);
     }
     expect(isWorkflowGraphEnabled()).toBe(expected);
   });
 
   test("forces graph and edit off when workflow mode is disabled", () => {
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_MODE", "false");
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_GRAPH", "true");
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT", "true");
+    vi.stubEnv("LEAFCODE_WORKFLOW_MODE", "false");
+    vi.stubEnv("LEAFCODE_WORKFLOW_GRAPH", "true");
+    vi.stubEnv("LEAFCODE_WORKFLOW_GRAPH_EDIT", "true");
     expect(isWorkflowGraphEnabled()).toBe(false);
     expect(isWorkflowGraphEditEnabled()).toBe(false);
   });
 
   test("requires both graph flags before semantic editing is enabled", () => {
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_MODE", "true");
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_GRAPH", "false");
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT", "true");
+    vi.stubEnv("LEAFCODE_WORKFLOW_MODE", "true");
+    vi.stubEnv("LEAFCODE_WORKFLOW_GRAPH", "false");
+    vi.stubEnv("LEAFCODE_WORKFLOW_GRAPH_EDIT", "true");
     expect(isWorkflowGraphEditEnabled()).toBe(false);
 
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_GRAPH", "true");
+    vi.stubEnv("LEAFCODE_WORKFLOW_GRAPH", "true");
     expect(isWorkflowGraphEditEnabled()).toBe(true);
   });
 

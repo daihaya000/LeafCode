@@ -22,7 +22,7 @@ rem The production build runs in a hard-link mirror of this installation,
 rem outside the (OneDrive-synced) repo: the sync client must never touch a
 rem build that is being written or served, and Turbopack refuses a distDir
 rem that leaves the project. Override the location with
-rem OPENCODE_WEBUI_BUILD_DIR. scripts\web-build-mirror.mjs is the single
+rem LEAFCODE_BUILD_DIR. scripts\web-build-mirror.mjs is the single
 rem source of truth, shared with host\src\index.js.
 for /f "usebackq delims=" %%D in (`node scripts\web-build-mirror.mjs --dist-dir`) do set "NEXT_DIST_DIR=%%D"
 if not defined NEXT_DIST_DIR (

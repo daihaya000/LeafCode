@@ -16,8 +16,8 @@ vi.mock("./browser-bridge", () => ({ browserBrokerFetch }));
 const dataDir = mkdtempSync(path.join(os.tmpdir(), "opencode-workflow-e2e-"));
 const previousAppData = process.env.APPDATA;
 process.env.APPDATA = dataDir;
-process.env.OPENCODE_WEBUI_WORKFLOW_MODE = "true";
-process.env.OPENCODE_WEBUI_BROWSER_BROKER_TOKEN = "x".repeat(40);
+process.env.LEAFCODE_WORKFLOW_MODE = "true";
+process.env.LEAFCODE_BROWSER_BROKER_TOKEN = "x".repeat(40);
 
 const { bindSession, createWorkspace, getDb, getWorkspace, upsertProject } = await import("./db");
 const { createWorkflow, getWorkflow, updateWorkflow } = await import("./workflow-service");
@@ -53,7 +53,7 @@ beforeAll(async () => {
   const address = broker.address();
   if (!address || typeof address === "string") throw new Error("broker did not start");
   brokerUrl = `http://127.0.0.1:${address.port}`;
-  process.env.OPENCODE_WEBUI_BROWSER_BROKER = brokerUrl;
+  process.env.LEAFCODE_BROWSER_BROKER = brokerUrl;
   browserBrokerFetch.mockImplementation((requestPath: string, init?: RequestInit) =>
     fetch(`${brokerUrl}${requestPath}`, { method: init?.method, headers: init?.headers, body: init?.body }),
   );
@@ -82,8 +82,8 @@ afterAll(async () => {
   getDb().close();
   if (previousAppData === undefined) delete process.env.APPDATA;
   else process.env.APPDATA = previousAppData;
-  delete process.env.OPENCODE_WEBUI_BROWSER_BROKER;
-  delete process.env.OPENCODE_WEBUI_BROWSER_BROKER_TOKEN;
+  delete process.env.LEAFCODE_BROWSER_BROKER;
+  delete process.env.LEAFCODE_BROWSER_BROKER_TOKEN;
   rmSync(dataDir, { recursive: true, force: true });
 });
 

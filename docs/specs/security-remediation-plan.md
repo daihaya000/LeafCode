@@ -144,7 +144,7 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
 
 - `POST` / `PUT` / `PATCH` / `DELETE` で `Origin` を検証する。
   許可元は request の `Host` から導出（`http://` と `https://` の両方）＋
-  `OPENCODE_WEBUI_ALLOWED_ORIGINS` による明示指定。
+  `LEAFCODE_ALLOWED_ORIGINS` による明示指定。
 - `Sec-Fetch-Site: cross-site` は `Origin` に関係なく拒否する。
 - 同一ホストで**ポートが異なる** origin は許可する（Caddy `:8443` → Next `:3000`）。
 - `Origin` 欠落は許可する。ブラウザは状態変更リクエストに必ず付けるため、
@@ -264,7 +264,7 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
 
 ## 未対応の制約
 
-- **IP が判定できない構成がある**: `OPENCODE_WEBUI_HOST=0.0.0.0` で Caddy を挟まず
+- **IP が判定できない構成がある**: `LEAFCODE_HOST=0.0.0.0` で Caddy を挟まず
   直接 LAN に bind した場合、`X-Forwarded-For` が無く Next.js は socket peer を
   公開しないため IP は `null` になる。この場合 per-IP 制限は効かない
   （per-username 制限は効く）。`null` を1つのバケットに束ねると

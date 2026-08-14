@@ -1,8 +1,8 @@
 # Example Caddy reverse proxy for LeafCode (LAN / VPN, local HTTPS).
 #
 # The tray host can manage Caddy for you:
-#   set OPENCODE_WEBUI_CADDY=1
-#   (optional) set OPENCODE_WEBUI_CADDYFILE=C:\path\to\Caddyfile
+#   set LEAFCODE_CADDY=1
+#   (optional) set LEAFCODE_CADDYFILE=C:\path\to\Caddyfile
 # On first run the host copies this example to deploy/Caddyfile -- edit that copy
 # (deploy/Caddyfile is gitignored, so your IPs and auth stay local).
 #

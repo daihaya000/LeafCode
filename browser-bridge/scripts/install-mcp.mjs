@@ -29,8 +29,8 @@ import { applyEdits, modify, parse } from 'jsonc-parser';
 
 const SKELETON = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
 const FORMATTING_OPTIONS = { insertSpaces: true, tabSize: 2, eol: '\n' };
-const ENV_BROKER_URL = '{env:OPENCODE_WEBUI_BROWSER_BROKER}';
-const ENV_BROKER_TOKEN = '{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}';
+const ENV_BROKER_URL = '{env:LEAFCODE_BROWSER_BROKER}';
+const ENV_BROKER_TOKEN = '{env:LEAFCODE_BROWSER_BROKER_TOKEN}';
 
 export function parseArgs(argv) {
   const options = { scope: 'global', path: null, force: false, uninstall: false, dryRun: false };
@@ -73,8 +73,8 @@ export function buildDesiredEntry(serverPath) {
     command: ['node', serverPath],
     enabled: true,
     environment: {
-      OPENCODE_WEBUI_BROWSER_BROKER: ENV_BROKER_URL,
-      OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: ENV_BROKER_TOKEN,
+      LEAFCODE_BROWSER_BROKER: ENV_BROKER_URL,
+      LEAFCODE_BROWSER_BROKER_TOKEN: ENV_BROKER_TOKEN,
     },
   };
 }

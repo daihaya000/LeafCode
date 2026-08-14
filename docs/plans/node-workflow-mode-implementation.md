@@ -73,7 +73,7 @@ Task 1 永続化・primary Session
 - [ ] Reviewer bindingの作成・touchでprimaryが変わらないDB helperを追加する。
 - [ ] `TaskExecutionMode`と最小Workflow summary型を追加する。
 - [ ] `task_context_snapshot`とAttemptの設定／入力／結果を、実行後に上書きできない保存境界として定義する。
-- [ ] `isWorkflowModeEnabled()`を`OPENCODE_WEBUI_WORKFLOW_MODE`から解決し、未設定時はTask 8までfalseとする。参照箇所はこのhelperへ集約する。
+- [ ] `isWorkflowModeEnabled()`を`LEAFCODE_WORKFLOW_MODE`から解決し、未設定時はTask 8までfalseとする。参照箇所はこのhelperへ集約する。
 
 **テスト**
 
@@ -462,7 +462,7 @@ git diff --check
 - Modify: TaskView／Sidebar／Goal Loop／Attention／workspace／proxyの既存tests
 - Modify: `web/src/lib/workflow-feature.ts`
 - Modify: `web/src/lib/workflow-feature.test.ts`
-- Modify: README／docs（`OPENCODE_WEBUI_WORKFLOW_MODE` overrideの説明）
+- Modify: README／docs（`LEAFCODE_WORKFLOW_MODE` overrideの説明）
 
 **E2E**
 

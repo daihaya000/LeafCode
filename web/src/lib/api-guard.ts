@@ -47,7 +47,7 @@ function forbidden(error: string) {
  * terminated by a reverse proxy. Comma-separated, exact `scheme://host[:port]`.
  */
 function configuredOrigins(): string[] {
-  const raw = process.env.OPENCODE_WEBUI_ALLOWED_ORIGINS ?? "";
+  const raw = process.env.LEAFCODE_ALLOWED_ORIGINS ?? "";
   return raw
     .split(",")
     .map((s) => s.trim().replace(/\/+$/, "").toLowerCase())

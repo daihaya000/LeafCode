@@ -560,14 +560,14 @@ Node選択時に次を表示する。
 段階導入用に次を追加する。
 
 ```text
-OPENCODE_WEBUI_WORKFLOW_GRAPH=true|false
-OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT=true|false
+LEAFCODE_WORKFLOW_GRAPH=true|false
+LEAFCODE_WORKFLOW_GRAPH_EDIT=true|false
 ```
 
 - `WORKFLOW_GRAPH=false`: 現行カードWorkflow UI。
 - `WORKFLOW_GRAPH=true`, `GRAPH_EDIT=false`: React Flow read-only canvas。
 - 両方true: 許可済みGraph編集。
-- 親の`OPENCODE_WEBUI_WORKFLOW_MODE=false`は両flagより優先する。
+- 親の`LEAFCODE_WORKFLOW_MODE=false`は両flagより優先する。
 - EXE既定ではread-only canvasを段階導入し、semantic editは受入基準完了後に有効化する。
 
 ## 17. テスト戦略

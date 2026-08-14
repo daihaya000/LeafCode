@@ -8,7 +8,7 @@
 | コマンド | 前提条件 | 未達時の挙動 |
 |----------|---------|-------------|
 | `node scripts/smoke-api.mjs` | WebUI（既定 `http://127.0.0.1:3000`）が起動済み。任意で OpenCode（`:4096`） | 起動していない URL のチェックが FAIL（exit code 1） |
-| `npm run smoke:browser-bridge`（web） | トレイ host が起動済み（Browser Bridge Broker が `OPENCODE_WEBUI_BROWSER_BROKER*` 環境変数を提供している） | Broker 環境が無ければ exit code 1（host を先に起動） |
+| `npm run smoke:browser-bridge`（web） | トレイ host が起動済み（Browser Bridge Broker が `LEAFCODE_BROWSER_BROKER*` 環境変数を提供している） | Broker 環境が無ければ exit code 1（host を先に起動） |
 | `npm run e2e`（web） | Playwright のブラウザがインストール済み。対象サーバーはテストが自身で起動/接続する | 通常のテスト失敗 |
 
 ## 補足

@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { BrowserBridgeErrorCode } from '../shared/errors.mjs';
+import { normalizeWebuiEnv } from '../../scripts/lib/env-compat.mjs';
 import { BrowserToolName, validateToolInput } from '../shared/schemas.mjs';
 import { BrowserBridgeClient } from './broker-client.mjs';
 
@@ -89,6 +90,7 @@ export function createMcpServer({ brokerClient }) {
 }
 
 export async function runStdio({ env = process.env, stdin = process.stdin, stdout = process.stdout } = {}) {
+  normalizeWebuiEnv(env);
   const server = createMcpServer({ brokerClient: BrowserBridgeClient.fromEnvironment(env) });
   const transport = new StdioServerTransport(stdin, stdout, { maxBufferSize: 1024 * 1024 });
   await server.connect(transport);

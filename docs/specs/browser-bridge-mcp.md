@@ -189,8 +189,8 @@ OpenCode の設定 shape は公式 schema に従い、local MCP の `command` �
       "command": ["node", "<absolute-path>/mcp/browser-bridge/index.mjs"],
       "enabled": true,
       "environment": {
-        "OPENCODE_WEBUI_BROWSER_BROKER": "{env:OPENCODE_WEBUI_BROWSER_BROKER}",
-        "OPENCODE_WEBUI_BROWSER_BROKER_TOKEN": "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}"
+        "LEAFCODE_BROWSER_BROKER": "{env:LEAFCODE_BROWSER_BROKER}",
+        "LEAFCODE_BROWSER_BROKER_TOKEN": "{env:LEAFCODE_BROWSER_BROKER_TOKEN}"
       }
     }
   }

@@ -22,10 +22,30 @@ rem variables inherited from the parent environment, so a stale value (leaked
 rem from a shell that ran preflight by hand, or from a wrapper process) would
 rem be treated as this run's snapshot and skip the check entirely. Reset it.
 set "PREFLIGHT_STATUS="
+rem Legacy env vars (OPENCODE_WEBUI_*) keep working: copy each onto its
+rem LEAFCODE_* name when the new name is not set. New names win. See
+rem scripts\lib\env-compat.mjs for the same mapping in Node entry points.
+if not defined LEAFCODE_PORT if defined OPENCODE_WEBUI_PORT set "LEAFCODE_PORT=%OPENCODE_WEBUI_PORT%"
+if not defined LEAFCODE_HOST if defined OPENCODE_WEBUI_HOST set "LEAFCODE_HOST=%OPENCODE_WEBUI_HOST%"
+if not defined LEAFCODE_MODE if defined OPENCODE_WEBUI_MODE set "LEAFCODE_MODE=%OPENCODE_WEBUI_MODE%"
+if not defined LEAFCODE_CADDY if defined OPENCODE_WEBUI_CADDY set "LEAFCODE_CADDY=%OPENCODE_WEBUI_CADDY%"
+if not defined LEAFCODE_CADDYFILE if defined OPENCODE_WEBUI_CADDYFILE set "LEAFCODE_CADDYFILE=%OPENCODE_WEBUI_CADDYFILE%"
+if not defined LEAFCODE_HOST_CONTROL_URL if defined OPENCODE_WEBUI_HOST_CONTROL_URL set "LEAFCODE_HOST_CONTROL_URL=%OPENCODE_WEBUI_HOST_CONTROL_URL%"
+if not defined LEAFCODE_HOST_CONTROL_PORT if defined OPENCODE_WEBUI_HOST_CONTROL_PORT set "LEAFCODE_HOST_CONTROL_PORT=%OPENCODE_WEBUI_HOST_CONTROL_PORT%"
+if not defined LEAFCODE_BROWSER_BROKER_PORT if defined OPENCODE_WEBUI_BROWSER_BROKER_PORT set "LEAFCODE_BROWSER_BROKER_PORT=%OPENCODE_WEBUI_BROWSER_BROKER_PORT%"
+if not defined LEAFCODE_BUILD_DIR if defined OPENCODE_WEBUI_BUILD_DIR set "LEAFCODE_BUILD_DIR=%OPENCODE_WEBUI_BUILD_DIR%"
+if not defined LEAFCODE_DATA_DIR if defined OPENCODE_WEBUI_DATA_DIR set "LEAFCODE_DATA_DIR=%OPENCODE_WEBUI_DATA_DIR%"
+if not defined LEAFCODE_SETUP_COMPLETE if defined OPENCODE_WEBUI_SETUP_COMPLETE set "LEAFCODE_SETUP_COMPLETE=%OPENCODE_WEBUI_SETUP_COMPLETE%"
+if not defined LEAFCODE_NONINTERACTIVE if defined OPENCODE_WEBUI_NONINTERACTIVE set "LEAFCODE_NONINTERACTIVE=%OPENCODE_WEBUI_NONINTERACTIVE%"
+if not defined LEAFCODE_NO_BROWSER if defined OPENCODE_WEBUI_NO_BROWSER set "LEAFCODE_NO_BROWSER=%OPENCODE_WEBUI_NO_BROWSER%"
+if not defined LEAFCODE_HEADLESS if defined OPENCODE_WEBUI_HEADLESS set "LEAFCODE_HEADLESS=%OPENCODE_WEBUI_HEADLESS%"
+if not defined LEAFCODE_WORKFLOW_MODE if defined OPENCODE_WEBUI_WORKFLOW_MODE set "LEAFCODE_WORKFLOW_MODE=%OPENCODE_WEBUI_WORKFLOW_MODE%"
+if not defined LEAFCODE_WORKFLOW_GRAPH if defined OPENCODE_WEBUI_WORKFLOW_GRAPH set "LEAFCODE_WORKFLOW_GRAPH=%OPENCODE_WEBUI_WORKFLOW_GRAPH%"
+if not defined LEAFCODE_WORKFLOW_GRAPH_EDIT if defined OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT set "LEAFCODE_WORKFLOW_GRAPH_EDIT=%OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT%"
 rem Workflow Graph rollout defaults for the packaged EXE. Explicit false/0 overrides remain supported.
-if not defined OPENCODE_WEBUI_WORKFLOW_MODE set "OPENCODE_WEBUI_WORKFLOW_MODE=true"
-if not defined OPENCODE_WEBUI_WORKFLOW_GRAPH set "OPENCODE_WEBUI_WORKFLOW_GRAPH=true"
-if not defined OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT set "OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT=true"
+if not defined LEAFCODE_WORKFLOW_MODE set "LEAFCODE_WORKFLOW_MODE=true"
+if not defined LEAFCODE_WORKFLOW_GRAPH set "LEAFCODE_WORKFLOW_GRAPH=true"
+if not defined LEAFCODE_WORKFLOW_GRAPH_EDIT set "LEAFCODE_WORKFLOW_GRAPH_EDIT=true"
 cd /d "%~dp0.."
 set "MESSAGE_DIR=%~dp0setup-messages"
 
@@ -39,7 +59,7 @@ rem effort only: if csc.exe / node are unavailable (e.g. a fresh machine
 rem before setup installs Node.js) the existing exe simply stays as is.
 call :refresh_launcher
 
-if "%OPENCODE_WEBUI_SETUP_COMPLETE%"=="1" goto :start_host
+if "%LEAFCODE_SETUP_COMPLETE%"=="1" goto :start_host
 call :remember_code_page
 chcp 65001 >nul 2>&1
 echo [OpenCode WebUI] Starting...
@@ -71,18 +91,18 @@ rem with its own transient status text (e.g. "npm ls") and never restore it,
 rem so the window is left showing that stale text through the build
 rem and the host's own "Starting..."/"Production" log lines. Reassert the
 rem app title here, right before the host tail, regardless of which path
-rem (fresh install vs. OPENCODE_WEBUI_SETUP_COMPLETE fast path) got here.
+rem (fresh install vs. LEAFCODE_SETUP_COMPLETE fast path) got here.
 title OpenCode WebUI
-set OPENCODE_WEBUI_MODE=prod
+set LEAFCODE_MODE=prod
 rem The launcher is the normal VPN/LAN entry point, so manage Caddy by default.
-rem Set OPENCODE_WEBUI_CADDY=0 before launch to use the raw WebUI URL only.
-if not defined OPENCODE_WEBUI_CADDY set OPENCODE_WEBUI_CADDY=1
+rem Set LEAFCODE_CADDY=0 before launch to use the raw WebUI URL only.
+if not defined LEAFCODE_CADDY set LEAFCODE_CADDY=1
 rem The WebUI listens on 127.0.0.1 (loopback) by default so it is not exposed
 rem to the LAN/VPN without an explicit opt-in. OpenCode itself also stays on
 rem 127.0.0.1. For phone/LAN access use the Caddy reverse proxy (default on),
 rem or to bind every interface set the variable yourself:
-rem   set OPENCODE_WEBUI_HOST=0.0.0.0
-if not defined OPENCODE_WEBUI_HOST set OPENCODE_WEBUI_HOST=127.0.0.1
+rem   set LEAFCODE_HOST=0.0.0.0
+if not defined LEAFCODE_HOST set LEAFCODE_HOST=127.0.0.1
 cd host
 call node src\index.js
 set ERR=%ERRORLEVEL%
@@ -228,13 +248,13 @@ call :fail 4 "OpenCode could not be installed." error-4-install
 exit /b 4
 
 rem Caddy (reverse proxy / local HTTPS) is optional: the tray host manages it
-rem only when OPENCODE_WEBUI_CADDY is enabled (default "1", see :start_host
+rem only when LEAFCODE_CADDY is enabled (default "1", see :start_host
 rem below) and simply skips it at runtime when the binary is missing
 rem (host/src/index.js findCaddy()/spawnCaddy()), so a failure here never
 rem blocks WebUI startup on 127.0.0.1. Unlike Node.js/OpenCode this step
 rem therefore never returns a non-zero exit code.
 :check_caddy
-if "%OPENCODE_WEBUI_CADDY%"=="0" exit /b 0
+if "%LEAFCODE_CADDY%"=="0" exit /b 0
 call :pf_status
 call :pf_has caddy
 if not errorlevel 1 exit /b 0
@@ -384,7 +404,7 @@ exit /b 9
 
 :resolve_dist_dir
 rem Production builds run in the hard-link mirror outside the synced tree
-rem (override OPENCODE_WEBUI_BUILD_DIR). See scripts\web-build-mirror.mjs.
+rem (override LEAFCODE_BUILD_DIR). See scripts\web-build-mirror.mjs.
 set "NEXT_DIST_DIR="
 for /f "usebackq delims=" %%D in (`node scripts\web-build-mirror.mjs --dist-dir`) do set "NEXT_DIST_DIR=%%D"
 if not defined NEXT_DIST_DIR goto :resolve_dist_dir_failed
@@ -417,7 +437,7 @@ chcp %CP_ORIGINAL% >nul 2>&1
 exit /b 0
 
 :pause_if_interactive
-if "%OPENCODE_WEBUI_NONINTERACTIVE%"=="1" exit /b 0
+if "%LEAFCODE_NONINTERACTIVE%"=="1" exit /b 0
 rem next build overwrites the console title; restore it so a failed launch
 rem does not look like a stray "next-build" window waiting on pause.
 title OpenCode WebUI

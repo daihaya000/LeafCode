@@ -33,7 +33,7 @@ function make(
 beforeEach(() => {
   verifySession.mockReset();
   verifySession.mockResolvedValue(null);
-  delete process.env.OPENCODE_WEBUI_ALLOWED_ORIGINS;
+  delete process.env.LEAFCODE_ALLOWED_ORIGINS;
 });
 
 describe("allowedOrigins", () => {
@@ -44,7 +44,7 @@ describe("allowedOrigins", () => {
   });
 
   it("includes configured extra origins", () => {
-    process.env.OPENCODE_WEBUI_ALLOWED_ORIGINS =
+    process.env.LEAFCODE_ALLOWED_ORIGINS =
       "https://webui.example.com, https://other.test/";
     const origins = allowedOrigins(make("GET", {}));
     expect(origins).toContain("https://webui.example.com");

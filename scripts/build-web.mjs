@@ -2,7 +2,11 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { existsSync, renameSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeWebuiEnv } from "./lib/env-compat.mjs";
 import { syncMirror } from "./web-build-mirror.mjs";
+
+// Legacy OPENCODE_WEBUI_* env vars keep working: copy onto LEAFCODE_* first.
+normalizeWebuiEnv();
 
 /**
  * Single entry point for the production WebUI build, shared by build.bat,
@@ -168,7 +172,7 @@ export async function main(argv = process.argv.slice(2)) {
   // available as an explicit diagnostic fallback, but is not the default: on
   // this application its large server route graph can leave webpack's parent
   // process waiting indefinitely after the compiler worker exits.
-  const useWebpack = process.env.OPENCODE_WEBUI_USE_WEBPACK === "1";
+  const useWebpack = process.env.LEAFCODE_USE_WEBPACK === "1";
   const nextArgs = [nextBin, "build", ...(useWebpack ? ["--webpack"] : [])];
   const buildOptions = {
     cwd: mirror.webDir,

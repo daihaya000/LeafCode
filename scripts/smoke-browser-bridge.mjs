@@ -2,8 +2,10 @@
  * Browser Bridge smoke check. It never starts the host or Broker; run it only
  * in the environment created by the already-running tray host.
  */
-const baseUrl = process.env.OPENCODE_WEBUI_BROWSER_BROKER;
-const token = process.env.OPENCODE_WEBUI_BROWSER_BROKER_TOKEN;
+import { normalizeWebuiEnv } from "./lib/env-compat.mjs";
+normalizeWebuiEnv();
+const baseUrl = process.env.LEAFCODE_BROWSER_BROKER;
+const token = process.env.LEAFCODE_BROWSER_BROKER_TOKEN;
 
 if (!baseUrl || !token) {
   console.error("Browser Bridge Broker environment is unavailable; start the tray host first.");

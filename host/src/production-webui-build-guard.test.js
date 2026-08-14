@@ -299,7 +299,7 @@ test("requestHostRestartWebUi is best effort", async () => {
 test("resolveHostControlUrl prefers env, then the control file, then the default", () => {
   assert.equal(
     resolveHostControlUrl({
-      env: { OPENCODE_WEBUI_HOST_CONTROL_URL: "http://127.0.0.1:20000/" },
+      env: { LEAFCODE_HOST_CONTROL_URL: "http://127.0.0.1:20000/" },
       exists: () => true,
       read: () => JSON.stringify({ url: "http://127.0.0.1:19999" }),
     }),
@@ -356,26 +356,26 @@ test("main --stop refuses and exits 1 when the WebUI is running", async () => {
   // inspectProductionWebUi uses real netstat/powershell. On the test host port
   // 39998 is effectively always free, so --stop should be a no-op (absent),
   // not a stop. This verifies --stop no longer attempts a stop.
-  const originalPort = process.env.OPENCODE_WEBUI_PORT;
-  process.env.OPENCODE_WEBUI_PORT = "39998";
+  const originalPort = process.env.LEAFCODE_PORT;
+  process.env.LEAFCODE_PORT = "39998";
   try {
     await main(["--stop"]);
     // Port is free -> absent -> main returns without setting exitCode.
     assert.equal(process.exitCode, undefined);
   } finally {
-    process.env.OPENCODE_WEBUI_PORT = originalPort;
+    process.env.LEAFCODE_PORT = originalPort;
     if (process.exitCode !== undefined) process.exitCode = undefined;
   }
 });
 
 test("main with no args is a no-op when the port is free", async () => {
-  const originalPort = process.env.OPENCODE_WEBUI_PORT;
-  process.env.OPENCODE_WEBUI_PORT = "39999";
+  const originalPort = process.env.LEAFCODE_PORT;
+  process.env.LEAFCODE_PORT = "39999";
   try {
     await main([]);
     assert.equal(process.exitCode, undefined);
   } finally {
-    process.env.OPENCODE_WEBUI_PORT = originalPort;
+    process.env.LEAFCODE_PORT = originalPort;
     if (process.exitCode !== undefined) process.exitCode = undefined;
   }
 });

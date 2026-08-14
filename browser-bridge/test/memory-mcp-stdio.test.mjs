@@ -83,8 +83,8 @@ function mkLaunch(dataDir) {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      OPENCODE_WEBUI_DATA_DIR: dataDir,
-      OPENCODE_WEBUI_MEMORY_WORKSPACE: 'ignored-arg-wins',
+      LEAFCODE_DATA_DIR: dataDir,
+      LEAFCODE_MEMORY_WORKSPACE: 'ignored-arg-wins',
     },
     stderr: 'pipe',
   };
@@ -428,11 +428,11 @@ test('memory MCP: re-adding a stored proposition returns the existing row', asyn
 test('memory MCP requires a workspace; CLI --workspace wins over env', async () => {
   const { resolveWorkspace } = await import('../mcp/memory-server.mjs');
   assert.equal(
-    resolveWorkspace({ argv: ['--workspace=ws-9'], env: { OPENCODE_WEBUI_MEMORY_WORKSPACE: 'env-ws' } }),
+    resolveWorkspace({ argv: ['--workspace=ws-9'], env: { LEAFCODE_MEMORY_WORKSPACE: 'env-ws' } }),
     'ws-9',
   );
   assert.equal(
-    resolveWorkspace({ argv: [], env: { OPENCODE_WEBUI_MEMORY_WORKSPACE: 'env-ws' } }),
+    resolveWorkspace({ argv: [], env: { LEAFCODE_MEMORY_WORKSPACE: 'env-ws' } }),
     'env-ws',
   );
   assert.equal(resolveWorkspace({ argv: [], env: {} }), null);

@@ -133,10 +133,10 @@ web/src/components/settings/
 
 **契約**
 
-- Broker既定URL: `http://127.0.0.1:18766`。`OPENCODE_WEBUI_BROWSER_BROKER_PORT` でportのみ変更可能。
+- Broker既定URL: `http://127.0.0.1:18766`。`LEAFCODE_BROWSER_BROKER_PORT` でportのみ変更可能。
 - host起動ごとに内部Bearer tokenを生成し、OpenCode / WebUI子プロセスへ次を渡す。
-  - `OPENCODE_WEBUI_BROWSER_BROKER`
-  - `OPENCODE_WEBUI_BROWSER_BROKER_TOKEN`
+  - `LEAFCODE_BROWSER_BROKER`
+  - `LEAFCODE_BROWSER_BROKER_TOKEN`
 - 拡張は別のdevice keyでWebSocket認証し、内部Bearer tokenを受け取らない。
 
 **手順**

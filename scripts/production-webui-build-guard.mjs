@@ -1,11 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeWebuiEnv } from "./lib/env-compat.mjs";
 import { mirrorWebDir, resolveMirrorRoot } from "./web-build-mirror.mjs";
 import { resolveHostControlUrl } from "./lib/host-control.mjs";
 import { parseListeningPids } from "../host/src/port-plan.js";
 
 export { parseListeningPids };
+
+// Legacy OPENCODE_WEBUI_* env vars keep working: copy onto LEAFCODE_* first.
+normalizeWebuiEnv();
 
 const defaultWebDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "web");
 
@@ -203,7 +207,7 @@ export async function requestHostRestartWebUi({
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  const port = webUiPort(process.env.OPENCODE_WEBUI_PORT);
+  const port = webUiPort(process.env.LEAFCODE_PORT);
 
   // --restart is a no-op now: build.bat no longer stops the WebUI, so there is
   // nothing to restart. Kept for backward compatibility with older build.bat.

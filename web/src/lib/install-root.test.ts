@@ -9,19 +9,19 @@ import { installationRoot, isGitInstall } from "./install-root";
 describe("installationRoot", () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    delete process.env.OPENCODE_WEBUI_INSTALL_ROOT;
+    delete process.env.LEAFCODE_INSTALL_ROOT;
   });
 
-  it("prefers OPENCODE_WEBUI_INSTALL_ROOT so a mirrored server still targets the install", () => {
+  it("prefers LEAFCODE_INSTALL_ROOT so a mirrored server still targets the install", () => {
     existsSyncMock.mockReturnValue(true);
-    process.env.OPENCODE_WEBUI_INSTALL_ROOT = join("C:", "repo", "OpenCodeWebUI");
+    process.env.LEAFCODE_INSTALL_ROOT = join("C:", "repo", "OpenCodeWebUI");
     expect(installationRoot()).toBe(resolve(join("C:", "repo", "OpenCodeWebUI")));
     expect(existsSyncMock).not.toHaveBeenCalled();
   });
 
-  it("ignores a blank OPENCODE_WEBUI_INSTALL_ROOT", () => {
+  it("ignores a blank LEAFCODE_INSTALL_ROOT", () => {
     existsSyncMock.mockImplementation((p: unknown) => String(p).endsWith("scripts"));
-    process.env.OPENCODE_WEBUI_INSTALL_ROOT = "   ";
+    process.env.LEAFCODE_INSTALL_ROOT = "   ";
     expect(installationRoot()).toBe(resolve(process.cwd(), ".."));
   });
 

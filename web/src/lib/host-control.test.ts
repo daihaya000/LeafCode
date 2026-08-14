@@ -47,26 +47,26 @@ describe("hostLogsPath", () => {
 });
 
 describe("resolveHostControlUrl", () => {
-  const prev = process.env.OPENCODE_WEBUI_HOST_CONTROL_URL;
+  const prev = process.env.LEAFCODE_HOST_CONTROL_URL;
 
   afterEach(() => {
-    if (prev === undefined) delete process.env.OPENCODE_WEBUI_HOST_CONTROL_URL;
-    else process.env.OPENCODE_WEBUI_HOST_CONTROL_URL = prev;
+    if (prev === undefined) delete process.env.LEAFCODE_HOST_CONTROL_URL;
+    else process.env.LEAFCODE_HOST_CONTROL_URL = prev;
   });
 
   it("accepts loopback env URLs", () => {
-    process.env.OPENCODE_WEBUI_HOST_CONTROL_URL = "http://127.0.0.1:18765/";
+    process.env.LEAFCODE_HOST_CONTROL_URL = "http://127.0.0.1:18765/";
     expect(resolveHostControlUrl()).toBe("http://127.0.0.1:18765");
   });
 
   it("rejects non-loopback env URLs and falls back to default", () => {
-    process.env.OPENCODE_WEBUI_HOST_CONTROL_URL = "http://192.168.0.50:18765";
+    process.env.LEAFCODE_HOST_CONTROL_URL = "http://192.168.0.50:18765";
     expect(resolveHostControlUrl()).toBe("http://127.0.0.1:18765");
   });
 });
 
 describe("shared host-control (scripts/lib/host-control.mjs, DI)", () => {
-  const env = { OPENCODE_WEBUI_HOST_CONTROL_URL: undefined, APPDATA: "C:\\appdata" };
+  const env = { LEAFCODE_HOST_CONTROL_URL: undefined, APPDATA: "C:\\appdata" };
   const fileExists = (content: string) => ({
     exists: (p: string) => p.endsWith("host-control.json"),
     read: () => content,
@@ -83,19 +83,19 @@ describe("shared host-control (scripts/lib/host-control.mjs, DI)", () => {
 
   it("accepts loopback env URLs (trailing slash stripped)", () => {
     expect(
-      resolveShared({ env: { ...env, OPENCODE_WEBUI_HOST_CONTROL_URL: "http://127.0.0.1:18765/" } }),
+      resolveShared({ env: { ...env, LEAFCODE_HOST_CONTROL_URL: "http://127.0.0.1:18765/" } }),
     ).toBe("http://127.0.0.1:18765");
   });
 
   it("rejects non-loopback env URLs (was silently accepted by the build guard)", () => {
     expect(
-      resolveShared({ env: { ...env, OPENCODE_WEBUI_HOST_CONTROL_URL: "http://192.168.0.50:18765" } }),
+      resolveShared({ env: { ...env, LEAFCODE_HOST_CONTROL_URL: "http://192.168.0.50:18765" } }),
     ).toBe("http://127.0.0.1:18765");
   });
 
   it("rejects non-http protocols", () => {
     expect(
-      resolveShared({ env: { ...env, OPENCODE_WEBUI_HOST_CONTROL_URL: "file:///C:/x" } }),
+      resolveShared({ env: { ...env, LEAFCODE_HOST_CONTROL_URL: "file:///C:/x" } }),
     ).toBe("http://127.0.0.1:18765");
   });
 

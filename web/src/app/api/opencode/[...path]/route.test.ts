@@ -94,7 +94,7 @@ vi.mock("@/lib/qwen-native-vision", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/qwen-native-vision")>();
   return {
     ...actual,
-    isQwenNativeVisionAvailable: () => process.env.OPENCODE_WEBUI_QWEN_NATIVE === "1",
+    isQwenNativeVisionAvailable: () => process.env.LEAFCODE_QWEN_NATIVE === "1",
   };
 });
 
@@ -557,11 +557,11 @@ describe("POST session image capability validation", () => {
 
   it("analyzes image parts natively before forwarding to a text-only model", async () => {
     const directory = "C:\\repo\\qwen-native";
-    const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-    const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
-    process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
+    const previousNative = process.env.LEAFCODE_QWEN_NATIVE;
+    const previousModel = process.env.LEAFCODE_QWEN_MODEL;
+    process.env.LEAFCODE_QWEN_NATIVE = "1";
     // 事前解析は OpenCode 登録モデル経由（使い捨てセッション）で行われる。
-    process.env.OPENCODE_WEBUI_QWEN_MODEL = "ollama::qwen2.5vl:7b";
+    process.env.LEAFCODE_QWEN_MODEL = "ollama::qwen2.5vl:7b";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = new URL(String(input));
       if (url.pathname === "/experimental/tool/ids") {
@@ -613,10 +613,10 @@ describe("POST session image capability validation", () => {
       expect(fetchMock.mock.calls.some(([input]) => new URL(String(input)).pathname === "/mcp")).toBe(false);
     } finally {
       fetchMock.mockRestore();
-      if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-      else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
-      if (previousModel === undefined) delete process.env.OPENCODE_WEBUI_QWEN_MODEL;
-      else process.env.OPENCODE_WEBUI_QWEN_MODEL = previousModel;
+      if (previousNative === undefined) delete process.env.LEAFCODE_QWEN_NATIVE;
+      else process.env.LEAFCODE_QWEN_NATIVE = previousNative;
+      if (previousModel === undefined) delete process.env.LEAFCODE_QWEN_MODEL;
+      else process.env.LEAFCODE_QWEN_MODEL = previousModel;
     }
   });
 

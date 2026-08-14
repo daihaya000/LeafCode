@@ -6,7 +6,7 @@
  * Resolution precedence (server-side):
  *   1. `settings` table row `workflow-mode` — the user-facing toggle from the
  *      Settings screen (source of truth once flipped).
- *   2. `OPENCODE_WEBUI_WORKFLOW_MODE` / `NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE`
+ *   2. `LEAFCODE_WORKFLOW_MODE` / `NEXT_PUBLIC_LEAFCODE_WORKFLOW_MODE`
  *      env var — initial rollout flag, used only when no DB row exists.
  *   3. {@link DEFAULT_WORKFLOW_MODE_ENABLED} (false).
  *
@@ -46,7 +46,7 @@ export function resolveWorkflowModeServer(): boolean {
   const stored = getSetting(WORKFLOW_MODE_SETTING_KEY);
   if (stored !== null) return resolveWorkflowModeEnabled(stored);
   return resolveWorkflowModeEnabled(
-    process.env.OPENCODE_WEBUI_WORKFLOW_MODE ?? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE,
+    process.env.LEAFCODE_WORKFLOW_MODE ?? process.env.NEXT_PUBLIC_LEAFCODE_WORKFLOW_MODE,
   );
 }
 
@@ -56,10 +56,10 @@ export function isWorkflowModeEnabled(): boolean {
 
 function clientVisibleFlag(name: "MODE" | "GRAPH" | "GRAPH_EDIT"): string | undefined {
   return name === "MODE"
-    ? process.env.OPENCODE_WEBUI_WORKFLOW_MODE ?? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE
+    ? process.env.LEAFCODE_WORKFLOW_MODE ?? process.env.NEXT_PUBLIC_LEAFCODE_WORKFLOW_MODE
     : name === "GRAPH"
-      ? process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH ?? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH
-      : process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT;
+      ? process.env.LEAFCODE_WORKFLOW_GRAPH ?? process.env.NEXT_PUBLIC_LEAFCODE_WORKFLOW_GRAPH
+      : process.env.LEAFCODE_WORKFLOW_GRAPH_EDIT ?? process.env.NEXT_PUBLIC_LEAFCODE_WORKFLOW_GRAPH_EDIT;
 }
 
 export function resolveWorkflowGraphRollout(raw: {

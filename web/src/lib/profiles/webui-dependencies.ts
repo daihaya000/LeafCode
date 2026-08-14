@@ -7,8 +7,8 @@ import { opencodeConfigDir } from "../opencode-extensions/paths";
 const VENDOR_VERSIONS_FILE = ".webui-vendor-versions.json";
 
 const CONFIG_SKELETON = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
-const BROKER_URL = "{env:OPENCODE_WEBUI_BROWSER_BROKER}";
-const BROKER_TOKEN = "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}";
+const BROKER_URL = "{env:LEAFCODE_BROWSER_BROKER}";
+const BROKER_TOKEN = "{env:LEAFCODE_BROWSER_BROKER_TOKEN}";
 
 /**
  * OpenCode-side dependencies used by the WebUI.  The browser extension itself
@@ -16,16 +16,16 @@ const BROKER_TOKEN = "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}";
  * available in every newly-created OpenCode profile.
  */
 export function webUiMcpEntry(): Record<string, unknown> {
-  const root = process.env.OPENCODE_WEBUI_ROOT?.trim()
-    ? path.resolve(process.env.OPENCODE_WEBUI_ROOT)
+  const root = process.env.LEAFCODE_ROOT?.trim()
+    ? path.resolve(process.env.LEAFCODE_ROOT)
     : path.resolve(process.cwd());
   return {
     type: "local",
     command: ["node", path.join(root, "browser-bridge", "mcp", "server.mjs")],
     enabled: true,
     environment: {
-      OPENCODE_WEBUI_BROWSER_BROKER: BROKER_URL,
-      OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: BROKER_TOKEN,
+      LEAFCODE_BROWSER_BROKER: BROKER_URL,
+      LEAFCODE_BROWSER_BROKER_TOKEN: BROKER_TOKEN,
     },
   };
 }
@@ -48,8 +48,8 @@ function configPath(dir: string): string {
 function bundledVendorDir(vendorName: string, envVar?: string): string | undefined {
   const explicit = envVar ? process.env[envVar]?.trim() : undefined;
   if (explicit) return path.resolve(explicit);
-  const root = process.env.OPENCODE_WEBUI_ROOT?.trim()
-    ? path.resolve(process.env.OPENCODE_WEBUI_ROOT)
+  const root = process.env.LEAFCODE_ROOT?.trim()
+    ? path.resolve(process.env.LEAFCODE_ROOT)
     : path.resolve(process.cwd());
   const candidates = [path.join(root, "vendor", vendorName), path.join(root, "..", "vendor", vendorName)];
   return candidates.find((candidate) => fs.existsSync(candidate));
@@ -288,8 +288,8 @@ export function installWebUiDependencies(
   if (!fs.existsSync(targetConfigPath)) fs.writeFileSync(targetConfigPath, CONFIG_SKELETON, "utf8");
 
   const activeDir = opencodeConfigDir();
-  const bundledDir = bundledVendorDir("cursor-cli-proxy", "OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR");
-  const bundledClaudeAuth = bundledVendorDir("claude-cli-proxy", "OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR");
+  const bundledDir = bundledVendorDir("cursor-cli-proxy", "LEAFCODE_CURSOR_CLI_PROXY_DIR");
+  const bundledClaudeAuth = bundledVendorDir("claude-cli-proxy", "LEAFCODE_CLAUDE_CLI_PROXY_DIR");
   const bundledCommandcodeCli = bundledVendorDir("commandcode-cli-proxy");
   const sourceDirs = [activeDir, bundledDir].filter(
     (dir, index, all): dir is string => Boolean(dir) && all.indexOf(dir) === index,

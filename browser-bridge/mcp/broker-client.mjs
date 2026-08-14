@@ -23,12 +23,12 @@ function normalizeBrokerUrl(value) {
 }
 
 export function readBrokerEnvironment(env = process.env) {
-  const token = env.OPENCODE_WEBUI_BROWSER_BROKER_TOKEN;
+  const token = env.LEAFCODE_BROWSER_BROKER_TOKEN;
   if (typeof token !== 'string' || token.length < 32) {
     throw new BrowserBridgeError(BrowserBridgeErrorCode.BROKER_UNAVAILABLE, 'Browser Bridge Broker credential is required');
   }
   return {
-    baseUrl: normalizeBrokerUrl(env.OPENCODE_WEBUI_BROWSER_BROKER),
+    baseUrl: normalizeBrokerUrl(env.LEAFCODE_BROWSER_BROKER),
     token,
   };
 }

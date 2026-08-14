@@ -93,14 +93,20 @@ internal static class Launcher
     /// before scripts\start-webui.bat runs and can use its own
     /// pause_if_interactive - so a double-click launch does not just flash
     /// and close before the error above can be read. Set
-    /// OPENCODE_WEBUI_NONINTERACTIVE=1 to skip waiting (same variable name
+    /// LEAFCODE_NONINTERACTIVE=1 to skip waiting (same variable name
     /// and meaning as start-webui.bat's pause_if_interactive). Automated
     /// tests spawn this exe with stdin already closed/at EOF, so
     /// Console.In.ReadLine() returns immediately there and never blocks them.
     /// </summary>
     private static int Fail(int code)
     {
-        if (Environment.GetEnvironmentVariable("OPENCODE_WEBUI_NONINTERACTIVE") != "1")
+        string noninteractive = Environment.GetEnvironmentVariable("LEAFCODE_NONINTERACTIVE");
+        if (string.IsNullOrEmpty(noninteractive))
+        {
+            // Legacy rebrand name, kept working forever (see scripts/lib/env-compat.mjs).
+            noninteractive = Environment.GetEnvironmentVariable("OPENCODE_WEBUI_NONINTERACTIVE");
+        }
+        if (noninteractive != "1")
         {
             Console.Error.WriteLine("Press Enter to close this window...");
             Console.In.ReadLine();

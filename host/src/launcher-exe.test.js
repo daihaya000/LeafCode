@@ -172,7 +172,7 @@ test(
 );
 
 test(
-  "Launcher.cs skips the pause when OPENCODE_WEBUI_NONINTERACTIVE=1 is set",
+  "Launcher.cs skips the pause when LEAFCODE_NONINTERACTIVE=1 is set",
   { skip: !isWindows || !csc },
   () => {
     const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-noninteractive-"));
@@ -185,7 +185,7 @@ test(
       const run = spawnSync(exePath, [], {
         encoding: "utf8",
         timeout: 10_000,
-        env: { ...process.env, OPENCODE_WEBUI_NONINTERACTIVE: "1" },
+        env: { ...process.env, LEAFCODE_NONINTERACTIVE: "1" },
       });
       assert.notEqual(run.status, null, "expected the process to exit instead of timing out");
       assert.equal(run.status, 1);

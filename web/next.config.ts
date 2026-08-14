@@ -1,11 +1,16 @@
 import type { NextConfig } from "next";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { normalizeWebuiEnv } from "../scripts/lib/env-compat.mjs";
 import { resolveNextDistDir } from "./src/lib/dist-dir";
+
+// Legacy OPENCODE_WEBUI_* env vars keep working: copy them onto LEAFCODE_*
+// before anything reads them (build-time and runtime).
+normalizeWebuiEnv();
 
 // Production builds and `next start` run from the build mirror, which has no
 // .git; the installation it was mirrored from does (see install-root.ts).
-const gitCwd = process.env.OPENCODE_WEBUI_INSTALL_ROOT?.trim() || undefined;
+const gitCwd = process.env.LEAFCODE_INSTALL_ROOT?.trim() || undefined;
 
 function resolveBuildCommit(): string {
   const fromEnv = process.env.GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA;
@@ -40,9 +45,9 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_COMMIT: buildCommit,
     NEXT_PUBLIC_BUILD_COMMIT_DATE: buildCommitDate,
-    NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE: process.env.OPENCODE_WEBUI_WORKFLOW_MODE ?? "false",
-    NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH: process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH ?? "false",
-    NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT: process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? "false",
+    NEXT_PUBLIC_LEAFCODE_WORKFLOW_MODE: process.env.LEAFCODE_WORKFLOW_MODE ?? "false",
+    NEXT_PUBLIC_LEAFCODE_WORKFLOW_GRAPH: process.env.LEAFCODE_WORKFLOW_GRAPH ?? "false",
+    NEXT_PUBLIC_LEAFCODE_WORKFLOW_GRAPH_EDIT: process.env.LEAFCODE_WORKFLOW_GRAPH_EDIT ?? "false",
   },
   serverExternalPackages: ["better-sqlite3"],
   // Always inside this project: Turbopack rejects a distDir that navigates out

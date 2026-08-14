@@ -14,7 +14,7 @@
  *
  * Returns null when the address cannot be established. That happens when the
  * BFF is bound directly to the LAN with no proxy in front
- * (`OPENCODE_WEBUI_HOST=0.0.0.0`), because Next.js route handlers do not expose
+ * (`LEAFCODE_HOST=0.0.0.0`), because Next.js route handlers do not expose
  * the socket peer address. Callers must treat null as "unknown", not as a
  * shared bucket, or every unproxied client would share one rate-limit counter.
  */

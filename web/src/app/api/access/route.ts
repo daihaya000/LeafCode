@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PORT =
-  Number(process.env.OPENCODE_WEBUI_PORT) ||
+  Number(process.env.LEAFCODE_PORT) ||
   Number(process.env.PORT) ||
   3000;
 
@@ -39,11 +39,11 @@ function classify(name: string): NetAddr["kind"] {
 
 /**
  * When Caddy fronts the WebUI with HTTPS, the host passes the public origin
- * (e.g. https://webui.example.com) via OPENCODE_WEBUI_PUBLIC_URL. In that case
+ * (e.g. https://webui.example.com) via LEAFCODE_PUBLIC_URL. In that case
  * the raw http://IP:3000 URLs are wrong — traffic must go through Caddy.
  */
 function publicUrl(): string | null {
-  const raw = process.env.OPENCODE_WEBUI_PUBLIC_URL?.trim();
+  const raw = process.env.LEAFCODE_PUBLIC_URL?.trim();
   if (!raw) return null;
   try {
     const u = new URL(raw);
@@ -55,7 +55,7 @@ function publicUrl(): string | null {
 }
 
 function caddyLocalUrl(publicOrigin: string | null): string | null {
-  const raw = process.env.OPENCODE_WEBUI_CADDY_LOCAL_URL?.trim();
+  const raw = process.env.LEAFCODE_CADDY_LOCAL_URL?.trim();
   if (!raw && !publicOrigin) return null;
   try {
     const u = new URL(raw || publicOrigin!);
@@ -110,7 +110,7 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   const host =
-    process.env.OPENCODE_WEBUI_HOST ||
+    process.env.LEAFCODE_HOST ||
     process.env.HOSTNAME_BIND ||
     "0.0.0.0";
 
@@ -157,7 +157,7 @@ export async function GET(req: Request) {
     addresses: [...caddyAddresses, ...addresses],
     hint:
       host === "127.0.0.1"
-        ? "WebUI が localhost のみ待ち受け中です。スマホから使うには OPENCODE_WEBUI_HOST=0.0.0.0 で再起動してください。"
+        ? "WebUI が localhost のみ待ち受け中です。スマホから使うには LEAFCODE_HOST=0.0.0.0 で再起動してください。"
         : "スマホは VPN 接続後、下の URL（VPN 優先）を開いてください。Windows ファイアウォールでポート 3000 を許可する必要がある場合があります。",
   });
 }

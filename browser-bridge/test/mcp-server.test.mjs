@@ -11,15 +11,15 @@ test('requires a loopback Broker URL and a non-empty host-issued credential', ()
   assert.throws(() => readBrokerEnvironment({}), /credential/i);
   assert.throws(
     () => readBrokerEnvironment({
-      OPENCODE_WEBUI_BROWSER_BROKER: 'https://broker.example.test',
-      OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: 'x'.repeat(32),
+      LEAFCODE_BROWSER_BROKER: 'https://broker.example.test',
+      LEAFCODE_BROWSER_BROKER_TOKEN: 'x'.repeat(32),
     }),
     /loopback/i,
   );
   assert.deepEqual(
     readBrokerEnvironment({
-      OPENCODE_WEBUI_BROWSER_BROKER: 'http://127.0.0.1:18766/',
-      OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: 'x'.repeat(32),
+      LEAFCODE_BROWSER_BROKER: 'http://127.0.0.1:18766/',
+      LEAFCODE_BROWSER_BROKER_TOKEN: 'x'.repeat(32),
     }),
     { baseUrl: 'http://127.0.0.1:18766', token: 'x'.repeat(32) },
   );

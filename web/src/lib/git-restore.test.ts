@@ -60,7 +60,7 @@ function mockHappyPathGit(headCommit = "deadbeef") {
 describe("runStartupGitRestore", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete process.env.OPENCODE_WEBUI_SKIP_GIT_RESTORE;
+    delete process.env.LEAFCODE_SKIP_GIT_RESTORE;
     mkdtempMock.mockResolvedValue("C:\\tmp\\opencode-webui-git-restore-xxx");
     renameMock.mockResolvedValue(undefined);
     cpMock.mockResolvedValue(undefined);
@@ -68,11 +68,11 @@ describe("runStartupGitRestore", () => {
   });
 
   afterEach(() => {
-    delete process.env.OPENCODE_WEBUI_SKIP_GIT_RESTORE;
+    delete process.env.LEAFCODE_SKIP_GIT_RESTORE;
   });
 
-  it("does nothing when OPENCODE_WEBUI_SKIP_GIT_RESTORE=1", async () => {
-    process.env.OPENCODE_WEBUI_SKIP_GIT_RESTORE = "1";
+  it("does nothing when LEAFCODE_SKIP_GIT_RESTORE=1", async () => {
+    process.env.LEAFCODE_SKIP_GIT_RESTORE = "1";
     await runStartupGitRestore(ROOT);
     expect(execFileMock).not.toHaveBeenCalled();
   });

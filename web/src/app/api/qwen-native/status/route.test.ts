@@ -16,19 +16,19 @@ vi.mock("@/lib/profiles/settings", () => ({
 
 import { GET } from "./route";
 
-const previousEnabled = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
+const previousEnabled = process.env.LEAFCODE_QWEN_NATIVE;
+const previousModel = process.env.LEAFCODE_QWEN_MODEL;
 
 beforeEach(() => {
-  delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-  delete process.env.OPENCODE_WEBUI_QWEN_MODEL;
+  delete process.env.LEAFCODE_QWEN_NATIVE;
+  delete process.env.LEAFCODE_QWEN_MODEL;
 });
 
 afterEach(() => {
-  if (previousEnabled === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-  else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousEnabled;
-  if (previousModel === undefined) delete process.env.OPENCODE_WEBUI_QWEN_MODEL;
-  else process.env.OPENCODE_WEBUI_QWEN_MODEL = previousModel;
+  if (previousEnabled === undefined) delete process.env.LEAFCODE_QWEN_NATIVE;
+  else process.env.LEAFCODE_QWEN_NATIVE = previousEnabled;
+  if (previousModel === undefined) delete process.env.LEAFCODE_QWEN_MODEL;
+  else process.env.LEAFCODE_QWEN_MODEL = previousModel;
 });
 
 function request() {
@@ -38,21 +38,21 @@ function request() {
 }
 
 it("reports native vision availability without exposing the model selection", async () => {
-  process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
-  process.env.OPENCODE_WEBUI_QWEN_MODEL = "ollama::qwen2.5vl:7b";
+  process.env.LEAFCODE_QWEN_NATIVE = "1";
+  process.env.LEAFCODE_QWEN_MODEL = "ollama::qwen2.5vl:7b";
   const response = await GET(request());
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ nativeAvailable: true });
 });
 
 it("reports unavailable when enabled without a registered analysis model", async () => {
-  process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
+  process.env.LEAFCODE_QWEN_NATIVE = "1";
   const response = await GET(request());
   expect(await response.json()).toEqual({ nativeAvailable: false });
 });
 
 it("reports unavailable when native integration is disabled", async () => {
-  process.env.OPENCODE_WEBUI_QWEN_NATIVE = "0";
+  process.env.LEAFCODE_QWEN_NATIVE = "0";
   const response = await GET(request());
   expect(await response.json()).toEqual({ nativeAvailable: false });
 });

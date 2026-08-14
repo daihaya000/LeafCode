@@ -102,7 +102,7 @@ vi.mock("@/lib/qwen-native-vision", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/qwen-native-vision")>();
   return {
     ...actual,
-    isQwenNativeVisionAvailable: () => process.env.OPENCODE_WEBUI_QWEN_NATIVE === "1",
+    isQwenNativeVisionAvailable: () => process.env.LEAFCODE_QWEN_NATIVE === "1",
   };
 });
 
@@ -1435,11 +1435,11 @@ describe("POST /api/tasks auto model selection", () => {
   });
 
   it("analyzes an image with the registered OpenCode model before sending it to an Auto-selected text model", async () => {
-    const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-    const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
-    process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
+    const previousNative = process.env.LEAFCODE_QWEN_NATIVE;
+    const previousModel = process.env.LEAFCODE_QWEN_MODEL;
+    process.env.LEAFCODE_QWEN_NATIVE = "1";
     // Force the analysis model so the test is independent from persisted UI settings.
-    process.env.OPENCODE_WEBUI_QWEN_MODEL = "ollama::qwen2.5vl:7b";
+    process.env.LEAFCODE_QWEN_MODEL = "ollama::qwen2.5vl:7b";
     try {
       const ocServer = await mockOc({
         provider: providerFixture({
@@ -1484,10 +1484,10 @@ describe("POST /api/tasks auto model selection", () => {
         ],
       });
     } finally {
-      if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-      else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
-      if (previousModel === undefined) delete process.env.OPENCODE_WEBUI_QWEN_MODEL;
-      else process.env.OPENCODE_WEBUI_QWEN_MODEL = previousModel;
+      if (previousNative === undefined) delete process.env.LEAFCODE_QWEN_NATIVE;
+      else process.env.LEAFCODE_QWEN_NATIVE = previousNative;
+      if (previousModel === undefined) delete process.env.LEAFCODE_QWEN_MODEL;
+      else process.env.LEAFCODE_QWEN_MODEL = previousModel;
     }
   });
 

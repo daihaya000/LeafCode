@@ -5,7 +5,7 @@
  * browser-bridge/scripts/install-mcp.mjs).
  *
  * The memory server opens the WebUI SQLite directly. It resolves its data dir
- * from `OPENCODE_WEBUI_DATA_DIR` when set, otherwise it mirrors the WebUI's
+ * from `LEAFCODE_DATA_DIR` when set, otherwise it mirrors the WebUI's
  * platform default, so the config here only needs to pin the workspace id.
  *
  * Usage:
@@ -33,7 +33,7 @@ import { applyEdits, modify, parse } from 'jsonc-parser';
 
 const SKELETON = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
 const FORMATTING_OPTIONS = { insertSpaces: true, tabSize: 2, eol: '\n' };
-const ENV_WORKSPACE = '{env:OPENCODE_WEBUI_MEMORY_WORKSPACE}';
+const ENV_WORKSPACE = '{env:LEAFCODE_MEMORY_WORKSPACE}';
 
 export function parseArgs(argv) {
   const options = { scope: 'global', path: null, force: false, uninstall: false, dryRun: false, workspace: null };
@@ -78,7 +78,7 @@ export function buildDesiredEntry(serverPath, workspace) {
     command: ['node', serverPath],
     enabled: true,
     arguments: ['--workspace', workspace],
-    environment: { OPENCODE_WEBUI_MEMORY_WORKSPACE: ENV_WORKSPACE },
+    environment: { LEAFCODE_MEMORY_WORKSPACE: ENV_WORKSPACE },
   };
 }
 

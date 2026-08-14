@@ -26,10 +26,10 @@ export type { WorkflowGraphRollout, WorkflowGraphRolloutPhase };
 
 function clientVisibleFlag(name: "MODE" | "GRAPH" | "GRAPH_EDIT"): string | undefined {
   return name === "MODE"
-    ? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE
+    ? process.env.NEXT_PUBLIC_LEAFCODE_WORKFLOW_MODE
     : name === "GRAPH"
-      ? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH
-      : process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT;
+      ? process.env.NEXT_PUBLIC_LEAFCODE_WORKFLOW_GRAPH
+      : process.env.NEXT_PUBLIC_LEAFCODE_WORKFLOW_GRAPH_EDIT;
 }
 
 export function isWorkflowGraphEnabled(): boolean {

@@ -20,7 +20,7 @@
   一切 catch していない。未処理例外はコンソールへスタックトレースを出して終了するが、
   これも同様に読む間もなく閉じる。
 - `scripts\start-webui.bat` 側は `:fail` / `:pause_if_interactive` で
-  `pause`（`OPENCODE_WEBUI_NONINTERACTIVE=1` 時のみ抑制）を持ち、bat自身が検知できる
+  `pause`（`LEAFCODE_NONINTERACTIVE=1` 時のみ抑制）を持ち、bat自身が検知できる
   失敗（Node.js未導入、OpenCode未導入等、README記載のERROR 1〜10）は既にウィンドウを
   保持できる。**問題は bat に到達する前** の exe 側のみに限定される。
 
@@ -37,7 +37,7 @@
   `Console.Error.WriteLine("OpenCodeWebUI.exe failed to start: " + ex.Message)` を出力し、
   失敗時共通のポーズ処理へ渡してから `return 1`。
 - `scripts\start-webui.bat not found` の既存分岐にも同じポーズ処理を適用する。
-- ポーズ処理: 環境変数 `OPENCODE_WEBUI_NONINTERACTIVE` が `"1"` でない場合のみ、
+- ポーズ処理: 環境変数 `LEAFCODE_NONINTERACTIVE` が `"1"` でない場合のみ、
   `Console.Error.WriteLine("Press Enter to close this window...")` の後 `Console.ReadLine()`
   で待機する（`start-webui.bat` の `pause_if_interactive` と同じ変数名・同じ意味に揃える）。
   自動テスト（`spawnSync`、標準入力は既定でEOF済み）では `ReadLine()` が即 `null` を返し
@@ -51,7 +51,7 @@
 
 - 既存の「`scripts\start-webui.bat` が無い」テストに、ポーズ導線の追記文言
   （リポジトリ全体を配置する必要がある旨）が stderr に含まれることを追加検証する。
-- 新規: `OPENCODE_WEBUI_NONINTERACTIVE=1` を設定した実行でも同じ exit code / stderr
+- 新規: `LEAFCODE_NONINTERACTIVE=1` を設定した実行でも同じ exit code / stderr
   になること（ポーズテキスト自体は出しても出さなくてもよいが、ブロックしないことが本質）
   を検証するテストを追加する。
 - 新規: 正常系（既存の「exit code 42 を転送する」テスト）が今回の変更後も無変更で
@@ -92,7 +92,7 @@
 1. `host/src/launcher-exe.test.js` の既存4件 + 新規追加分がすべて PASS する
 2. `scripts\start-webui.bat` が存在しない状態で exe を実行すると、stderr に
    「exeだけをコピーした場合はこのエラーになる」旨の追加メッセージが含まれる
-3. `OPENCODE_WEBUI_NONINTERACTIVE=1` 環境下では上記と同じ exit code / メッセージのまま、
+3. `LEAFCODE_NONINTERACTIVE=1` 環境下では上記と同じ exit code / メッセージのまま、
    テスト実行がハングしない
 4. リポジトリ直下の `OpenCodeWebUI.exe` が変更後の `Launcher.cs` から再ビルドされている
    （`scripts\build-launcher.bat` 実行結果をコミット）

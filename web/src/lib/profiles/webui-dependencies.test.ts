@@ -13,15 +13,15 @@ let previousRoot: string | undefined;
 
 beforeEach(() => {
   previousConfigDir = process.env.OPENCODE_CONFIG_DIR;
-  previousCursorCliProxyDir = process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR;
-  previousClaudeCliProxyDir = process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR;
-  previousRoot = process.env.OPENCODE_WEBUI_ROOT;
+  previousCursorCliProxyDir = process.env.LEAFCODE_CURSOR_CLI_PROXY_DIR;
+  previousClaudeCliProxyDir = process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR;
+  previousRoot = process.env.LEAFCODE_ROOT;
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-source-"));
   dirs.push(source);
   process.env.OPENCODE_CONFIG_DIR = source;
-  process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR = path.join(source, "bundled");
-  process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR = path.join(source, "claude-bundled");
-  process.env.OPENCODE_WEBUI_ROOT = source;
+  process.env.LEAFCODE_CURSOR_CLI_PROXY_DIR = path.join(source, "bundled");
+  process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR = path.join(source, "claude-bundled");
+  process.env.LEAFCODE_ROOT = source;
   fs.mkdirSync(path.join(source, "vendor", "commandcode-cli-proxy", "plugin"), { recursive: true });
   fs.mkdirSync(path.join(source, "vendor", "commandcode-cli-proxy", "packages", "commandcode-cli-proxy"), { recursive: true });
   fs.writeFileSync(path.join(source, "vendor", "commandcode-cli-proxy", "plugin", "commandcode-cli-proxy.js"), "export default {};");
@@ -31,12 +31,12 @@ beforeEach(() => {
 afterEach(() => {
   if (previousConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
   else process.env.OPENCODE_CONFIG_DIR = previousConfigDir;
-  if (previousCursorCliProxyDir === undefined) delete process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR;
-  else process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR = previousCursorCliProxyDir;
-  if (previousClaudeCliProxyDir === undefined) delete process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR;
-  else process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR = previousClaudeCliProxyDir;
-  if (previousRoot === undefined) delete process.env.OPENCODE_WEBUI_ROOT;
-  else process.env.OPENCODE_WEBUI_ROOT = previousRoot;
+  if (previousCursorCliProxyDir === undefined) delete process.env.LEAFCODE_CURSOR_CLI_PROXY_DIR;
+  else process.env.LEAFCODE_CURSOR_CLI_PROXY_DIR = previousCursorCliProxyDir;
+  if (previousClaudeCliProxyDir === undefined) delete process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR;
+  else process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR = previousClaudeCliProxyDir;
+  if (previousRoot === undefined) delete process.env.LEAFCODE_ROOT;
+  else process.env.LEAFCODE_ROOT = previousRoot;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -49,8 +49,8 @@ describe("installWebUiDependencies", () => {
     const config = JSON.parse(fs.readFileSync(path.join(dir, "opencode.jsonc"), "utf8"));
     expect(config.mcp["browser-bridge"].command[0]).toBe("node");
     expect(config.mcp["browser-bridge"].environment).toEqual({
-      OPENCODE_WEBUI_BROWSER_BROKER: "{env:OPENCODE_WEBUI_BROWSER_BROKER}",
-      OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}",
+      LEAFCODE_BROWSER_BROKER: "{env:LEAFCODE_BROWSER_BROKER}",
+      LEAFCODE_BROWSER_BROKER_TOKEN: "{env:LEAFCODE_BROWSER_BROKER_TOKEN}",
     });
   });
 
@@ -88,7 +88,7 @@ describe("installWebUiDependencies", () => {
   });
 
   it("uses the repository bundle when the active profile has no Cursor CLI Proxy", () => {
-    const bundle = process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR!;
+    const bundle = process.env.LEAFCODE_CURSOR_CLI_PROXY_DIR!;
     fs.mkdirSync(bundle, { recursive: true });
     fs.writeFileSync(
       path.join(bundle, "opencode.jsonc"),
@@ -109,7 +109,7 @@ describe("installWebUiDependencies", () => {
   });
 
   it("updates the bundle when the active profile is the target reached through a link", () => {
-    const bundle = process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR!;
+    const bundle = process.env.LEAFCODE_CURSOR_CLI_PROXY_DIR!;
     const bundlePackage = path.join(bundle, "packages", "cursor-cli-proxy", "index.js");
     fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
     fs.mkdirSync(path.join(bundle, "packages", "cursor-cli-proxy"), { recursive: true });
@@ -149,7 +149,7 @@ describe("installWebUiDependencies", () => {
   });
 
   it("copies the bundled Claude CLI Proxy plugin and runtime", () => {
-    const bundle = process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR!;
+    const bundle = process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR!;
     fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
     fs.mkdirSync(path.join(bundle, "packages", "claude-cli-proxy"), { recursive: true });
     fs.writeFileSync(path.join(bundle, "plugin", "claude-cli-proxy.js"), "export default {};");
@@ -169,7 +169,7 @@ describe("installWebUiDependencies", () => {
   });
 
   it("adds the bundled Anthropic provider definition when Claude CLI Proxy is enabled", () => {
-    const bundle = process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR!;
+    const bundle = process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR!;
     fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
     fs.mkdirSync(path.join(bundle, "packages", "claude-cli-proxy"), { recursive: true });
     fs.writeFileSync(path.join(bundle, "plugin", "claude-cli-proxy.js"), "export default {};");
@@ -201,7 +201,7 @@ describe("installWebUiDependencies", () => {
   });
 
   it("does not overwrite an existing Anthropic provider configuration", () => {
-    const bundle = process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR!;
+    const bundle = process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR!;
     fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
     fs.mkdirSync(path.join(bundle, "packages", "claude-cli-proxy"), { recursive: true });
     fs.writeFileSync(path.join(bundle, "plugin", "claude-cli-proxy.js"), "export default {};");
@@ -267,7 +267,7 @@ describe("installWebUiDependencies", () => {
   });
 
   it("updates an already-installed CommandCode CLI Proxy when the bundle hash changes", () => {
-    const bundle = process.env.OPENCODE_WEBUI_ROOT!;
+    const bundle = process.env.LEAFCODE_ROOT!;
     const vendorRoot = path.join(bundle, "vendor", "commandcode-cli-proxy");
     const src = fs.readFileSync(path.join(vendorRoot, "packages", "commandcode-cli-proxy", "index.mjs"), "utf8");
 

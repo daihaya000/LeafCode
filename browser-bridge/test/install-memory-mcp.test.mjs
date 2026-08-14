@@ -43,7 +43,7 @@ test('buildDesiredEntry pins workspace via args and env', () => {
   const entry = buildDesiredEntry(expectedServerPath, 'ws-9');
   assert.deepEqual(entry.command, ['node', expectedServerPath]);
   assert.deepEqual(entry.arguments, ['--workspace', 'ws-9']);
-  assert.equal(entry.environment.OPENCODE_WEBUI_MEMORY_WORKSPACE, '{env:OPENCODE_WEBUI_MEMORY_WORKSPACE}');
+  assert.equal(entry.environment.LEAFCODE_MEMORY_WORKSPACE, '{env:LEAFCODE_MEMORY_WORKSPACE}');
 });
 
 test('deepEqual compares structurally', () => {

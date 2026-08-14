@@ -49,8 +49,8 @@ test('repairNpmOpencodeStub returns null when postinstall fails', () => {
 });
 
 test('upgradeOpencodeCli skips when auto-update is disabled', async () => {
-  const previous = process.env.OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE;
-  process.env.OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE = '0';
+  const previous = process.env.LEAFCODE_AUTO_UPDATE_OPENCODE;
+  process.env.LEAFCODE_AUTO_UPDATE_OPENCODE = '0';
   const logs = [];
   try {
     const upgrader = createOpencodeUpgrader({
@@ -61,14 +61,14 @@ test('upgradeOpencodeCli skips when auto-update is disabled', async () => {
     assert.deepEqual(result, { upgraded: false, version: null });
     assert.ok(logs.some((l) => l.includes('auto-update is disabled')));
   } finally {
-    process.env.OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE = previous;
+    process.env.LEAFCODE_AUTO_UPDATE_OPENCODE = previous;
   }
 });
 
 test('upgradeOpencodeCli skips with a logged error when opencode is not found', async () => {
-  const previous = process.env.OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE;
+  const previous = process.env.LEAFCODE_AUTO_UPDATE_OPENCODE;
   const previousPath = process.env.PATH;
-  delete process.env.OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE;
+  delete process.env.LEAFCODE_AUTO_UPDATE_OPENCODE;
   process.env.PATH = 'C:\\nonexistent-for-test';
   const errors = [];
   try {
@@ -80,8 +80,8 @@ test('upgradeOpencodeCli skips with a logged error when opencode is not found', 
     assert.deepEqual(result, { upgraded: false, version: null });
     assert.ok(errors.some((e) => e.includes('auto-update skipped')));
   } finally {
-    if (previous !== undefined) process.env.OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE = previous;
-    else delete process.env.OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE;
+    if (previous !== undefined) process.env.LEAFCODE_AUTO_UPDATE_OPENCODE = previous;
+    else delete process.env.LEAFCODE_AUTO_UPDATE_OPENCODE;
     process.env.PATH = previousPath;
   }
 });

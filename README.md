@@ -10,7 +10,7 @@ CLI エージェント [OpenCode](https://opencode.ai) をブラウザから操�
 
 WebUI と OpenCode は既定で `127.0.0.1` のみを待ち受けます。LAN や VPN への公開は、後述の設定を明示的に行った場合にだけ有効になります。
 
-> **改名移行中**: 表示名は LeafCode ですが、実行ファイル名（`OpenCodeWebUI.exe`）、リポジトリ URL、環境変数 `OPENCODE_WEBUI_*`、データ保存先 `%APPDATA%\opencode-webui` は互換性のため移行前の名称のままです。
+> **改名移行中**: 表示名は LeafCode です。環境変数は `LEAFCODE_*` に改名済みですが、旧 `OPENCODE_WEBUI_*` も引き続き有効です（新名優先、未設定時のみ旧名を採用）。実行ファイル名（`OpenCodeWebUI.exe`）とデータ保存先 `%APPDATA%\opencode-webui`（初回起動時に `%APPDATA%\leafcode` へ自動移行）は互換性のため移行前の名称を引き継ぎます。
 
 ## 動作条件
 
@@ -34,7 +34,7 @@ cd LeafCode
 
 `OpenCodeWebUI.exe` は同じフォルダーの `scripts\start-webui.bat` を実行する薄いランチャー（`scripts/launcher/Launcher.cs`）です。exe 単体を別の場所へコピーしても動作しません。`scripts/` `host/` `web/` を含むリポジトリごと配置してください。exe には署名がないため、SmartScreen の警告が出た場合は「詳細情報」→「実行」で続行します。`Launcher.cs` やアイコンを更新した場合は起動時に自動で再ビルドされます（手動で行う場合は `scripts\build-launcher.bat`）。
 
-セットアップが失敗した場合、ウィンドウは自動で閉じずにエラー行（`[OpenCode WebUI] ERROR <コード>: ...`）と日本語の復旧案内を表示して待機します。`OPENCODE_WEBUI_NONINTERACTIVE=1` を設定すると待機しません。
+セットアップが失敗した場合、ウィンドウは自動で閉じずにエラー行（`[OpenCode WebUI] ERROR <コード>: ...`）と日本語の復旧案内を表示して待機します。`LEAFCODE_NONINTERACTIVE=1` を設定すると待機しません。
 
 ### タスクバーへのピン留め
 
@@ -89,22 +89,22 @@ cd LeafCode
 
 | 変数 | 既定値 | 内容 |
 | --- | --- | --- |
-| `OPENCODE_WEBUI_PORT` | `3000` | WebUI のポート |
-| `OPENCODE_WEBUI_HOST` | `127.0.0.1` | WebUI の待ち受けアドレス |
+| `LEAFCODE_PORT` | `3000` | WebUI のポート |
+| `LEAFCODE_HOST` | `127.0.0.1` | WebUI の待ち受けアドレス |
 | `OPENCODE_PORT` | `4096` | `opencode serve` のポート |
-| `OPENCODE_WEBUI_MODE` | 自動判定 | `prod` / `dev` の起動モード |
-| `OPENCODE_WEBUI_HEADLESS` | 未設定 | `1` でトレイを使わずコンソールのみで起動 |
-| `OPENCODE_WEBUI_NO_BROWSER` | 未設定 | `1` で起動時のブラウザ自動起動を抑止 |
-| `OPENCODE_WEBUI_NONINTERACTIVE` | 未設定 | `1` でセットアップ失敗時の待機を省略 |
-| `OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE` | `1` | 起動時に `opencode upgrade` を実行して CLI を自動アップデート。`0` で無効化（失敗時は既存バイナリで起動継続） |
-| `OPENCODE_WEBUI_CADDY` | 未設定 | `1` で Caddy 逆プロキシを連動起動。`0` で自動導入も行わない |
-| `OPENCODE_WEBUI_CADDYFILE` | `deploy/Caddyfile` | Caddyfile のパス |
-| `OPENCODE_WEBUI_BUILD_DIR` | `%LOCALAPPDATA%\opencode-webui\build\...` | production build のミラー先 |
-| `OPENCODE_WEBUI_QWEN_NATIVE` | 未設定 | `1` で画像事前解析を有効化（設定画面からも切り替え可能） |
-| `OPENCODE_WEBUI_QWEN_MODEL` | 未設定 | 事前解析に使うモデルを `providerID::modelID` で指定 |
-| `OPENCODE_WEBUI_WORKFLOW_MODE` | `true` | ワークフロー機能全体。`false` で旧 UI へ戻す |
-| `OPENCODE_WEBUI_WORKFLOW_GRAPH` | `true` | グラフ表示。親フラグが無効なら強制無効 |
-| `OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT` | ランチャー経由は `true`、host 直起動は `false` | ノード / エッジの編集。グラフ表示が無効なら強制無効 |
+| `LEAFCODE_MODE` | 自動判定 | `prod` / `dev` の起動モード |
+| `LEAFCODE_HEADLESS` | 未設定 | `1` でトレイを使わずコンソールのみで起動 |
+| `LEAFCODE_NO_BROWSER` | 未設定 | `1` で起動時のブラウザ自動起動を抑止 |
+| `LEAFCODE_NONINTERACTIVE` | 未設定 | `1` でセットアップ失敗時の待機を省略 |
+| `LEAFCODE_AUTO_UPDATE_OPENCODE` | `1` | 起動時に `opencode upgrade` を実行して CLI を自動アップデート。`0` で無効化（失敗時は既存バイナリで起動継続） |
+| `LEAFCODE_CADDY` | 未設定 | `1` で Caddy 逆プロキシを連動起動。`0` で自動導入も行わない |
+| `LEAFCODE_CADDYFILE` | `deploy/Caddyfile` | Caddyfile のパス |
+| `LEAFCODE_BUILD_DIR` | `%LOCALAPPDATA%\opencode-webui\build\...` | production build のミラー先 |
+| `LEAFCODE_QWEN_NATIVE` | 未設定 | `1` で画像事前解析を有効化（設定画面からも切り替え可能） |
+| `LEAFCODE_QWEN_MODEL` | 未設定 | 事前解析に使うモデルを `providerID::modelID` で指定 |
+| `LEAFCODE_WORKFLOW_MODE` | `true` | ワークフロー機能全体。`false` で旧 UI へ戻す |
+| `LEAFCODE_WORKFLOW_GRAPH` | `true` | グラフ表示。親フラグが無効なら強制無効 |
+| `LEAFCODE_WORKFLOW_GRAPH_EDIT` | ランチャー経由は `true`、host 直起動は `false` | ノード / エッジの編集。グラフ表示が無効なら強制無効 |
 
 ワークフローのグラフ Draft は Run 開始時に実行スナップショットへ複製されるため、実行中の Run は Draft の変更を受けません。
 
@@ -119,7 +119,7 @@ cd LeafCode
 既定では WebUI も OpenCode も loopback のみで待ち受けます。外部からアクセスする場合は Caddy 逆プロキシの利用を推奨します。
 
 ```bat
-set OPENCODE_WEBUI_CADDY=1
+set LEAFCODE_CADDY=1
 OpenCodeWebUI.exe
 ```
 
@@ -128,7 +128,7 @@ OpenCodeWebUI.exe
 - host が Caddy の起動・停止・再起動を WebUI と連動管理し、トレイの Status に `Caddy: running` を表示します。
 - winget が使えない等で導入に失敗した場合も、WebUI 自体は `http://127.0.0.1:3000` で起動します（Caddy 連携のみ無効）。
 
-`OPENCODE_WEBUI_HOST=0.0.0.0` で直接すべてのインターフェースへバインドすることもできますが、認証と VPN のない状態で公開しないでください。
+`LEAFCODE_HOST=0.0.0.0` で直接すべてのインターフェースへバインドすることもできますが、認証と VPN のない状態で公開しないでください。
 
 ### HTTPS（既定 `:8443`）
 
@@ -179,15 +179,15 @@ scripts\allow-firewall-8080.bat
 | 7 | ビルド後に `BUILD_ID` が無い | ビルドログを確認して再実行する |
 | 8 | host の依存関係の導入に失敗 | ネットワークと `host/package-lock.json` を確認する |
 | 9 | Browser Bridge の依存関係の導入に失敗 | `browser-bridge` で `npm ci` を実行してエラーを確認する |
-| 10 | ビルド出力ディレクトリを解決できない | Node.js の利用可否と `OPENCODE_WEBUI_DIST_DIR` の値を確認する |
+| 10 | ビルド出力ディレクトリを解決できない | Node.js の利用可否と `LEAFCODE_DIST_DIR` の値を確認する |
 
 UI が開かない場合は headless モードでログを直接確認できます。
 
 ```bat
 cd host
-set OPENCODE_WEBUI_HEADLESS=1
-set OPENCODE_WEBUI_NO_BROWSER=1
-set OPENCODE_WEBUI_MODE=prod
+set LEAFCODE_HEADLESS=1
+set LEAFCODE_NO_BROWSER=1
+set LEAFCODE_MODE=prod
 node src\index.js
 ```
 
@@ -224,7 +224,7 @@ production build はリポジトリ内では実行されません。`scripts/web
 
 理由は 2 つあります。OneDrive の同期がビルド中・配信中の出力に触れると HTML とチャンクの世代が混在して `ChunkLoadError` になること、そして Turbopack がプロジェクト外を指す `distDir` を拒否するため、出力だけでなくプロジェクトごと同期対象の外へ置く必要があることです。
 
-ハードリンクのため追加のディスク消費はほぼなく、同期は差分のみです。ジャンクションやシンボリックリンクは使えません（バンドラがリンクを実パスへ正規化し、モジュール解決が同期ツリーへ戻ります）。ミラーはインストールパスのハッシュで分離されるため、複数のチェックアウトが同じミラーを共有しません。ハードリンクを作成できないボリュームでは自動的にバイトコピーへ退避します。ミラーは複製なので、サーバーは `OPENCODE_WEBUI_INSTALL_ROOT` で実インストール先を受け取ります（自己更新と git restore は実リポジトリに対して動作します）。手動でビルドする場合はリポジトリ直下で `node scripts/build-web.mjs` を実行します。
+ハードリンクのため追加のディスク消費はほぼなく、同期は差分のみです。ジャンクションやシンボリックリンクは使えません（バンドラがリンクを実パスへ正規化し、モジュール解決が同期ツリーへ戻ります）。ミラーはインストールパスのハッシュで分離されるため、複数のチェックアウトが同じミラーを共有しません。ハードリンクを作成できないボリュームでは自動的にバイトコピーへ退避します。ミラーは複製なので、サーバーは `LEAFCODE_INSTALL_ROOT` で実インストール先を受け取ります（自己更新と git restore は実リポジトリに対して動作します）。手動でビルドする場合はリポジトリ直下で `node scripts/build-web.mjs` を実行します。
 
 配信中の出力を壊さないためのガードがあります。`build.bat` は本番 WebUI が同じポートで稼働中、またはリスナーの正体が不明な場合はビルドを中止します。`scripts/start-webui.bat` は稼働中の WebUI があれば初回ビルドを飛ばして host へ進み、健全な WebUI をそのまま再利用するか、古い `next start` を引き継いでからミラーへリビルドします（正体不明のプロセスは終了させません）。
 

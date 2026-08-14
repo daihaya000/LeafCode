@@ -25,9 +25,9 @@ function sandbox() {
   return { root, install, mirror };
 }
 
-test("resolveMirrorRoot: explicit OPENCODE_WEBUI_BUILD_DIR wins", () => {
-  const env = { OPENCODE_WEBUI_BUILD_DIR: join("C:", "tmp", "ocw-build") };
-  assert.equal(resolveMirrorRoot(env, "C:\\repo"), resolve(env.OPENCODE_WEBUI_BUILD_DIR));
+test("resolveMirrorRoot: explicit LEAFCODE_BUILD_DIR wins", () => {
+  const env = { LEAFCODE_BUILD_DIR: join("C:", "tmp", "ocw-build") };
+  assert.equal(resolveMirrorRoot(env, "C:\\repo"), resolve(env.LEAFCODE_BUILD_DIR));
 });
 
 test("resolveMirrorRoot: separates installations by path so two checkouts never collide", () => {

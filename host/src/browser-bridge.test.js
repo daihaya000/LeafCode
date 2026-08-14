@@ -39,6 +39,9 @@ test('start then close does not throw TDZ and exposes broker env only while runn
   assert.deepEqual(manager.environment(), {});
   await manager.start();
   assert.deepEqual(manager.environment(), {
+    LEAFCODE_BROWSER_BROKER: 'ws://127.0.0.1:18766',
+    LEAFCODE_BROWSER_BROKER_TOKEN: 'tok',
+    // Legacy names kept for pre-rebrand opencode.json MCP entries.
     OPENCODE_WEBUI_BROWSER_BROKER: 'ws://127.0.0.1:18766',
     OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: 'tok',
   });

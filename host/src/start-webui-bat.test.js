@@ -184,12 +184,12 @@ function createSandbox(options = {}) {
     PATH: `${bin};${join(process.env.SystemRoot ?? "C:\\Windows", "System32")}`,
     ProgramFiles: root,
     PATHEXT: options.standardNodePath ? ".CMD;.EXE;.BAT;.COM" : ".COM;.EXE;.BAT;.CMD",
-    OPENCODE_WEBUI_NONINTERACTIVE: "1",
+    LEAFCODE_NONINTERACTIVE: "1",
     APPDATA: join(root, "appdata"),
     // Isolates the WinGet Links shim check in :check_caddy from whatever
     // Caddy install this dev/CI machine may actually have.
     LOCALAPPDATA: join(root, "appdata-local"),
-    OPENCODE_WEBUI_CADDY: options.caddyDisabled ? "0" : "",
+    LEAFCODE_CADDY: options.caddyDisabled ? "0" : "",
     SETUP_TEST_WINGET_CADDY_EXIT: String(options.wingetCaddyExit ?? 0),
     SETUP_TEST_WINGET_UV_EXIT: String(options.wingetUvExit ?? 0),
     SETUP_TEST_WEB_DIST_DIR: join(root, "appdata", "leafcode", "web-build"),
@@ -388,7 +388,7 @@ test("start-webui.bat still starts the host when the Caddy install fails (option
   } finally { sandbox.cleanup(); }
 });
 
-test("start-webui.bat skips the Caddy install entirely when OPENCODE_WEBUI_CADDY=0", { skip: !isWindows }, () => {
+test("start-webui.bat skips the Caddy install entirely when LEAFCODE_CADDY=0", { skip: !isWindows }, () => {
   const sandbox = createSandbox({ caddyDisabled: true });
   try {
     const result = sandbox.run();

@@ -13,7 +13,7 @@
 
 前提として、`start-webui.bat` は前回のセッションで「直接実行してもネイティブ.exeランチャー
 （`scripts/launcher/OpenCodeWebUI.exe`）経由になり、未ビルドなら自動ビルドする」機能を
-既に持つ（`OPENCODE_WEBUI_LAUNCHER=1` でループを防止）。今回の統合はこの機能に影響しない
+既に持つ（`LEAFCODE_LAUNCHER=1` でループを防止）。今回の統合はこの機能に影響しない
 （ルーティング判定はファイル冒頭のまま維持し、その後段に吸収したセットアップ処理を続ける）。
 
 ## スコープ
@@ -35,7 +35,7 @@
    guardが port を確保できない場合もERROR 6、`BUILD_ID` 不在はERROR 7）
 5. `host/` 依存関係インストール（`npm ci`、失敗はERROR 8）
 6. `[Setup] ERROR <code>: <english summary>` → `type scripts/setup-messages/error-*.txt`
-   の二段出力方式、`SETUP_NONINTERACTIVE`（→ `OPENCODE_WEBUI_NONINTERACTIVE` に改名。
+   の二段出力方式、`SETUP_NONINTERACTIVE`（→ `LEAFCODE_NONINTERACTIVE` に改名。
    他の環境変数と命名規則を揃える）で `pause` を抑制する仕組み
 7. 実行前後でコンソールのコードページを退避・復帰する仕組み（`scripts/setup-messages/*.txt`
    が UTF-8 のため、`type` 表示のために `chcp 65001` が必要になる）

@@ -479,8 +479,8 @@ export function VisionSettings() {
             画像非対応モデルを選んでいても、添付画像があればWebUIが自動で事前解析し、テキストとして取り込みます。
           </li>
           <li>
-            環境変数 <code className="font-mono">OPENCODE_WEBUI_QWEN_NATIVE=1</code>{" "}
-            で強制的に有効化、<code className="font-mono">OPENCODE_WEBUI_QWEN_MODEL</code>（
+            環境変数 <code className="font-mono">LEAFCODE_QWEN_NATIVE=1</code>{" "}
+            で強制的に有効化、<code className="font-mono">LEAFCODE_QWEN_MODEL</code>（
             <code className="font-mono">providerID::modelID</code>）で解析モデルを上書きできます。
           </li>
         </ol>

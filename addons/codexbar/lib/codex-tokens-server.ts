@@ -16,7 +16,7 @@ type CacheEntry = { mtimeMs: number; size: number; usage: TokenUsage | null };
 const cache = new Map<string, CacheEntry>();
 
 function sessionsDir(): string {
-  const override = process.env.OPENCODE_WEBUI_CODEX_SESSIONS;
+  const override = process.env.LEAFCODE_CODEX_SESSIONS;
   if (override && override.trim()) return override.trim();
   return path.join(os.homedir(), ".codex", "sessions");
 }

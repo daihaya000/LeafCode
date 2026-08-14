@@ -31,9 +31,9 @@ export default defineConfig({
     command: `npm run sync:addons && npx next build && npm run start -- --hostname 127.0.0.1 --port ${PORT}`,
     env: {
       NEXT_DIST_DIR: ".next-e2e",
-      OPENCODE_WEBUI_WORKFLOW_MODE: "true",
-      OPENCODE_WEBUI_WORKFLOW_GRAPH: "true",
-      OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT: process.env.E2E_WORKFLOW_GRAPH_EDIT ?? "false",
+      LEAFCODE_WORKFLOW_MODE: "true",
+      LEAFCODE_WORKFLOW_GRAPH: "true",
+      LEAFCODE_WORKFLOW_GRAPH_EDIT: process.env.E2E_WORKFLOW_GRAPH_EDIT ?? "false",
     },
     url: BASE_URL,
     timeout: 180_000,

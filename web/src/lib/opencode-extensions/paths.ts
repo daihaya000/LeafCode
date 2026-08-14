@@ -122,12 +122,12 @@ export function extensionsStatePath(): string {
  * directory it was spawned with as `cwd`, i.e. this WebUI's own
  * installation root — see `host/src/index.js`'s `REPO_ROOT`).
  *
- * `OPENCODE_WEBUI_PROJECT_ROOT` overrides the location for tests; read
+ * `LEAFCODE_PROJECT_ROOT` overrides the location for tests; read
  * dynamically so tests can point it at temp dirs without touching the real
  * repo checkout.
  */
 export function projectRoot(): string {
-  const override = process.env.OPENCODE_WEBUI_PROJECT_ROOT?.trim();
+  const override = process.env.LEAFCODE_PROJECT_ROOT?.trim();
   if (override) return path.resolve(override);
   return installationRoot();
 }

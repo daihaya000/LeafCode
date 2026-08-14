@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** Location of CodexBar's exported usage snapshot (override via env for tests). */
 function snapshotPath(): string {
-  const override = process.env.OPENCODE_WEBUI_CODEXBAR_SNAPSHOT;
+  const override = process.env.LEAFCODE_CODEXBAR_SNAPSHOT;
   if (override && override.trim()) return override.trim();
   const appData =
     process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");

@@ -53,9 +53,9 @@ export function createOpencodeUpgrader(deps = {}) {
   const repoRoot = deps.repoRoot ?? process.cwd();
 
   /** Auto-update OpenCode CLI once per host start, before `serve` spawns.
-   *  Disable with OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE=0 (or =false). */
+   *  Disable with LEAFCODE_AUTO_UPDATE_OPENCODE=0 (or =false). */
   const autoUpdate = !['0', 'false'].includes(
-    String(process.env.OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE ?? '').toLowerCase(),
+    String(process.env.LEAFCODE_AUTO_UPDATE_OPENCODE ?? '').toLowerCase(),
   );
   /** Bounded so a slow/unreachable update channel never blocks startup long. */
   const UPGRADE_TIMEOUT_MS = 180_000;
@@ -183,7 +183,7 @@ export function createOpencodeUpgrader(deps = {}) {
   const upgradeOpencodeCli = async () => {
   if (!autoUpdate) {
     log(
-      'OpenCode CLI auto-update is disabled (OPENCODE_WEBUI_AUTO_UPDATE_OPENCODE=0)',
+      'OpenCode CLI auto-update is disabled (LEAFCODE_AUTO_UPDATE_OPENCODE=0)',
     );
     return { upgraded: false, version: null };
   }

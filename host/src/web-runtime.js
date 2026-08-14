@@ -277,7 +277,7 @@ function hasNewerFile(dir, buildMtimeMs, distDir, fsApi) {
   for (const name of entries) {
     if (name === 'node_modules' || name === '.next' || name.startsWith('.')) continue;
     const path = join(dir, name);
-    // Protect against OPENCODE_WEBUI_DIST_DIR pointing inside web/: never let
+    // Protect against LEAFCODE_DIST_DIR pointing inside web/: never let
     // the build output directory invalidate itself (would always read as newer).
     if (resolve(path) === resolve(distDir)) continue;
     let st;
