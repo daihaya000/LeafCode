@@ -156,13 +156,18 @@ describe("API guard coverage", () => {
     expect(guardAt).toBeLessThan(paramsAt);
   });
 
-  it("does not leave the old loopback-only helpers in route files", () => {
+  it("does not leave the old loopback-only helpers as the only gate in route files", () => {
     // `rejectUnlessLocal*` skips the CSRF check, so routes must use the shared
-    // gate instead.
+    // gate instead. It may still be layered on top of the shared gate for
+    // host-only operations (e.g. opening a terminal on the host desktop), but
+    // never as the sole guard.
     const stale: string[] = [];
     for (const rel of files) {
       const text = read(rel);
-      if (/rejectUnlessLocal(?:OrAuthenticated|OrPrivateNetwork)?\s*\(/.test(text)) {
+      if (
+        /rejectUnlessLocal(?:OrAuthenticated|OrPrivateNetwork)?\s*\(/.test(text) &&
+        !/require(?:Authorized|HostMachine)\s*\(/.test(text)
+      ) {
         stale.push(routeName(rel));
       }
     }
