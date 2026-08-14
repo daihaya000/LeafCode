@@ -69,7 +69,7 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 
 | # | 現在 | 契機 | 次 | 副作用 |
 | --- | --- | --- | --- | --- |
-| 1 | – | `createGoalLoop`（履歴読取成功） | `queued` | 同ワークスペースの非終端ループを `stopped` に。`last_message_id` = 履歴末尾 |
+| 1 | – | `createGoalLoop`（履歴読取成功） | `queued` | 同ワークスペースの非終端ループを `stopped` に。`last_message_id` = 履歴末尾。置換されたループが in-flight（running / verifying_completed）なら abort する（BR-26） |
 | 2 | – | `createGoalLoop`（履歴読取失敗） | `paused` | `pause_reason = 'transcript_unreadable'` |
 | 3 | `queued` | tick・履歴 idle・`turn_count < max_turns` | `running` | `turn_count + 1`、`turn_kind = 'goal'`、`last_message_id` = 履歴末尾、`last_prompt_at = now`、goal プロンプト送信 |
 | 4 | `queued` | tick・`turn_count >= max_turns` | `paused` | `pause_reason = 'turn_limit'` |
@@ -89,7 +89,7 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 | 18a | `queued` | `PATCH action=pause` | `paused` | in-flight ターンがないため即時停止。`pause_reason = 'user'` |
 | 18b | `running` / `verifying_completed` | `PATCH action=pause` | `paused` | `pause_reason = 'user'`。実行中のOpenCodeリクエストをabortし、後着結果は破棄する |
 | 18c | `running` (`pause_requested = 1`) | 旧形式の遅延停止結果 | `paused` | 既存データ互換のため残す。新規の一時停止では使用しない |
-| 19 | `queued` / `running` / `verifying_completed` | 手動送信を検出 | `paused` | `pause_reason = 'manual_send'`、`last_message_id` = 履歴末尾（読めた場合） |
+| 19 | `queued` / `running` / `verifying_completed` | 手動送信を検出 | `paused` | `pause_reason = 'manual_send'`、`last_message_id` = 履歴末尾（読めた場合）。in-flight ターン（running / verifying_completed）は abort する（BR-26）。手動送信はループとは別に転送される |
 | 20 | `paused` (`pause_reason='unknown_delivery'`) | `PATCH action=resume`・マーカー付きプロンプトへの構造化応答を発見 | 6〜12 に従う | 失われた進捗を復元して適用する |
 | 21 | `paused` (`pause_reason='unknown_delivery'`) | `PATCH action=resume`・応答未発見 | `paused` | `pause_reason` は**維持**。`error` 本文のみ更新。**再送しない** |
 | 22 | `paused` (上記以外) | `PATCH action=resume`・履歴読取成功 | `verifying_completed` または `queued` | `turn_kind = 'verification'` または 停止時 `verifying_completed` なら `verifying_completed`、それ以外は `queued`。`last_message_id` = 履歴末尾、`pause_reason = ''`、`error = ''` |
