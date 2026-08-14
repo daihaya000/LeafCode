@@ -2336,10 +2336,13 @@ export function TaskView({
       const visible = document.visibilityState === "visible";
       setPageVisible(visible);
       if (visible && hasActiveTask) void refreshTaskCost();
+      // タブが隠れている間にループが進行・終了し得る。ポーリングは pageVisible
+      // で止まるため、復帰時に必ず1回取り直す（リロードまで古い状態が残るのを防ぐ）。
+      if (visible && goalLoop) void refreshGoalLoop();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [hasActiveTask, refreshTaskCost]);
+  }, [goalLoop, hasActiveTask, refreshGoalLoop, refreshTaskCost]);
 
   useEffect(() => {
     if (!pageVisible || !hasActiveTask) return;
@@ -2348,11 +2351,15 @@ export function TaskView({
   }, [hasActiveTask, pageVisible, refreshTaskCost]);
 
   useEffect(() => {
-    const activeLoop =
+    // 終端以外のループ（queued / running / verifying_completed / paused）は
+    // サーバー側で進行し得る。paused 中も別タブや再送された PATCH で再開・
+    // 進行するため、ポーリングを止めると「一時停止」表示がリロードまで残る。
+    const liveLoop =
       goalLoop?.status === "queued" ||
       goalLoop?.status === "running" ||
-      goalLoop?.status === "verifying_completed";
-    if (!pageVisible || !activeLoop) return;
+      goalLoop?.status === "verifying_completed" ||
+      goalLoop?.status === "paused";
+    if (!pageVisible || !liveLoop) return;
     const poll = setInterval(() => void refreshGoalLoop(), ACTIVE_TASK_POLL_MS);
     return () => clearInterval(poll);
   }, [goalLoop?.status, pageVisible, refreshGoalLoop]);

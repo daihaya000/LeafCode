@@ -2492,6 +2492,111 @@ describe("TaskView", () => {
       expect(screen.queryByRole("button", { name: TOGGLE })).toBeNull();
       expect(screen.getByRole("region", { name: "ループ" })).toBeTruthy();
     });
+
+    it("reflects a resumed next turn while paused, without a browser reload", async () => {
+      // Regression: the goal-loop poll stopped while `paused`, so a resume that
+      // happened outside this tab (or whose PATCH response was lost) left the
+      // panel stuck on the previous turn's completion-time pause until reload.
+      vi.useFakeTimers();
+      let loop = loopFixture({
+        status: "paused",
+        pauseReason: "turn_limit",
+        maxTurns: 10,
+        turnCount: 10,
+        error: "最大ターン数に到達したため一時停止しました。",
+      });
+      getJson.mockImplementation((path: string) => {
+        if (path === "/api/settings/sidepanel-width") {
+          return Promise.resolve({ value: null });
+        }
+        if (path === "/api/tasks/ws1/goal-loop") {
+          return Promise.resolve({ loop });
+        }
+        if (path === "/api/tasks/ws1") {
+          return Promise.resolve({ task: task(0.1), goalLoop: loop });
+        }
+        return Promise.resolve({ task: task(0.1) });
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const panel = () => screen.getByRole("region", { name: "ループ" });
+      expect(within(panel()).getByText("一時停止 10/10")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "ループを再開" })).toBeTruthy();
+
+      // The server advanced to the next turn (resumed elsewhere) while this
+      // tab still shows the paused snapshot. Only polling can catch up.
+      loop = loopFixture({
+        status: "running",
+        pauseReason: "",
+        maxTurns: 20,
+        turnCount: 11,
+        error: "",
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(within(panel()).getByText("実行中 11/20")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "ループを再開" })).toBeNull();
+    });
+
+    it("refreshes the loop state when the tab becomes visible again", async () => {
+      // The goal-loop poll stops while the tab is hidden, so a loop that
+      // finished during the hide must be refetched on return — otherwise the
+      // panel keeps showing the pre-completion state until reload.
+      vi.useFakeTimers();
+      let loop = loopFixture({
+        status: "running",
+        pauseReason: "",
+        maxTurns: 10,
+        turnCount: 1,
+        error: "",
+      });
+      getJson.mockImplementation((path: string) => {
+        if (path === "/api/settings/sidepanel-width") {
+          return Promise.resolve({ value: null });
+        }
+        if (path === "/api/tasks/ws1/goal-loop") {
+          return Promise.resolve({ loop });
+        }
+        if (path === "/api/tasks/ws1") {
+          return Promise.resolve({ task: task(0.1), goalLoop: loop });
+        }
+        return Promise.resolve({ task: task(0.1) });
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const panel = () => screen.getByRole("region", { name: "ループ" });
+      expect(within(panel()).getByText("実行中 1/10")).toBeTruthy();
+
+      // Hide the tab; the server finishes the loop while hidden.
+      setVisible(false);
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      loop = loopFixture({
+        status: "completed",
+        pauseReason: "",
+        maxTurns: 10,
+        turnCount: 1,
+        error: "",
+        summary: "完了しました",
+      });
+
+      // Returning to the tab refetches the loop once.
+      setVisible(true);
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(within(panel()).getByText("完了 1/10")).toBeTruthy();
+    });
   });
 
   describe("auto model decision", () => {
