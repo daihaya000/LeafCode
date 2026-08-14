@@ -130,7 +130,7 @@ export async function proxy(
     isBlockedOpencodeWrite(req.method, resolvedPathname)
   ) {
     return NextResponse.json(
-      { error: "OpenCode config/auth/mcp writes are disabled in WebUI" },
+      { error: "OpenCode config/auth/mcp writes are disabled in LeafCode" },
       { status: 403 },
     );
   }

@@ -31,7 +31,7 @@ export function notificationText(
   kind: NotifyKind,
   title: string,
 ): { title: string; body: string } {
-  const name = title || "OpenCode タスク";
+  const name = title || "LeafCode タスク";
   return kind === "attention"
     ? { title: "承認が必要です", body: name }
     : { title: "タスクが完了しました", body: name };

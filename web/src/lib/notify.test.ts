@@ -64,6 +64,6 @@ describe("notificationText", () => {
   });
 
   it("falls back to a default name", () => {
-    expect(notificationText("done", "").body).toBe("OpenCode タスク");
+    expect(notificationText("done", "").body).toBe("LeafCode タスク");
   });
 });

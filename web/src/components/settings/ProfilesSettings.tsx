@@ -415,7 +415,7 @@ export function ProfilesSettings() {
       setActionSuccess(
         result.installed.length > 0
           ? profile.active
-            ? "LeafCode依存を追加しました。OpenCode hostを再起動してください。"
+            ? "LeafCode依存を追加しました。LeafCode hostを再起動してください。"
             : "LeafCode依存を追加しました。"
           : "LeafCode依存は既に適用済みです。",
       );
