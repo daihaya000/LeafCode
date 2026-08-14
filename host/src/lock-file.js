@@ -32,7 +32,7 @@ export function readLock(lockFile) {
 }
 
 export function readLockPid(lockFile) {
-  return readLock()?.pid ?? null;
+  return readLock(lockFile)?.pid ?? null;
 }
 
 /**
@@ -53,7 +53,7 @@ export function writeLock(lockFile) {
     JSON.stringify({ pid: process.pid, created: null, createdPending: true }),
     { encoding: 'utf8', flag: 'wx' },
   );
-  backfillLockCreationTime();
+  backfillLockCreationTime(lockFile);
 }
 
 export function backfillLockCreationTime(lockFile) {
@@ -72,7 +72,7 @@ export function backfillLockCreationTime(lockFile) {
       if (!/^\d+$/.test(created)) return;
       // readLock() returns null once removeLock() ran, so a shutdown that beat
       // the query can never resurrect the lock file here.
-      if (readLock()?.pid !== process.pid) return;
+      if (readLock(lockFile)?.pid !== process.pid) return;
       writeFileSync(
         lockFile,
         JSON.stringify({ pid: process.pid, created }),
@@ -88,7 +88,7 @@ export function backfillLockCreationTime(lockFile) {
 export function removeLock(lockFile, deps = {}) {
   if (!existsSync(lockFile)) return;
   try {
-    const lockPid = readLockPid();
+    const lockPid = readLockPid(lockFile);
     if (lockPid === process.pid) {
       unlinkSync(lockFile);
       deps.removeControlFile?.();
