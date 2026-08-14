@@ -642,9 +642,11 @@ export const PartView = memo(function PartView({
   /** Lowercased agent name → overview, for blue highlight + hover title. */
   agentOverviews?: ReadonlyMap<string, string>;
   /**
-   * Only strip the goal-loop trailing JSON block when the session actually
-   * runs a goal loop. A plain chat turn ending in a ```json block with a
-   * status field must stay visible (BU-5).
+   * Strip the goal-loop trailing JSON block only for assistant messages that
+   * answer a loop's own (marked) prompt. TaskView computes this per message
+   * via `goalLoopTurnReplyIdsForMessages` (BR-29): a loop session also
+   * contains ordinary turns (manual sends, pre-loop history) whose replies
+   * must stay visible even if they end in a goal-result-shaped JSON block.
    */
   stripGoalLoopJson?: boolean;
 }) {

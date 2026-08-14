@@ -60,7 +60,11 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 
 `error` 状態は**削除する**（F）。到達不能であり、かつ「終端かつ resume 可能」という矛盾を含む。
 これを書き込むコードは存在しないため、移行対象の既存行もない。
-スケジューラの catch-all は現行どおり `paused` + `pause_reason = 'scheduler_error'` とする。
+スケジューラの catch-all は `paused` + `pause_reason = 'scheduler_error'` とする。catch-all は
+UPDATE 前に**現行行の revision を読み直して**から CAS する（BR-30）。`processLoop` がターンを
+claim（revision +1）した後に想定外例外が起きた場合、tick 開始時のスナップショット revision では
+UPDATE が no-op になり、エラーが未記録のままループが `running` でサイレント再発するため。
+status 述語により、pause / stop が先行した場合は上書きしない。
 
 ### 遷移表
 
