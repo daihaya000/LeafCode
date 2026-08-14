@@ -6,6 +6,31 @@
 
 ---
 
+# 状態一覧（BR-1〜15・ターン 12 時点）
+
+| ID | 優先度 | 状態 | 対象 |
+|----|--------|------|------|
+| BR-1 | 高 | ✅ 修正済み | host index.js の removeBrokenWebBuild import 漏れ |
+| BR-2 | 中 | ✅ 修正済み | TaskView テストの localStorage 旧キー期待 |
+| BR-3 | 中 | ✅ 修正済み | db.memory-migration テスト前提乖離 |
+| BR-4 | 低 | 🔬 反証（クローズ候補） | SettingsView タブ切替の編集喪失（jsdom 実測で onBlur 保存が機能） |
+| BR-5 | 中 | ✅ 修正済み | CLI sync の isDistributable 未注入 |
+| BR-6 | 中 | ✅ 修正済み | stopOpencodeOnly の dispose 欠落 |
+| BR-7 | 中 | ✅ 修正済み | lock-file 内部呼び出しの引数欠落 |
+| BR-8 | 中 | ✅ 修正済み | api-guard-coverage の @/lib/ re-export 未追跡 |
+| BR-9 | 低 | ✅ 修正済み | production-webui-build-guard の export 公開 |
+| BR-10 | 中 | ✅ 修正済み | workflow.integration の mock 未更新 |
+| **BR-11** | **高** | ⬜ **未修正（最重要）** | instrumentation.ts の register() から起動処理 7 種が消失（goal-loop/workflow scheduler・hang watchdog・メモリ自動抽出・git 復元・deps 配布・API 世代リゾルバ） |
+| **BR-12** | 中 | ⬜ **未修正** | Host ヘッダ偽装による control-plane のセッションなし admin 昇格（LEAFCODE_HOST=0.0.0.0 時・実測済み） |
+| **BR-13** | 低 | ⬜ **未修正** | README のビルドミラーパス記述が旧名のまま |
+| **BR-14** | 低 | ⬜ **未修正** | ProfilesSettings の「OpenCode host」（二重置換の取り違え・1 箇所のみ） |
+| **BR-15** | 中 | ⬜ **未修正** | dataDir rename 後に profiles.json / DB worktree_path の絶対パスが旧名残存（切替 409・worktree ワークスペース再開失敗・実測済み） |
+
+**修正推奨順**: BR-11（高・機能停止）→ BR-12（中・セキュリティ）→ BR-15（中・移行後機能）→ BR-13 / BR-14（低・表示/ドキュメント）。BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。
+**未修正 5 件のうち実測済み**: BR-11（コード照合）/ BR-12（一時テスト）/ BR-15（一時テスト）。BR-13 / BR-14 はコード確認のみ。
+
+---
+
 # 2026-08-14 rebrand（サービス名変更: WebUI → LeafCode）後の追跡調査
 
 > 検証環境: git HEAD `ec47229c`（クリーン）、Windows / OneDrive
