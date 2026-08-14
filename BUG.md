@@ -25,10 +25,11 @@
 | **BR-13** | 低 | ⬜ **未修正** | README のビルドミラーパス記述が旧名のまま |
 | **BR-14** | 低 | ⬜ **未修正** | ProfilesSettings の「OpenCode host」（二重置換の取り違え・1 箇所のみ） |
 | **BR-15** | 中 | ⬜ **未修正** | dataDir rename 後に profiles.json / DB worktree_path の絶対パスが旧名残存（切替 409・worktree ワークスペース再開失敗・実測済み） |
-| **BR-16** | 低 | **docs/specs の 5 仕様書がデータディレクトリを `%APPDATA%\opencode-webui` と記載したまま（実装は `%APPDATA%\leafcode` に移行済み）** | `git grep` で検出した現行仕様としての記載: `docs/opencode/provider-model-management.md:20`（provider-model-state.json）、`docs/specs/agent-enable-toggle.md:28`（agent-state.json）、`docs/specs/host-log-viewer.md:30`（DATA_DIR・**✅ バッジ付き検証済み仕様**）、`docs/specs/opencode-config-profiles.md:76,109,193`（profiles 集約先・レジストリ・移行カード）、`docs/specs/security-remediation-plan.md:197,238`（revoked-sessions.json / audit.log）。**実装は全て `dataDir()`（`%APPDATA%\leafcode`）に移行済み**（auth-store / browser-config / control-server / audit-log / profiles / agent-state を前ラウンドで確認）。README は「改名移行中」節で更新済みだが、docs/specs は更新漏れ。機能影響なし・開発者/ユーザーが旧パスを参照する誤情報。→ 各仕様書のパス記載を `%APPDATA%\leafcode` に更新（`dataDir()` 参照であることも明記） |
+| **BR-16** | 低 | ⬜ **未修正** | docs/specs の 5 仕様書がデータディレクトリを `%APPDATA%\opencode-webui` と記載したまま |
+| **BR-17** | 低 | ⬜ **未修正** | proxy.ts:133 の 403 エラーのみ「disabled in WebUI」残存（oc-server.ts は LeafCode 済み） |
 
-**修正推奨順**: BR-11（高・機能停止）→ BR-12（中・セキュリティ）→ BR-15（中・移行後機能）→ BR-13 / BR-14 / BR-16（低・表示/ドキュメント）。BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。
-**未修正 6 件のうち実測済み**: BR-11（コード照合）/ BR-12（一時テスト）/ BR-15（一時テスト）。BR-13 / BR-14 / BR-16 はコード・ドキュメント確認のみ。
+**修正推奨順**: BR-11（高・機能停止）→ BR-12（中・セキュリティ）→ BR-15（中・移行後機能）→ BR-13 / BR-14 / BR-16 / BR-17（低・表示/ドキュメント）。BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。
+**未修正 7 件のうち実測済み**: BR-11（コード照合）/ BR-12（一時テスト）/ BR-15（一時テスト）。BR-13 / BR-14 / BR-16 / BR-17 はコード・ドキュメント確認のみ。
 
 ---
 
