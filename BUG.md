@@ -6,7 +6,7 @@
 
 ---
 
-# 状態一覧（BR-1〜20・ターン 37 時点・最終版）
+# 状態一覧（BR-1〜21・ターン 8 時点・修正ループ完了）
 
 | ID | 優先度 | 状態 | 対象 |
 |----|--------|------|------|
@@ -33,7 +33,7 @@
 | **BR-21** | 低 | ✅ **修正済み** | IMPROVEMENT.md / OPTIMIZATION.md のヘッダ「対象リポジトリ: OpenCodeWebUI」→「LeafCode」（他の旧名は履歴的言及で変更不要） |
 
 **修正推奨順**: BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。**BR-11 は別セッションの `9a641a5c` で修正済み**。**BR-12 はソケット検証追加で修正済み**（local-request.ts・29+63 本 PASS）。**BR-15 は読み取り時正規化で修正済み**（paths.ts 共通関数・db/profiles 適用・40 本 PASS）。**BR-14 / BR-17 / BR-20 は文言修正で修正済み**（notify 9 / ProfilesSettings 11 / proxy route 65 本 PASS・tsc クリーン）。**BR-18 / BR-19 はログ・表示文言の統一で修正済み**（host 68 本・popup 6 / guard 19 本 PASS）。**BR-13 / BR-16 / BR-21 はドキュメント修正で修正済み**（bat-encoding 7 本 PASS）。
-**未修正: なし（発見バグは全て修正済み）**。
+**未修正: なし（発見バグは全て修正済み）**。**最終検証（修正ループ・ターン 8）**: web vitest 327 files / **3949 tests 全 PASS**（1 skipped・修正でテスト 6 本追加）/ host **480 本 PASS** / browser-bridge **91 本 PASS** / tsc --noEmit クリーン。修正コミット: `63aacd5c`（BR-12）・`b0bb0658`/`da38ecc6`（BR-15）・`e3b88502`（BR-14/17/20）・`973002a9`（BR-18）・`f338c673`（BR-19）・`ea94f113`（BR-13）・`66fe3329`（BR-16）・`c6836bc7`（BR-21）。BR-11 は別セッションの `9a641a5c` で修正済み。BR-4 は反証（クローズ候補）。
 
 # rebrand 追跡調査の完了サマリ（ターン 44・最終版）
 
