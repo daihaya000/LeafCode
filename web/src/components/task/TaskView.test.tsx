@@ -2597,6 +2597,56 @@ describe("TaskView", () => {
 
       expect(within(panel()).getByText("完了 1/10")).toBeTruthy();
     });
+
+    it("refreshes the task so a per-turn regenerated title appears without reload", async () => {
+      // サーバー側でターンごとにタイトルが再生成される（revision が増える）。
+      // ループのターン中は SSE busy イベントが落とされるため busy→idle の
+      // refreshTask に依存できず、ループ前進を検知して取り直す。
+      vi.useFakeTimers();
+      let loop = loopFixture({
+        status: "running",
+        pauseReason: "",
+        maxTurns: 10,
+        turnCount: 1,
+        error: "",
+        revision: 5,
+      });
+      let taskTitle = "旧タイトル";
+      getJson.mockImplementation((path: string) => {
+        if (path === "/api/settings/sidepanel-width") {
+          return Promise.resolve({ value: null });
+        }
+        if (path === "/api/tasks/ws1/goal-loop") {
+          return Promise.resolve({ loop });
+        }
+        if (path === "/api/tasks/ws1") {
+          return Promise.resolve({
+            task: { ...task(0.1), title: taskTitle },
+            goalLoop: loop,
+          });
+        }
+        return Promise.resolve({ task: task(0.1) });
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      expect(screen.getByText("旧タイトル")).toBeTruthy();
+
+      // 1st turn applied server-side: revision bumps and the title is regenerated.
+      loop = loopFixture({
+        status: "queued",
+        pauseReason: "",
+        maxTurns: 10,
+        turnCount: 1,
+        error: "",
+        revision: 6,
+      });
+      taskTitle = "新タイトル";
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(screen.getByText("新タイトル")).toBeTruthy();
+    });
   });
 
   describe("auto model decision", () => {

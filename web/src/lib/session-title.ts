@@ -1,7 +1,19 @@
 import type { MessageWithParts } from "./types";
+import { GOAL_LOOP_PROMPT_MARKER } from "./goal-util";
 
 const DEFAULT_MAX_CHARS = 24_000;
 const DEFAULT_MAX_TITLE = 60;
+
+/**
+ * True for the loop's own system-prompt user messages (marked so the chat
+ * timeline hides them). They are instructions to the agent, not conversation,
+ * so they must not be summarized into the title.
+ */
+function isGoalLoopSystemPrompt(m: MessageWithParts): boolean {
+  if (m.info.role !== "user") return false;
+  const first = m.parts.find((p) => p.type === "text");
+  return first?.type === "text" && (first.text ?? "").startsWith(GOAL_LOOP_PROMPT_MARKER);
+}
 
 /** Plain-text transcript from user/assistant text parts, latest-preferring. */
 export function buildTranscript(
@@ -11,6 +23,7 @@ export function buildTranscript(
   const lines: string[] = [];
   for (const m of messages) {
     if (m.info.role !== "user" && m.info.role !== "assistant") continue;
+    if (isGoalLoopSystemPrompt(m)) continue;
     const text = m.parts
       .filter((p) => p.type === "text" && !p.synthetic && p.text)
       .map((p) => p.text!.trim())

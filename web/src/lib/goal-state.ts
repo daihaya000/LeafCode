@@ -12,7 +12,53 @@ import {
   type GoalLoopStatus,
   type GoalLoopTurnKind,
 } from "./goal-util";
+import { refreshSessionTitleForWorkspace } from "./session-title-refresh";
 import type { MessageWithParts } from "./types";
+
+/**
+ * ターン結果の適用ごとにセッションタイトルを再生成する。ループはサーバー側の
+ * スケジューラがプロンプトを直接送るため、クライアントの送信経路（TaskView の
+ * refreshSessionTitle）には乗らない。初回ターン（エンジンが自動作成）以降は
+ * これが唯一のタイトル更新源になる。
+ *
+ * 生成には一時セッションで LLM 呼び出しが走るため fire-and-forget とし、
+ * 多重実行は「最新のみ必ず1回実行」で直列化する（早いターン連続で呼び出しが
+ * 積み上がらない）。失敗はログに残さず無視し、ループ進行を妨げない。
+ */
+let titleRefreshBusy = false;
+let titleRefreshPending: { workspaceId: string; sessionId: string } | null = null;
+
+export function scheduleLoopTitleRefresh(
+  workspaceId: string,
+  sessionId: string,
+): void {
+  if (titleRefreshBusy) {
+    titleRefreshPending = { workspaceId, sessionId };
+    return;
+  }
+  titleRefreshBusy = true;
+  void (async () => {
+    let target: { workspaceId: string; sessionId: string } = { workspaceId, sessionId };
+    for (;;) {
+      try {
+        await refreshSessionTitleForWorkspace(target.workspaceId, target.sessionId);
+      } catch {
+        // ベストエフォート。次ターンのスケジュール時に再試行される。
+      }
+      if (!titleRefreshPending) break;
+      target = titleRefreshPending;
+      titleRefreshPending = null;
+    }
+  })().finally(() => {
+    titleRefreshBusy = false;
+  });
+}
+
+/** テスト専用: 直列化状態をリセットする。 */
+export function resetTitleRefreshForTest(): void {
+  titleRefreshBusy = false;
+  titleRefreshPending = null;
+}
 
 /**
  * Prefixes the full goal prompt with the approved-memory block on the very
@@ -276,6 +322,10 @@ export function applyAssistantResult(
   // A pause/stop/manual send invalidates the revision while the transcript was
   // being read. In that case the old assistant result must be discarded.
   if (applied.changes === 0) return;
+
+  // ターンが消費された → セッションの会話が変わったのでタイトルを再生成する
+  // （毎ターン反映）。fire-and-forget。検証ターンを含む全ての適用結果で走る。
+  scheduleLoopTitleRefresh(loop.workspaceId, loop.sessionId);
 
   // The loop is genuinely `completed` now. Trigger background memory
   // extraction (fire-and-forget) so durable facts are captured for reuse.

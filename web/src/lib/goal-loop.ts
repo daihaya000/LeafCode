@@ -49,6 +49,8 @@ export {
   applyAssistantResult,
   deliveredGoalResultAfterUnknownPrompt,
   isUnknownPromptDeliveryPause,
+  resetTitleRefreshForTest,
+  scheduleLoopTitleRefresh,
 } from "./goal-state";
 export {
   createGoalLoop,

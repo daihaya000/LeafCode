@@ -52,6 +52,29 @@ describe("buildTranscript", () => {
     expect(t).toContain("NEWEST");
     expect(t.length).toBeLessThanOrEqual(20);
   });
+
+  it("skips goal-loop system-prompt user messages", () => {
+    const loopPrompt: MessageWithParts = {
+      info: { id: "lp", role: "user" },
+      parts: [
+        {
+          id: "p",
+          messageID: "lp",
+          type: "text",
+          text: "<!-- webui-goal-loop-prompt --> 大量の内部指示文",
+        },
+      ],
+    };
+    const t = buildTranscript([
+      msg("user", "ゴール"),
+      loopPrompt,
+      msg("assistant", "実装しました"),
+    ]);
+    expect(t).toContain("ゴール");
+    expect(t).toContain("実装しました");
+    expect(t).not.toContain("webui-goal-loop-prompt");
+    expect(t).not.toContain("内部指示文");
+  });
 });
 
 describe("formatTranscriptForTitle", () => {

@@ -2364,6 +2364,26 @@ export function TaskView({
     return () => clearInterval(poll);
   }, [goalLoop?.status, pageVisible, refreshGoalLoop]);
 
+  // ループが前進（revision 増加）したらタスク情報を取り直す。ターンごとに
+  // サーバー側でタイトルが再生成されるため、このタブのヘッダーにもリロード
+  // なしで反映する（ループターンの SSE busy は落とされるため busy→idle の
+  // refreshTask に依存できない）。
+  const prevGoalLoopRevisionRef = useRef<number | null>(null);
+  const goalLoopRevision = goalLoop?.revision ?? null;
+  useEffect(() => {
+    if (goalLoopRevision === null) {
+      prevGoalLoopRevisionRef.current = null;
+      return;
+    }
+    if (
+      prevGoalLoopRevisionRef.current !== null &&
+      goalLoopRevision !== prevGoalLoopRevisionRef.current
+    ) {
+      void refreshTask();
+    }
+    prevGoalLoopRevisionRef.current = goalLoopRevision;
+  }, [goalLoopRevision, refreshTask]);
+
   // busy → idle transition: refresh diff + task stats + full message resync
   const prevStatusRef = useRef<string | null | undefined>(null);
   const streamScopeKey = `${task?.directory ?? ""}\u0000${task?.sessionId ?? ""}`;

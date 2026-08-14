@@ -107,6 +107,12 @@ vi.mock("./collaboration-context", () => ({
   prependCollaborationContext: vi.fn((body: Record<string, unknown>) => body),
 }));
 
+// ターンごとのタイトル再生成は LLM 呼び出し（一時セッション）を伴うため、
+// スケジューラのテストでは無効化し、呼び出し自体だけを記録する。
+vi.mock("./session-title-refresh", () => ({
+  refreshSessionTitleForWorkspace: vi.fn(async () => "mock title"),
+}));
+
 // Provide a fresh in-memory DB for each test.
 let testDb: Database.Database;
 vi.mock("./db", () => ({
@@ -150,9 +156,12 @@ import {
   goalLoopTestSeams,
   pauseGoalLoopForManualSend,
   resetSchedulerTickingForTest,
+  resetTitleRefreshForTest,
   runGoalLoopSchedulerTick,
+  scheduleLoopTitleRefresh,
   updateGoalLoopStatus,
 } from "./goal-loop";
+import { refreshSessionTitleForWorkspace } from "./session-title-refresh";
 
 function makeDb(): Database.Database {
   const db = new Database(":memory:");
@@ -331,6 +340,7 @@ beforeEach(() => {
   h.compactFailureError = null;
   h.compactionMarks.length = 0;
   h.autoExtractCalls.length = 0;
+  resetTitleRefreshForTest();
 });
 
 afterEach(() => {
@@ -662,6 +672,99 @@ describe("goal loop verification turn", () => {
       maxTurns: 5,
     });
     expect(created.forceFullRun).toBe(false);
+  });
+
+  describe("per-turn title refresh", () => {
+    it("refreshes the session title after every applied turn result", async () => {
+      setupWorkspace("ws-1", "sess-1");
+      await createGoalLoop({
+        workspaceId: "ws-1",
+        sessionId: "sess-1",
+        goal: "test",
+        maxTurns: 3,
+      });
+      vi.mocked(refreshSessionTitleForWorkspace).mockClear();
+
+      // 1st goal turn: result applied → title refreshed.
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+      h.messageResponse = [
+        msg("m0", "assistant"),
+        msg("loop-prompt", "user"),
+        msg("loop-reply", "assistant", { status: "progress", summary: "worked", evidence: "ok" }),
+      ];
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+      expect(getGoalLoop("ws-1")?.status).toBe("queued");
+      expect(refreshSessionTitleForWorkspace).toHaveBeenCalledTimes(1);
+      expect(refreshSessionTitleForWorkspace).toHaveBeenCalledWith("ws-1", "sess-1");
+
+      // 2nd goal turn: another result → refreshed again (every turn, not only the first).
+      // ターン主張は前ターンの履歴の上で行い、返信は主張の後に届ける
+      // （主張時点の履歴末尾が読取境界になるため）。
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+      h.messageResponse = [
+        ...h.messageResponse,
+        msg("loop-prompt-2", "user"),
+        msg("loop-reply-2", "assistant", { status: "progress", summary: "more", evidence: "ok" }),
+      ];
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+      expect(getGoalLoop("ws-1")?.turnCount).toBe(2);
+      expect(refreshSessionTitleForWorkspace).toHaveBeenCalledTimes(2);
+    });
+
+    it("refreshes the title after the verification turn as well", async () => {
+      setupWorkspace("ws-1", "sess-1");
+      await createGoalLoop({
+        workspaceId: "ws-1",
+        sessionId: "sess-1",
+        goal: "test",
+        acceptance: ["tests pass"],
+        maxTurns: 3,
+      });
+      vi.mocked(refreshSessionTitleForWorkspace).mockClear();
+
+      // Goal turn claims completed → verifying_completed (refresh #1).
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+      h.messageResponse = [
+        msg("m0", "assistant"),
+        msg("loop-prompt", "user"),
+        msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "tsc ok" }),
+      ];
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+      expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+      expect(refreshSessionTitleForWorkspace).toHaveBeenCalledTimes(1);
+
+      // Verification turn passes → completed (refresh #2).
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+      h.messageResponse = [
+        ...h.messageResponse,
+        msg("verify-prompt", "user"),
+        msg("verify-reply", "assistant", { status: "verified_completed", summary: "verified", evidence: "ok" }),
+      ];
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+      expect(getGoalLoop("ws-1")?.status).toBe("completed");
+      expect(refreshSessionTitleForWorkspace).toHaveBeenCalledTimes(2);
+    });
+
+    it("serializes refreshes and runs the latest pending one after the in-flight one", async () => {
+      let resolveFirst!: (value: string) => void;
+      const first = new Promise<string>((resolve) => {
+        resolveFirst = resolve;
+      });
+      vi.mocked(refreshSessionTitleForWorkspace)
+        .mockReset()
+        .mockReturnValueOnce(first);
+
+      // In-flight refresh blocks; two further turns collapse into one pending.
+      scheduleLoopTitleRefresh("ws-1", "sess-1");
+      scheduleLoopTitleRefresh("ws-1", "sess-1");
+      scheduleLoopTitleRefresh("ws-1", "sess-1");
+      expect(refreshSessionTitleForWorkspace).toHaveBeenCalledTimes(1);
+
+      resolveFirst("t1");
+      await vi.waitFor(() =>
+        expect(refreshSessionTitleForWorkspace).toHaveBeenCalledTimes(2),
+      );
+    });
   });
 
   it("rejects a completed claim and returns to queued when verification says progress", async () => {
