@@ -1397,35 +1397,33 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               <option value="current_folder">{defaultBranchLabel}</option>
               <option value="git_worktree">worktree</option>
             </GhostSelect>
-            <GhostSelect
-              value={startMode}
-              disabled={submitting || !workflowModeEnabled}
-              aria-label="開始モード"
-              icon={<Play className="h-3.5 w-3.5" />}
-              valueLabel={startMode === "task" ? "Taskで開始" : "Workflowで開始"}
-              onChange={(value) => {
-                if (value === "task" || value === "workflow") {
-                  setStartMode(value);
-                  // Goal loop and Workflow are mutually exclusive: the loop
-                  // toggle is hidden in Workflow mode and a stale ON state
-                  // would silently ignore the loop settings at submit (BU-1).
-                  if (value === "workflow") setGoalLoopEnabled(false);
-                }
-              }}
-              className="max-w-[11rem] shrink-0 sm:max-w-44"
-              title={
-                workflowModeEnabled
-                  ? startMode === "task"
+            {workflowModeEnabled && (
+              <GhostSelect
+                value={startMode}
+                disabled={submitting}
+                aria-label="開始モード"
+                icon={<Play className="h-3.5 w-3.5" />}
+                valueLabel={startMode === "task" ? "Taskで開始" : "Workflowで開始"}
+                onChange={(value) => {
+                  if (value === "task" || value === "workflow") {
+                    setStartMode(value);
+                    // Goal loop and Workflow are mutually exclusive: the loop
+                    // toggle is hidden in Workflow mode and a stale ON state
+                    // would silently ignore the loop settings at submit (BU-1).
+                    if (value === "workflow") setGoalLoopEnabled(false);
+                  }
+                }}
+                className="max-w-[11rem] shrink-0 sm:max-w-44"
+                title={
+                  startMode === "task"
                     ? "通常のTaskとして開始"
                     : "Implement → Reviewの固定フロー"
-                  : "ワークフロー機能は設定から有効化してください"
-              }
-            >
-              <option value="task" title="通常のTaskとして開始">Taskで開始</option>
-              {workflowModeEnabled && (
+                }
+              >
+                <option value="task" title="通常のTaskとして開始">Taskで開始</option>
                 <option value="workflow" title="Implement → Reviewの固定フロー">Workflowで開始</option>
-              )}
-            </GhostSelect>
+              </GhostSelect>
+            )}
           </div>
           <Composer
             form={{

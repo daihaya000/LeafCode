@@ -1276,6 +1276,20 @@ describe("HomeView start mode", () => {
       ),
     ).toBe(false);
   });
+
+  it("hides the start mode selector when Workflow mode is disabled", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") return Promise.resolve({ projects: [{ id: "project-1", name: "Project", rootPath: "/repo", favorite: false }] });
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/health") return Promise.resolve({ webui: { ok: true }, opencode: { ok: true }, workflowModeEnabled: false });
+      if (path === "/api/git/branches") return Promise.resolve({ branches: ["main"], defaultTarget: "main", current: "main" });
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<HomeView />);
+    await screen.findByRole("form", { name: "タスク作成" });
+    expect(screen.queryByRole("button", { name: "開始モード" })).toBeNull();
+  });
 });
 
 describe("HomeView last-used model", () => {
