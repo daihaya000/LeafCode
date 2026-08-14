@@ -537,6 +537,62 @@ function TurnNoticeBanner({
   );
 }
 
+/**
+ * Inline status notices above the composer (send error, token-saving notice,
+ * goal-loop error, image-input warning). Extracted from the TaskView render to
+ * keep the main JSX block readable.
+ */
+function ComposerStatusMessages({
+  sendError,
+  tokenSavingNotice,
+  goalLoopError,
+  goalLoopLive,
+  showImageWarning,
+}: {
+  sendError: string | null;
+  tokenSavingNotice: string | null;
+  goalLoopError: string | null;
+  goalLoopLive: boolean;
+  showImageWarning: boolean;
+}) {
+  return (
+    <>
+      {sendError && (
+        <p
+          role="alert"
+          className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-1.5 text-xs text-danger"
+        >
+          {sendError}
+        </p>
+      )}
+      {tokenSavingNotice && (
+        <p
+          role="status"
+          className="mt-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-1.5 text-xs text-warning"
+        >
+          {tokenSavingNotice}
+        </p>
+      )}
+      {goalLoopError && !goalLoopLive && (
+        <p
+          role="alert"
+          className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-1.5 text-xs text-danger"
+        >
+          {goalLoopError}
+        </p>
+      )}
+      {showImageWarning && (
+        <p
+          role="alert"
+          className="mt-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-1.5 text-xs text-warning"
+        >
+          選択中のエージェント/モデルは画像入力に対応していない可能性があります。画像が反映されない場合があります。
+        </p>
+      )}
+    </>
+  );
+}
+
 export function TaskView({
   taskId,
   onCloseSplit,
@@ -5122,38 +5178,13 @@ export function TaskView({
                   ))}
                 </div>
               )}
-              {sendError && (
-                <p
-                  role="alert"
-                  className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-1.5 text-xs text-danger"
-                >
-                  {sendError}
-                </p>
-              )}
-              {tokenSavingNotice && (
-                <p
-                  role="status"
-                  className="mt-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-1.5 text-xs text-warning"
-                >
-                  {tokenSavingNotice}
-                </p>
-              )}
-              {goalLoopError && !goalLoopLive && (
-                <p
-                  role="alert"
-                  className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-1.5 text-xs text-danger"
-                >
-                  {goalLoopError}
-                </p>
-              )}
-              {showImageWarning && (
-                <p
-                  role="alert"
-                  className="mt-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-1.5 text-xs text-warning"
-                >
-                  選択中のエージェント/モデルは画像入力に対応していない可能性があります。画像が反映されない場合があります。
-                </p>
-              )}
+              <ComposerStatusMessages
+                sendError={sendError}
+                tokenSavingNotice={tokenSavingNotice}
+                goalLoopError={goalLoopError}
+                goalLoopLive={goalLoopLive}
+                showImageWarning={showImageWarning}
+              />
               <Composer
                 className="relative mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
                 onDrop={onDrop}
