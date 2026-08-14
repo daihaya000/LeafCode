@@ -757,7 +757,7 @@ async function autoRestartOpencodeAfterCrash() {
         });
         if (!webReady) {
           throw new Error(
-            `WebUI failed to become ready after OpenCode port change (${WEBUI_URL})`,
+            `LeafCode failed to become ready after OpenCode port change (${WEBUI_URL})`,
           );
         }
       }
@@ -1621,16 +1621,16 @@ async function resolvePortPlan(preCaptured) {
     if (decision.reuse) {
       log(
         decision.reason === 'unknown-listener'
-          ? `WebUI build is stale but :${WEBUI_PORT} is held by an unknown process; reusing it as-is`
-          : `Reusing existing WebUI on :${WEBUI_PORT}`,
+          ? `LeafCode build is stale but :${WEBUI_PORT} is held by an unknown process; reusing it as-is`
+          : `Reusing existing LeafCode on :${WEBUI_PORT}`,
       );
       plan.startWeb = false;
     } else if (decision.takeover) {
-      log(`Existing WebUI on :${WEBUI_PORT} is stale; stopping it to rebuild`);
+      log(`Existing LeafCode on :${WEBUI_PORT} is stale; stopping it to rebuild`);
       for (const pid of decision.takeover) hardKillTree(pid);
       const freed = await httpWaiter.waitForPortFree(WEBUI_PORT, 40);
       if (!freed) {
-        log(`Could not free :${WEBUI_PORT} after stopping the stale WebUI; reusing it as-is`);
+        log(`Could not free :${WEBUI_PORT} after stopping the stale LeafCode; reusing it as-is`);
         plan.startWeb = false;
       }
       // else: plan.startWeb stays true → spawnWeb runs the stale check + rebuild
@@ -1944,7 +1944,7 @@ async function restartOpencode() {
           proc: () => webProc,
         });
         if (!webReady) {
-          throw new Error(`WebUI failed to become ready after OpenCode port change (${WEBUI_URL})`);
+          throw new Error(`LeafCode failed to become ready after OpenCode port change (${WEBUI_URL})`);
         }
       }
     },

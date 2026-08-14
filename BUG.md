@@ -27,7 +27,7 @@
 | **BR-15** | 中 | ✅ **修正済み（レジストリ + DB の読み取り時正規化）** | dataDir rename 後の絶対パス残存 — readState / getWorkspace / listWorkspaces で旧 dataDir 配下のパスを新名に正規化（external は維持） |
 | **BR-16** | 低 | ⬜ **未修正** | docs/specs の 5 仕様書がデータディレクトリを `%APPDATA%\opencode-webui` と記載したまま |
 | **BR-17** | 低 | ✅ **修正済み** | proxy.ts:133 の 403 エラーのみ「disabled in WebUI」残存（oc-server.ts と「LeafCode」に統一） |
-| **BR-18** | 低 | ⬜ **未修正** | host ログ文言に「WebUI」が 5 箇所残存（2dd9bbeb のログ文言統一からの漏れ） |
+| **BR-18** | 低 | ✅ **修正済み** | host ログ文言に「WebUI」が 5 箇所残存 → index.js のログ・エラーメッセージ 6 箇所を「LeafCode」に統一（残存ゼロ） |
 | **BR-19** | 低 | ⬜ **未修正** | ブラウザ拡張ポップアップの日本語文言と build guard のコンソールメッセージに「WebUI」残存 |
 | **BR-20** | 低 | ✅ **修正済み** | 通知のフォールバックタイトル「OpenCode タスク」→「LeafCode タスク」（テスト期待値も更新） |
 | **BR-21** | 低 | ⬜ **未修正** | IMPROVEMENT.md / OPTIMIZATION.md のヘッダ「対象リポジトリ: OpenCodeWebUI」が旧名のまま |
