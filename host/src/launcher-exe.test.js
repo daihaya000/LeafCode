@@ -52,12 +52,12 @@ test(
       "ocwebui-launcher-",
       "@echo off\r\necho FAKE_START_WEBUI_RAN\r\nexit /b 42\r\n",
     );
-    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
+    const exePath = join(fakeRepo, "LeafCode.exe");
 
     try {
       const compile = compileLauncher(exePath);
       assert.equal(compile.status, 0, `csc failed: ${compile.stderr}\n${compile.stdout}`);
-      assert.ok(existsSync(exePath), "expected OpenCodeWebUI.exe to be produced");
+      assert.ok(existsSync(exePath), "expected LeafCode.exe to be produced");
 
       // A trivial stand-in for scripts/start-webui.bat: proves the launcher
       // resolves its own directory as the repo root and forwards cmd's exit
@@ -79,7 +79,7 @@ test(
       "ocwebui-launcher-&-",
       "@echo off\r\necho METACHAR_PATH_RAN\r\nexit /b 23\r\n",
     );
-    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
+    const exePath = join(fakeRepo, "LeafCode.exe");
 
     try {
       const compile = compileLauncher(exePath);
@@ -102,7 +102,7 @@ test(
       "ocwebui-launcher-cwd-",
       "@echo off\r\necho CWD=%CD%\r\nexit /b 0\r\n",
     );
-    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
+    const exePath = join(fakeRepo, "LeafCode.exe");
 
     try {
       const compile = compileLauncher(exePath);
@@ -125,7 +125,7 @@ test(
   { skip: !isWindows || !csc },
   () => {
     const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-missing-"));
-    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
+    const exePath = join(fakeRepo, "LeafCode.exe");
 
     try {
       const compile = compileLauncher(exePath);
@@ -137,7 +137,7 @@ test(
       // The bare "not found" line alone leaves a double-click user with no
       // actionable next step; this points at the most common real-world
       // cause (copying only the exe out of the repository).
-      assert.match(run.stderr, /full clone of the OpenCodeWebUI repository/);
+        assert.match(run.stderr, /full clone of the LeafCode repository/);
     } finally {
       rmSync(fakeRepo, { recursive: true, force: true });
     }
@@ -151,7 +151,7 @@ test(
   { skip: !isWindows || !csc },
   () => {
     const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-missing-pause-"));
-    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
+    const exePath = join(fakeRepo, "LeafCode.exe");
 
     try {
       const compile = compileLauncher(exePath);
@@ -176,7 +176,7 @@ test(
   { skip: !isWindows || !csc },
   () => {
     const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-noninteractive-"));
-    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
+    const exePath = join(fakeRepo, "LeafCode.exe");
 
     try {
       const compile = compileLauncher(exePath);

@@ -455,7 +455,7 @@ function writeLogFileHeader() {
   const mode =
     process.env.LEAFCODE_MODE ||
     (process.env.NODE_ENV === 'production' ? 'prod' : 'auto');
-  const header = `=== opencode-webui-host start version=${HOST_VERSION} pid=${process.pid} mode=${mode} ts=${new Date().toISOString()} ===`;
+  const header = `=== leafcode-host start version=${HOST_VERSION} pid=${process.pid} mode=${mode} ts=${new Date().toISOString()} ===`;
   writer.writeRaw(header);
 }
 
@@ -474,12 +474,12 @@ function recordLog(source, level, text) {
 }
 
 function log(message) {
-  console.log(`[opencode-webui-host] ${message}`);
+  console.log(`[leafcode-host] ${message}`);
   recordLog('host', 'log', message);
 }
 
 function error(message) {
-  console.error(`[opencode-webui-host] ${message}`);
+  console.error(`[leafcode-host] ${message}`);
   recordLog('host', 'error', message);
 }
 

@@ -5,10 +5,10 @@ rem See docs\specs\bat-encoding-safety.md
 setlocal
 cd /d "%~dp0.."
 
-echo [OpenCode WebUI] Creating a Desktop shortcut with a proper icon...
+echo [LeafCode] Creating a Desktop shortcut with a proper icon...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0create-shortcut.ps1"
 if errorlevel 1 (
-  echo [OpenCode WebUI] Shortcut creation failed. See the error above.
+  echo [LeafCode] Shortcut creation failed. See the error above.
   pause
   exit /b 1
 )

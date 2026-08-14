@@ -17,7 +17,7 @@ Browser Bridge は次の 4 つの要素で構成されます。
 
 ## 前提条件
 
-- Windows 上の OpenCodeWebUI（`OpenCodeWebUI.exe` で起動済み）
+- Windows 上の LeafCode（`LeafCode.exe` で起動済み）
 - Chrome または Brave（最新安定版）
 - 同一端末で動作（別 PC のブラウザは対象外）
 
@@ -42,7 +42,7 @@ MCP を有効化する前にこの手順を一度実行してください。
 2. 右上の「デベロッパー モード」を ON にする
 3. 「パッケージ化されていない拡張機能を読み込む」をクリック
 4. リポジトリルートの `browser-bridge/` ディレクトリを選択
-5. 拡張機能一覧に **OpenCode WebUI Browser Bridge** が追加される
+5. 拡張機能一覧に **LeafCode Browser Bridge** が追加される
 
 ### Brave
 
@@ -57,8 +57,8 @@ MCP を有効化する前にこの手順を一度実行してください。
 
 コードの入力は不要です。拡張機能が自動でペアリングを申請し、WebUI 側でワンクリック許可するだけで接続できます。
 
-1. トレイ host が起動していることを確認する（`OpenCodeWebUI.exe` 実行中）
-2. ブラウザの拡張機能アイコン（パズルピース）→ **OpenCode WebUI Browser Bridge** をクリックし、popup を開く
+1. トレイ host が起動していることを確認する（`LeafCode.exe` 実行中）
+2. ブラウザの拡張機能アイコン（パズルピース）→ **LeafCode Browser Bridge** をクリックし、popup を開く
    - 未ペアリングの拡張は Broker に接続すると自動的にペアリング要求を送信する（popup のステータスは「WebUI での承認を待っています…」になる）
 3. WebUI を開く（`http://127.0.0.1:3000`）
 4. 設定 → 拡張機能にある **Browser Bridge 承認**カードに、拡張機能からの「拡張機能のペアリング要求」カードが表示される（origin 付き）
@@ -164,7 +164,7 @@ npm run install:browser-bridge-mcp
 ### 記述ルール
 
 - `command` は**文字列配列**（`"command": "node ..."` の文字列形式は不可）。OpenCode 公式 schema に従い配列で指定する
-- `<absolute-path>` は実際の絶対パスに置き換える（例: `C:\Users\me\OpenCodeWebUI\browser-bridge\mcp\server.mjs`）
+- `<absolute-path>` は実際の絶対パスに置き換える（例: `C:\Users\me\LeafCode\browser-bridge\mcp\server.mjs`）
 - `environment` の値は `{env:...}` 構文で環境変数を参照する。**実値（URL・token）を設定ファイルに直接書かない**
 - Broker の URL と token はトレイ host が OpenCode 起動時に環境変数として設定する。host 再起動ごとに token はローテーションされる
 - 設定変更後は OpenCode の再起動が必要
@@ -183,7 +183,7 @@ npm run install:browser-bridge-mcp
 MCP 設定の変更を反映するには OpenCode の再起動が必要です。
 
 - トレイアイコンを右クリック → 「Restart OpenCode」
-- またはトレイアイコンを右クリック → 「Quit」してから `OpenCodeWebUI.exe` を再実行
+- またはトレイアイコンを右クリック → 「Quit」してから `LeafCode.exe` を再実行
 
 再起動後、OpenCode の MCP 設定画面で `browser-bridge` の状態が `connected` になっていることを確認してください。
 
@@ -299,7 +299,7 @@ WebUI をリモート公開している場合、Browser Bridge の管理 API は
 |------|-----------|
 | popup に「未ペアリング」と表示される | popup を開いて自動送信されたペアリング要求を確認し、WebUI 設定 → 拡張機能の Browser Bridge 承認カードで「許可」をクリックする |
 | popup に「WebUI での承認を待っています…」のまま進まない | WebUI 設定 → 拡張機能に対象 origin のペアリング要求カードが表示されているか確認する。表示されない場合は popup を閉じて再度開き、要求を送り直す |
-| popup に「ペアリング済み・再接続中…」と表示される | Broker が起動しているか確認。`OpenCodeWebUI.exe` が実行中であることを確認 |
+| popup に「ペアリング済み・再接続中…」と表示される | Broker が起動しているか確認。`LeafCode.exe` が実行中であることを確認 |
 | `BROKER_UNAVAILABLE` が返る | トレイ host が起動しているか確認。host 再起動後に OpenCode も再起動する |
 | `EXTENSION_DISCONNECTED` が返る | 拡張機能の popup を開き、接続状態を確認。`chrome://extensions` で拡張が有効か確認 |
 | `STALE_REFERENCE` が返る | ページが変更された可能性がある。再度 `browser_snapshot` を呼び出して新しい ref を取得 |

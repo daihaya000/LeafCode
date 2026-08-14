@@ -939,7 +939,7 @@ test('health and unknown routes are unchanged', async () => {
   const health = fakeResponse();
   await handle({ method: 'GET', url: '/health', headers: { host: '127.0.0.1:18765' } }, health);
   assert.equal(health.statusCode, 200);
-  assert.deepEqual(health.body, { ok: true, service: 'opencode-webui-host' });
+  assert.deepEqual(health.body, { ok: true, service: 'leafcode-host' });
 
   const missing = fakeResponse();
   await handle({ method: 'POST', url: '/nope', headers: { host: '127.0.0.1:18765' } }, missing);

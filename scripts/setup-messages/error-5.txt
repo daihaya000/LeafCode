@@ -1,2 +1,2 @@
-[OpenCode WebUI] webの依存関係の導入に失敗しました。
-[OpenCode WebUI] 復旧案内: ネットワークとweb/package-lock.jsonを確認して再実行してください。
+[LeafCode] webの依存関係の導入に失敗しました。
+[LeafCode] 復旧案内: ネットワークとweb/package-lock.jsonを確認して再実行してください。

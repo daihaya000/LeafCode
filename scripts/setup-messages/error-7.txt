@@ -1,2 +1,2 @@
-[OpenCode WebUI] ビルド後にBUILD_IDが見つかりません。
-[OpenCode WebUI] 復旧案内: ビルドログを確認してから再実行してください。
+[LeafCode] ビルド後にBUILD_IDが見つかりません。
+[LeafCode] 復旧案内: ビルドログを確認してから再実行してください。

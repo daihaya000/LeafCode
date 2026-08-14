@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 
 // scripts/start-webui.bat is the internal setup/start script run by the
-// native launcher (OpenCodeWebUI.exe at the repository root; see
+// native launcher (LeafCode.exe at the repository root; see
 // scripts/launcher/Launcher.cs). It used to live at the repository root and
 // before that was split into a one-time setup.bat (winget / Node.js /
 // OpenCode / dependency installs, ending by starting a *separate* start
@@ -30,7 +30,7 @@ function writeBat(path, contents) {
 }
 
 function createSandbox(options = {}) {
-  const root = mkdtempSync(join(tmpdir(), "OpenCodeWebUI-start-"));
+  const root = mkdtempSync(join(tmpdir(), "LeafCode-start-"));
   const bin = join(root, "mock-bin");
   const log = join(root, "commands.log");
   mkdirSync(bin);
@@ -46,7 +46,7 @@ function createSandbox(options = {}) {
   // with no build inputs beside it keeps that check quiet so the setup logic
   // under test runs in isolation (and without a missing-build-launcher.bat
   // error polluting stderr, which some assertions require to be empty).
-  writeFileSync(join(root, "OpenCodeWebUI.exe"), "", "ascii");
+  writeFileSync(join(root, "LeafCode.exe"), "", "ascii");
   if (options.withMessages !== false) {
     cpSync(messagesSource, join(root, "scripts", "setup-messages"), { recursive: true });
   }
@@ -480,7 +480,7 @@ test("start-webui.bat runs cleanly on legacy and UTF-8 code pages", { skip: !isW
       const result = sandbox.run({ codePage });
       assertCompleted(result, `code page ${codePage}`);
       assert.equal(result.status, 5, `cp${codePage}: ${result.stdout}\n${result.stderr}`);
-      assert.match(result.stdout, /\[OpenCode WebUI\] ERROR 5/, `cp${codePage} lost the ASCII summary`);
+      assert.match(result.stdout, /\[LeafCode\] ERROR 5/, `cp${codePage} lost the ASCII summary`);
       assert.match(result.stdout, /webの依存関係の導入に失敗しました/, `cp${codePage} lost the Japanese message`);
       // A non-ASCII batch file makes cmd.exe lose its read position and execute
       // fragments of later lines, which shows up as unknown-command errors.
@@ -508,7 +508,7 @@ test("start-webui.bat reports an ASCII-only failure when the message files are m
     const result = sandbox.run();
     assertCompleted(result, "missing message files");
     assert.equal(result.status, 5, `${result.stdout}\n${result.stderr}`);
-    assert.match(result.stdout, /\[OpenCode WebUI\] ERROR 5/);
+    assert.match(result.stdout, /\[LeafCode\] ERROR 5/);
     assert.doesNotMatch(result.stdout, /依存関係/);
     assert.equal(result.stderrBytes.trim(), "", `stderr: ${result.stderrBytes}`);
   } finally { sandbox.cleanup(); }
@@ -520,9 +520,9 @@ test("start-webui.bat reports failures as an ASCII code line plus Japanese detai
     const result = sandbox.run({ codePage: 932 });
     assertCompleted(result, "failure formatting");
     assert.equal(result.status, 5, `${result.stdout}\n${result.stderr}`);
-    assert.match(result.stdout, /\[OpenCode WebUI\] ERROR 5: web dependencies could not be installed\./);
+    assert.match(result.stdout, /\[LeafCode\] ERROR 5: web dependencies could not be installed\./);
     assert.match(result.stdout, /webの依存関係の導入に失敗しました/);
-    assert.match(result.stdout, /\[OpenCode WebUI\] FAILED with exit code 5\./);
+    assert.match(result.stdout, /\[LeafCode\] FAILED with exit code 5\./);
     assert.match(result.stdout, /セットアップに失敗しました/);
   } finally { sandbox.cleanup(); }
 });
@@ -554,8 +554,8 @@ test("start-webui.bat runs the production WebUI guard without --stop and skips t
   // The guard already ran here; build-web.mjs must not repeat it.
   assert.match(source, /call node scripts\\build-web\.mjs --skip-guard/);
   // next build overwrites the console title; pause must restore it so a
-  // failed launch is still labelled OpenCode WebUI rather than next-build.
-  assert.match(source, /:pause_if_interactive[\s\S]*title OpenCode WebUI[\s\S]*\bpause\b/);
+  // failed launch is still labelled LeafCode rather than next-build.
+  assert.match(source, /:pause_if_interactive[\s\S]*title LeafCode[\s\S]*\bpause\b/);
 });
 
 test("start-webui.bat returns documented failures without reaching the host tail", { skip: !isWindows }, () => {

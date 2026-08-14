@@ -1,2 +1,2 @@
-[OpenCode WebUI] hostの依存関係の導入に失敗しました。
-[OpenCode WebUI] 復旧案内: ネットワークとhost/package-lock.jsonを確認して再実行してください。
+[LeafCode] hostの依存関係の導入に失敗しました。
+[LeafCode] 復旧案内: ネットワークとhost/package-lock.jsonを確認して再実行してください。

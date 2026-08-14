@@ -8,7 +8,7 @@
 > 回帰は引き続き `host/src/bat-encoding.test.js` と `npm run test:encoding` が担保します。
 >
 > **追記（ランチャー一本化後）**: `start-webui.bat` はリポジトリ直下から `scripts/start-webui.bat` へ移動し、
-> ユーザー向けの唯一のエントリはリポジトリ直下のネイティブランチャー `OpenCodeWebUI.exe`（git 管理に切り替え）
+> ユーザー向けの唯一のエントリはリポジトリ直下のネイティブランチャー `LeafCode.exe`（git 管理に切り替え）
 > に一本化されました。本文中の `start-webui.bat` への言及は `scripts/start-webui.bat`（ランチャーが内部で呼ぶ
 > セットアップ/起動スクリプト）を指すものとして読み替えてください。ASCII/CRLF・日本語メッセージ分離の方針は
 > そのまま継承し、`host/src/bat-encoding.test.js` が `scripts/start-webui.bat` を含む全バッチを検査します。

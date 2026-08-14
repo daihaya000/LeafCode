@@ -1,2 +1,2 @@
-[OpenCode WebUI] OpenCodeの導入に失敗しました。
-[OpenCode WebUI] 復旧案内: OpenCode Docs (https://opencode.ai/docs) を確認し、必要なら再ログインしてから再実行してください。
+[LeafCode] OpenCodeの導入に失敗しました。
+[LeafCode] 復旧案内: OpenCode Docs (https://opencode.ai/docs) を確認し、必要なら再ログインしてから再実行してください。

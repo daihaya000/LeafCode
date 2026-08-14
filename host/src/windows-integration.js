@@ -29,7 +29,7 @@ Add-Type -MemberDefinition $signature -Name Keyboard -Namespace Win32
 }
 
 /** Windows Firewall inbound rule name shared with scripts/allow-firewall-3000.bat. */
-const FIREWALL_RULE_NAME = 'OpenCode WebUI';
+const FIREWALL_RULE_NAME = 'LeafCode';
 
 /** True when a Windows Firewall inbound rule with FIREWALL_RULE_NAME exists.
  *  Read-only; does not require elevation. */

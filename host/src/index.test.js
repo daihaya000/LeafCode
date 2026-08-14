@@ -135,7 +135,7 @@ test('stronglyLooksLikeHostCommandLine rejects unrelated node processes', () => 
   // Product name reference also matches
   assert.equal(
     host.stronglyLooksLikeHostCommandLine(
-      'node.exe "C:/projects/opencode-webui/src/index.js"',
+      'node.exe "C:/projects/leafcode/src/index.js"',
     ),
     true,
   );
@@ -149,7 +149,7 @@ test('stronglyLooksLikeHostCommandLine rejects unrelated node processes', () => 
 });
 
 test('isOurCaddyCommandLine matches only our Caddyfile', () => {
-  const ours = 'C:\\OpenCodeWebUI\\deploy\\Caddyfile';
+  const ours = 'C:\\LeafCode\\deploy\\Caddyfile';
   assert.equal(
     host.isOurCaddyCommandLine(
       `caddy.exe run --config ${ours} --adapter caddyfile`,

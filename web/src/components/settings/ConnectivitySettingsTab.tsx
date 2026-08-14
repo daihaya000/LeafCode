@@ -238,7 +238,7 @@ export function ConnectivitySettingsTab() {
           を実行するか、PowerShell（管理者）で:
           <br />
           <code className="mt-1 block break-all rounded bg-surface-2 px-1 py-0.5">
-            netsh advfirewall firewall add rule name=&quot;OpenCode WebUI&quot;
+            netsh advfirewall firewall add rule name=&quot;LeafCode&quot;
             dir=in action=allow protocol=TCP localport=
             {access?.port ?? 3000}
           </code>

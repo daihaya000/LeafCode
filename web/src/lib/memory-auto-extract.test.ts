@@ -8,7 +8,7 @@ const runMemoryExtraction = vi.hoisted(() =>
 );
 vi.mock("./memory-extract", () => ({ runMemoryExtraction }));
 
-const testDataDir = mkdtempSync(path.join(os.tmpdir(), "opencode-webui-memory-auto-"));
+const testDataDir = mkdtempSync(path.join(os.tmpdir(), "leafcode-memory-auto-"));
 const previousAppData = process.env.APPDATA;
 const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(testDataDir);
 process.env.APPDATA = testDataDir;

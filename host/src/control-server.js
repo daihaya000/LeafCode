@@ -386,7 +386,7 @@ export function createControlRequestHandler(handlers) {
   const routeHandlers = {
   'health': async (req, res) => {
     res.writeHead(200, JSON_HEADERS);
-    res.end(JSON.stringify({ ok: true, service: 'opencode-webui-host' }));
+    res.end(JSON.stringify({ ok: true, service: 'leafcode-host' }));
     return;
   },
 

@@ -1,2 +1,2 @@
-[OpenCode WebUI] wingetが見つかりません。
-[OpenCode WebUI] 復旧案内: Microsoft Storeから「アプリインストーラー」を導入してください。
+[LeafCode] wingetが見つかりません。
+[LeafCode] 復旧案内: Microsoft Storeから「アプリインストーラー」を導入してください。

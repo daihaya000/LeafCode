@@ -71,7 +71,7 @@ test('hasTrayChild counts tray_windows children', () => {
 
 test('looksLikeHostCommandLine matches node src/index.js', () => {
   assert.equal(
-    looksLikeHostCommandLine('"C:\\node.exe" "C:\\OpenCodeWebUI\\src\\index.js"'),
+    looksLikeHostCommandLine('"C:\\node.exe" "C:\\LeafCode\\src\\index.js"'),
     true,
   );
   assert.equal(looksLikeHostCommandLine('C:\\python.exe script.py'), false);
@@ -80,14 +80,21 @@ test('looksLikeHostCommandLine matches node src/index.js', () => {
 test('stronglyLooksLikeHostCommandLine requires host or product reference', () => {
   assert.equal(
     stronglyLooksLikeHostCommandLine(
-      '"C:\\node.exe" "C:\\OpenCodeWebUI\\host\\src\\index.js"',
+      '"C:\\node.exe" "C:\\LeafCode\\host\\src\\index.js"',
     ),
     true,
   );
   assert.equal(
     stronglyLooksLikeHostCommandLine(
+      '"C:\\node.exe" "C:\\LeafCode\\src\\index.js"',
+    ),
+    true, // product name (leafcode) counts
+  );
+  // Pre-rebrand paths still count as ours (build guard protection).
+  assert.equal(
+    stronglyLooksLikeHostCommandLine(
       '"C:\\node.exe" "C:\\OpenCodeWebUI\\src\\index.js"',
     ),
-    false,
+    true,
   );
 });

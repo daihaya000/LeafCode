@@ -8,7 +8,7 @@ rem with `type`, which is not parsed by cmd.exe.
 rem See docs\specs\bat-encoding-safety.md and docs\specs\setup-start-webui-merge.md
 rem
 rem Internal setup/start script. The single user-facing entry point is the
-rem native launcher OpenCodeWebUI.exe at the repository root, which runs this
+rem native launcher LeafCode.exe at the repository root, which runs this
 rem file via cmd.exe in the same console (see scripts\launcher\Launcher.cs).
 rem Running this file directly also works (e.g. for debugging); it simply
 rem skips the launcher's app identity (icon / Alt-Tab / taskbar pinning).
@@ -50,9 +50,9 @@ cd /d "%~dp0.."
 set "MESSAGE_DIR=%~dp0setup-messages"
 
 rem Give the console window a stable, app-like title so Alt-Tab and a taskbar
-rem pin (see scripts\create-shortcut.bat) show "OpenCode WebUI" instead of the
+rem pin (see scripts\create-shortcut.bat) show "LeafCode" instead of the
 rem generic "Command Prompt" title. Node does not touch this on Windows.
-title OpenCode WebUI
+title LeafCode
 
 rem Keep the committed root launcher in sync with its build inputs. Best
 rem effort only: if csc.exe / node are unavailable (e.g. a fresh machine
@@ -62,7 +62,7 @@ call :refresh_launcher
 if "%LEAFCODE_SETUP_COMPLETE%"=="1" goto :start_host
 call :remember_code_page
 chcp 65001 >nul 2>&1
-echo [OpenCode WebUI] Starting...
+echo [LeafCode] Starting...
 
 rem This file used to be split into a one-time setup.bat (winget / Node.js /
 rem OpenCode / dependency installs) and the old root start-webui.bat (assumed
@@ -92,7 +92,7 @@ rem so the window is left showing that stale text through the build
 rem and the host's own "Starting..."/"Production" log lines. Reassert the
 rem app title here, right before the host tail, regardless of which path
 rem (fresh install vs. LEAFCODE_SETUP_COMPLETE fast path) got here.
-title OpenCode WebUI
+title LeafCode
 set LEAFCODE_MODE=prod
 rem The launcher is the normal VPN/LAN entry point, so manage Caddy by default.
 rem Set LEAFCODE_CADDY=0 before launch to use the raw WebUI URL only.
@@ -107,7 +107,7 @@ cd host
 call node src\index.js
 set ERR=%ERRORLEVEL%
 if not "%ERR%"=="0" (
-  echo [OpenCode WebUI] Host exited with code %ERR%
+  echo [LeafCode] Host exited with code %ERR%
   call :pause_if_interactive
   exit /b %ERR%
 )
@@ -118,7 +118,7 @@ exit /b 0
 
 :failure
 set "FAIL_EXIT=%ERRORLEVEL%"
-echo [OpenCode WebUI] FAILED with exit code %FAIL_EXIT%.
+echo [LeafCode] FAILED with exit code %FAIL_EXIT%.
 call :say failure
 call :restore_code_page
 call :pause_if_interactive
@@ -151,7 +151,7 @@ rem Exit 0 = the root exe is current, 1 = missing or older than an input.
 call :pf_status
 call :pf_has launcher
 if not errorlevel 1 exit /b 0
-echo [OpenCode WebUI] Refreshing native launcher...
+echo [LeafCode] Refreshing native launcher...
 call scripts\build-launcher.bat /quiet
 exit /b 0
 
@@ -168,7 +168,7 @@ call :node_major_is_supported
 if not errorlevel 1 exit /b 0
 call :check_winget
 if errorlevel 1 exit /b 1
-echo [OpenCode WebUI] Installing Node.js LTS...
+echo [LeafCode] Installing Node.js LTS...
 call winget install --id OpenJS.NodeJS.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if errorlevel 1 goto :node_install_failed
 if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
@@ -209,14 +209,14 @@ if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\opencode.exe" (
 )
 rem Heal npm global install when only the postinstall placeholder remains.
 if exist "%APPDATA%\npm\node_modules\opencode-ai\postinstall.mjs" (
-  echo [OpenCode WebUI] Repairing OpenCode npm install...
+  echo [LeafCode] Repairing OpenCode npm install...
   call node "%APPDATA%\npm\node_modules\opencode-ai\postinstall.mjs"
   call opencode --version >nul 2>&1
   if not errorlevel 1 exit /b 0
 )
 call where winget >nul 2>&1
 if errorlevel 1 goto :install_opencode_with_npm
-echo [OpenCode WebUI] Installing OpenCode with winget...
+echo [LeafCode] Installing OpenCode with winget...
 call winget install --id SST.opencode --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if errorlevel 1 goto :install_opencode_with_npm
 call opencode --version >nul 2>&1
@@ -229,13 +229,13 @@ call :fail 4 "OpenCode is not available in this command prompt." error-4-path
 exit /b 4
 
 :install_opencode_with_npm
-echo [OpenCode WebUI] winget install failed. Falling back to npm...
+echo [LeafCode] winget install failed. Falling back to npm...
 call npm install -g opencode-ai
 if errorlevel 1 goto :opencode_install_failed
 call opencode --version >nul 2>&1
 if not errorlevel 1 exit /b 0
 if exist "%APPDATA%\npm\node_modules\opencode-ai\postinstall.mjs" (
-  echo [OpenCode WebUI] Repairing OpenCode npm install...
+  echo [LeafCode] Repairing OpenCode npm install...
   call node "%APPDATA%\npm\node_modules\opencode-ai\postinstall.mjs"
   call opencode --version >nul 2>&1
   if not errorlevel 1 exit /b 0
@@ -270,17 +270,17 @@ rem needing to refresh PATH here.
 if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\caddy.exe" exit /b 0
 call where winget >nul 2>&1
 if errorlevel 1 goto :caddy_skip_no_winget
-echo [OpenCode WebUI] Installing Caddy ^(optional reverse proxy / HTTPS^)...
+echo [LeafCode] Installing Caddy ^(optional reverse proxy / HTTPS^)...
 call winget install --id CaddyServer.Caddy --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if errorlevel 1 goto :caddy_install_failed
 exit /b 0
 
 :caddy_skip_no_winget
-echo [OpenCode WebUI] winget not found; skipping automatic Caddy install ^(optional reverse proxy^). See README for manual setup.
+echo [LeafCode] winget not found; skipping automatic Caddy install ^(optional reverse proxy^). See README for manual setup.
 exit /b 0
 
 :caddy_install_failed
-echo [OpenCode WebUI] Caddy installation failed; continuing without the optional reverse proxy. See README for manual setup.
+echo [LeafCode] Caddy installation failed; continuing without the optional reverse proxy. See README for manual setup.
 exit /b 0
 
 rem Ollama (local image analysis backend) is no longer installed at startup.
@@ -290,10 +290,10 @@ rem installs Ollama, pulls the model, and registers it as an OpenCode provider.
 :install_web
 call node scripts\check-deps.mjs "web"
 if not errorlevel 1 goto :install_web_build
-echo [OpenCode WebUI] Web dependencies changed; refreshing...
+echo [LeafCode] Web dependencies changed; refreshing...
 
 :install_web_run
-echo [OpenCode WebUI] Installing web dependencies...
+echo [LeafCode] Installing web dependencies...
 pushd web
 if errorlevel 1 goto :web_ci_failed_without_pushd
 call npm ci
@@ -308,7 +308,7 @@ if not exist "%NEXT_DIST_DIR%\BUILD_ID" goto :install_web_build_run
 rem Production rebuild (missing or stale BUILD_ID vs sources) is handled by
 rem host/src/index.js on start and on tray/WebUI restart, so a build that
 rem already exists is left alone here.
-echo [OpenCode WebUI] Existing build found; host will rebuild if sources are newer.
+echo [LeafCode] Existing build found; host will rebuild if sources are newer.
 exit /b 0
 
 :install_web_build_run
@@ -324,15 +324,15 @@ if errorlevel 1 goto :web_build_skipped
 :web_build_guard_passed
 rem scripts\build-web.mjs syncs the hard-link mirror and builds there; the
 rem guard above already ran, so it is not repeated.
-echo [OpenCode WebUI] Building web ^(first run^)...
+echo [LeafCode] Building web ^(first run^)...
 call node scripts\build-web.mjs --skip-guard
 if errorlevel 1 goto :web_build_failed
 if not exist "%NEXT_DIST_DIR%\BUILD_ID" goto :web_build_id_missing
 exit /b 0
 
 :web_build_skipped
-echo [OpenCode WebUI] A WebUI is already running; skipping the first-run build.
-echo [OpenCode WebUI] The host will reuse it, or take it over and rebuild.
+echo [LeafCode] A WebUI is already running; skipping the first-run build.
+echo [LeafCode] The host will reuse it, or take it over and rebuild.
 exit /b 0
 
 :web_ci_failed_without_pushd
@@ -357,10 +357,10 @@ exit /b 7
 :install_host
 call node scripts\check-deps.mjs "host"
 if not errorlevel 1 exit /b 0
-echo [OpenCode WebUI] Host dependencies changed; refreshing...
+echo [LeafCode] Host dependencies changed; refreshing...
 
 :install_host_run
-echo [OpenCode WebUI] Installing host dependencies...
+echo [LeafCode] Installing host dependencies...
 pushd host
 if errorlevel 1 goto :host_ci_failed_without_pushd
 call npm ci
@@ -381,10 +381,10 @@ exit /b 8
 :install_browser_bridge
 call node scripts\check-deps.mjs "browser-bridge"
 if not errorlevel 1 exit /b 0
-echo [OpenCode WebUI] Browser Bridge dependencies changed; refreshing...
+echo [LeafCode] Browser Bridge dependencies changed; refreshing...
 
 :install_browser_bridge_run
-echo [OpenCode WebUI] Installing Browser Bridge dependencies...
+echo [LeafCode] Installing Browser Bridge dependencies...
 pushd browser-bridge
 if errorlevel 1 goto :browser_bridge_ci_failed_without_pushd
 call npm ci
@@ -416,7 +416,7 @@ exit /b 10
 
 :fail
 set "FAIL_CODE=%~1"
-echo [OpenCode WebUI] ERROR %~1: %~2
+echo [LeafCode] ERROR %~1: %~2
 call :say %~3
 exit /b %FAIL_CODE%
 
@@ -440,6 +440,6 @@ exit /b 0
 if "%LEAFCODE_NONINTERACTIVE%"=="1" exit /b 0
 rem next build overwrites the console title; restore it so a failed launch
 rem does not look like a stray "next-build" window waiting on pause.
-title OpenCode WebUI
+title LeafCode
 pause
 exit /b 0

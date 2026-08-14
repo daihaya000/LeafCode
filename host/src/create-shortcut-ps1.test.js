@@ -20,7 +20,7 @@ const iconJsonPath = join(repoRoot, "host", "src", "icon.json");
 const isWindows = process.platform === "win32";
 
 /** Build a fake repo layout (scripts/create-shortcut.ps1 + host/src/icon.json,
- * optionally the root OpenCodeWebUI.exe and a stub scripts/build-launcher.bat)
+ * optionally the root LeafCode.exe and a stub scripts/build-launcher.bat)
  * so tests control exactly which launcher target is picked, independent of
  * the real repo state. */
 function makeFakeRepo({ withExe, buildLauncherBody }) {
@@ -31,7 +31,7 @@ function makeFakeRepo({ withExe, buildLauncherBody }) {
   copyFileSync(iconJsonPath, join(fakeRepo, "host", "src", "icon.json"));
   if (withExe) {
     // Content does not matter: the script only checks Test-Path existence.
-    writeFileSync(join(fakeRepo, "OpenCodeWebUI.exe"), "stub");
+    writeFileSync(join(fakeRepo, "LeafCode.exe"), "stub");
   }
   if (buildLauncherBody !== undefined) {
     writeFileSync(join(fakeRepo, "scripts", "build-launcher.bat"), buildLauncherBody);
@@ -58,7 +58,7 @@ function runScript(fakeScriptPath, desktopDir, iconDir) {
 }
 
 test(
-  "create-shortcut.ps1 targets the root OpenCodeWebUI.exe when present",
+  "create-shortcut.ps1 targets the root LeafCode.exe when present",
   { skip: !isWindows },
   () => {
     const fakeRepo = makeFakeRepo({ withExe: true });
@@ -68,9 +68,9 @@ test(
       const result = runScript(join(fakeRepo, "scripts", "create-shortcut.ps1"), out, out);
       assert.equal(result.status, 0, `stderr: ${result.stderr}\nstdout: ${result.stdout}`);
       assert.match(result.stdout, /SHORTCUT_PATH=/);
-      assert.match(result.stdout, /TARGET_PATH=.*OpenCodeWebUI\.exe/);
+      assert.match(result.stdout, /TARGET_PATH=.*LeafCode\.exe/);
       assert.match(result.stdout, /ICON_PATH=/);
-      assert.ok(existsSync(join(out, "OpenCode WebUI.lnk")), "expected the .lnk shortcut to be written");
+      assert.ok(existsSync(join(out, "LeafCode.lnk")), "expected the .lnk shortcut to be written");
 
       const iconPath = join(out, "app.ico");
       assert.ok(existsSync(iconPath), "expected app.ico to be written");
@@ -95,15 +95,15 @@ test(
     // the exe at the repo root, exactly where build-launcher.bat outputs it.
     const fakeRepo = makeFakeRepo({
       withExe: false,
-      buildLauncherBody: "@echo off\r\ntype nul > \"%~dp0..\\OpenCodeWebUI.exe\"\r\nexit /b 0\r\n",
+      buildLauncherBody: "@echo off\r\ntype nul > \"%~dp0..\\LeafCode.exe\"\r\nexit /b 0\r\n",
     });
     const out = join(fakeRepo, "out");
     mkdirSync(out, { recursive: true });
     try {
       const result = runScript(join(fakeRepo, "scripts", "create-shortcut.ps1"), out, out);
       assert.equal(result.status, 0, `stderr: ${result.stderr}\nstdout: ${result.stdout}`);
-      assert.match(result.stdout, /TARGET_PATH=.*OpenCodeWebUI\.exe/);
-      assert.ok(existsSync(join(out, "OpenCode WebUI.lnk")), "expected the .lnk shortcut to be written");
+      assert.match(result.stdout, /TARGET_PATH=.*LeafCode\.exe/);
+      assert.ok(existsSync(join(out, "LeafCode.lnk")), "expected the .lnk shortcut to be written");
     } finally {
       rmSync(fakeRepo, { recursive: true, force: true });
     }
@@ -124,7 +124,7 @@ test(
       const result = runScript(join(fakeRepo, "scripts", "create-shortcut.ps1"), out, out);
       assert.notEqual(result.status, 0, "expected a non-zero exit when the launcher cannot be built");
       assert.match(result.stderr, /Launcher not found/i);
-      assert.ok(!existsSync(join(out, "OpenCode WebUI.lnk")), "must not create a shortcut on failure");
+      assert.ok(!existsSync(join(out, "LeafCode.lnk")), "must not create a shortcut on failure");
     } finally {
       rmSync(fakeRepo, { recursive: true, force: true });
     }
@@ -149,7 +149,7 @@ test(
       const result = runScript(fakeScriptPath, outDir, outDir);
       assert.notEqual(result.status, 0, "expected a non-zero exit when icon.json is absent");
       assert.match(result.stderr, /icon\.json/i);
-      assert.ok(!existsSync(join(outDir, "OpenCode WebUI.lnk")), "must not create a shortcut on failure");
+      assert.ok(!existsSync(join(outDir, "LeafCode.lnk")), "must not create a shortcut on failure");
     } finally {
       rmSync(fakeRepo, { recursive: true, force: true });
     }

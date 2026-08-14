@@ -213,8 +213,8 @@ test("setup message files are UTF-8 without BOM and use CRLF", () => {
         continue;
       }
       assert.ok(
-        line.startsWith("[OpenCode WebUI] "),
-        `${name} line ${i + 1} does not start with '[OpenCode WebUI] ': ${line}`,
+        line.startsWith("[LeafCode] "),
+        `${name} line ${i + 1} does not start with '[LeafCode] ': ${line}`,
       );
     }
   }

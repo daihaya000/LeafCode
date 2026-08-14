@@ -381,7 +381,7 @@ function buildTools(server, store) {
 export function createMemoryMcpServer({ dbPath: dbPathValue, workspaceId, writeApproval = false }) {
   const db = openMemoryDb(dbPathValue);
   const store = createMemoryStore(db, workspaceId, { writeApproval });
-  const server = new McpServer({ name: 'opencode-webui-memory', version: '0.1.0' });
+  const server = new McpServer({ name: 'leafcode-memory', version: '0.1.0' });
   buildTools(server, store);
   return { server, db };
 }

@@ -1,8 +1,8 @@
-# Creates a Desktop shortcut for OpenCode WebUI so it can be identified and
+# Creates a Desktop shortcut for LeafCode so it can be identified and
 # pinned to the taskbar with a proper name and icon instead of a generic
 # "cmd.exe" / "Command Prompt" entry.
 #
-# Targets OpenCodeWebUI.exe at the repository root: the single entry point,
+# Targets LeafCode.exe at the repository root: the single entry point,
 # committed to git and rebuilt by scripts\build-launcher.bat when its inputs
 # are newer. Explorer only reliably offers "Pin to taskbar" for a shortcut
 # whose target is a real .exe (support for a shortcut targeting a .bat/.cmd
@@ -41,7 +41,7 @@ $iconJson = Get-Content -LiteralPath $iconJsonPath -Raw | ConvertFrom-Json
 $iconBytes = [Convert]::FromBase64String($iconJson.base64)
 [System.IO.File]::WriteAllBytes($iconPath, $iconBytes)
 
-$exePath = Join-Path $repoRoot "OpenCodeWebUI.exe"
+$exePath = Join-Path $repoRoot "LeafCode.exe"
 
 if (-not (Test-Path -LiteralPath $exePath)) {
     # The exe is committed to git, so a missing copy means it was deleted
@@ -58,7 +58,7 @@ $targetPath = $exePath
 # directly rather than the standalone .ico copy above.
 $shortcutIconLocation = "$exePath,0"
 
-$shortcutPath = Join-Path $DesktopDir "OpenCode WebUI.lnk"
+$shortcutPath = Join-Path $DesktopDir "LeafCode.lnk"
 
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
@@ -66,7 +66,7 @@ $shortcut.TargetPath = $targetPath
 $shortcut.WorkingDirectory = $repoRoot
 $shortcut.IconLocation = $shortcutIconLocation
 $shortcut.WindowStyle = 1
-$shortcut.Description = "OpenCode WebUI"
+$shortcut.Description = "LeafCode"
 $shortcut.Save()
 
 Write-Output "SHORTCUT_PATH=$shortcutPath"

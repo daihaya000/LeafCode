@@ -32,14 +32,14 @@ test("resolveMirrorRoot: explicit LEAFCODE_BUILD_DIR wins", () => {
 
 test("resolveMirrorRoot: separates installations by path so two checkouts never collide", () => {
   const env = { LOCALAPPDATA: join("C:", "Users", "t", "AppData", "Local") };
-  const a = resolveMirrorRoot(env, join("C:", "one", "OpenCodeWebUI"));
-  const b = resolveMirrorRoot(env, join("C:", "two", "OpenCodeWebUI"));
+  const a = resolveMirrorRoot(env, join("C:", "one", "LeafCode"));
+  const b = resolveMirrorRoot(env, join("C:", "two", "LeafCode"));
   assert.notEqual(a, b);
-  assert.ok(a.startsWith(join(env.LOCALAPPDATA, "opencode-webui", "build")));
+  assert.ok(a.startsWith(join(env.LOCALAPPDATA, "leafcode", "build")));
 });
 
 test("mirrorSlug: case and slash differences of the same path give the same slug", () => {
-  assert.equal(mirrorSlug("C:\\Repo\\OpenCodeWebUI"), mirrorSlug("c:/repo/opencodewebui"));
+  assert.equal(mirrorSlug("C:\\Repo\\LeafCode"), mirrorSlug("c:/repo/leafcode"));
 });
 
 test("mirrorDistDir stays inside the mirrored project (the Turbopack constraint)", () => {

@@ -3,7 +3,7 @@ import os from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
-const testDataDir = mkdtempSync(path.join(os.tmpdir(), "opencode-webui-memory-"));
+const testDataDir = mkdtempSync(path.join(os.tmpdir(), "leafcode-memory-"));
 const previousAppData = process.env.APPDATA;
 const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(testDataDir);
 process.env.APPDATA = testDataDir;

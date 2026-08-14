@@ -1,2 +1,2 @@
-[OpenCode WebUI] OpenCodeがこのコマンドプロンプトで利用できません。
-[OpenCode WebUI] 復旧案内: OpenCode Docs (https://opencode.ai/docs) を確認し、必要なら再ログインしてから再実行してください。
+[LeafCode] OpenCodeがこのコマンドプロンプトで利用できません。
+[LeafCode] 復旧案内: OpenCode Docs (https://opencode.ai/docs) を確認し、必要なら再ログインしてから再実行してください。

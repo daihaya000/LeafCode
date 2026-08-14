@@ -65,7 +65,7 @@ export function createMcpServer({ brokerClient }) {
   if (!brokerClient || typeof brokerClient.call !== 'function') {
     throw new TypeError('Broker client is required');
   }
-  const server = new McpServer({ name: 'opencode-webui-browser-bridge', version: '0.1.0' });
+  const server = new McpServer({ name: 'leafcode-browser-bridge', version: '0.1.0' });
   registerReadTool(server, brokerClient, BrowserToolName.STATUS, 'Get Browser Bridge connection status.', z.object({}).strict());
   registerReadTool(server, brokerClient, BrowserToolName.LIST_TABS, 'List explicitly shared browser tabs.', z.object({}).strict());
   registerReadTool(server, brokerClient, BrowserToolName.SNAPSHOT, 'Read a privacy-filtered accessibility snapshot of a shared tab.', z.object({ tabId: TAB_ID_SCHEMA }).strict());

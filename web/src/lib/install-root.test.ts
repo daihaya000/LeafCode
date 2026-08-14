@@ -14,8 +14,8 @@ describe("installationRoot", () => {
 
   it("prefers LEAFCODE_INSTALL_ROOT so a mirrored server still targets the install", () => {
     existsSyncMock.mockReturnValue(true);
-    process.env.LEAFCODE_INSTALL_ROOT = join("C:", "repo", "OpenCodeWebUI");
-    expect(installationRoot()).toBe(resolve(join("C:", "repo", "OpenCodeWebUI")));
+    process.env.LEAFCODE_INSTALL_ROOT = join("C:", "repo", "LeafCode");
+    expect(installationRoot()).toBe(resolve(join("C:", "repo", "LeafCode")));
     expect(existsSyncMock).not.toHaveBeenCalled();
   });
 

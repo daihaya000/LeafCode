@@ -56,10 +56,12 @@ export function looksLikeHostCommandLine(commandLine) {
  * Stricter identity check used when CreationDate is unavailable. Requires the
  * command line to reference the host directory or product name, not just any
  * node process running src/index.js (which could match unrelated apps).
+ * Matches both LeafCode and the legacy OpenCodeWebUI path so a pre-rebrand
+ * host still counts as "ours" (build guard protection).
  */
 export function stronglyLooksLikeHostCommandLine(commandLine) {
   return (
     looksLikeHostCommandLine(commandLine) &&
-    (/host[\\/]/i.test(commandLine) || /opencode-webui/i.test(commandLine))
+    (/host[\\/]/i.test(commandLine) || /leafcode|opencode[-_]?webui/i.test(commandLine))
   );
 }

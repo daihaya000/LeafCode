@@ -140,7 +140,7 @@ test('getCommandLineMap returns empty on failure and for no pids', () => {
 });
 
 test('makeOwnedWebListenerPredicate identifies our next start listener', () => {
-  const webDir = 'C:\\OpenCodeWebUI\\web';
+  const webDir = 'C:\\LeafCode\\web';
   const cmdline = `"C:\\node.exe" "${webDir}\\node_modules\\next\\dist\\bin\\next" start --port 3000`;
   const predicate = makeOwnedWebListenerPredicate([8123], webDir, {
     runPowerShell: () =>

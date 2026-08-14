@@ -1,6 +1,6 @@
-// Native launcher for OpenCode WebUI.
+// Native launcher for LeafCode.
 //
-// The compiled OpenCodeWebUI.exe lives at the repository root and is the
+// The compiled LeafCode.exe lives at the repository root and is the
 // single entry point for the app (double-click / shortcut / taskbar pin).
 // It is tracked in git so a fresh clone can start without building anything
 // first; scripts\build-launcher.bat regenerates it from this source with the
@@ -34,7 +34,7 @@ internal static class Launcher
     {
         try
         {
-            Console.Title = "OpenCode WebUI";
+            Console.Title = "LeafCode";
 
             // The exe is committed at the repository root, so its own directory
             // is the repo root and the internal batch lives under scripts\.
@@ -50,9 +50,9 @@ internal static class Launcher
                 // elsewhere is the most common way to hit this, so say so
                 // directly instead of leaving the user with a bare path.
                 Console.Error.WriteLine(
-                    "This exe only works from inside a full clone of the OpenCodeWebUI " +
+                    "This exe only works from inside a full clone of the LeafCode " +
                     "repository (the scripts, host, and web folders must sit next to it). " +
-                    "If you copied only OpenCodeWebUI.exe somewhere else, re-clone the " +
+                    "If you copied only LeafCode.exe somewhere else, re-clone the " +
                     "repository and run the exe from its root instead.");
                 return Fail(1);
             }
@@ -83,7 +83,7 @@ internal static class Launcher
             // cmd.exe cannot be launched) would otherwise print a stack trace
             // and exit before a double-click launch's freshly created console
             // window can be read. Report it plainly and pause instead.
-            Console.Error.WriteLine("OpenCodeWebUI.exe failed to start: " + ex.Message);
+            Console.Error.WriteLine("LeafCode.exe failed to start: " + ex.Message);
             return Fail(1);
         }
     }

@@ -28,11 +28,11 @@ deploy/.caddy/
 # Synced from repo-root addons/*/public (npm run sync:addons)
 web/public/addons/
 
-# Native launcher: the entry-point exe itself (OpenCodeWebUI.exe) is tracked
+# Native launcher: the entry-point exe itself (LeafCode.exe) is tracked
 # at the repository root so a fresh clone can start without building anything.
 # scripts/build-launcher.bat regenerates it from scripts/launcher/Launcher.cs
 # + host/src/icon.json; only its transient build artifacts stay ignored.
-OpenCodeWebUI.exe.old
+LeafCode.exe.old
 scripts/launcher/*.exe
 scripts/launcher/*.ico
 scripts/launcher/*.obj

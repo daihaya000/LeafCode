@@ -1,2 +1,2 @@
-[OpenCode WebUI] Node.jsがこのコマンドプロンプトで利用できません。
-[OpenCode WebUI] 復旧案内: 再ログインまたはPCを再起動してから再実行してください。
+[LeafCode] Node.jsがこのコマンドプロンプトで利用できません。
+[LeafCode] 復旧案内: 再ログインまたはPCを再起動してから再実行してください。

@@ -8,11 +8,11 @@
 オンボーディングになっている。ユーザー指示によりこれを統合し、**`setup.bat` を削除して
 その全ロジックを `start-webui.bat` 1本へ完全吸収する**（ユーザーが選択した3案中の
 「setup.batを廃止しstart-webui.batへ完全吸収」案）。以後、利用者は常に `start-webui.bat`
-（または `scripts/build-launcher.bat` が生成する `OpenCodeWebUI.exe` 経由のデスクトップ
+（または `scripts/build-launcher.bat` が生成する `LeafCode.exe` 経由のデスクトップ
 ショートカット）を実行するだけでよくなる。
 
 前提として、`start-webui.bat` は前回のセッションで「直接実行してもネイティブ.exeランチャー
-（`scripts/launcher/OpenCodeWebUI.exe`）経由になり、未ビルドなら自動ビルドする」機能を
+（`scripts/launcher/LeafCode.exe`）経由になり、未ビルドなら自動ビルドする」機能を
 既に持つ（`LEAFCODE_LAUNCHER=1` でループを防止）。今回の統合はこの機能に影響しない
 （ルーティング判定はファイル冒頭のまま維持し、その後段に吸収したセットアップ処理を続ける）。
 
@@ -57,7 +57,7 @@
 
 ### 削除される旧来の分岐（今回の統合で不要になる副作用）
 
-- `setup.bat` が行っていた「`start "OpenCode WebUI" cmd /c call start-webui.bat` で
+- `setup.bat` が行っていた「`start "LeafCode" cmd /c call start-webui.bat` で
   **別コンソールを非同期起動**し、自身は `[Setup] Setup completed.` を出して即 `exit /b 0`
   する」という二重コンソール構成は廃止する。統合後は同一コンソール・同一プロセスの
   延長で `cd host && node src\index.js`（現行 `start-webui.bat` の末尾と同じ、フォアグラウンド）
@@ -67,7 +67,7 @@
 ### メッセージ文言の更新
 
 - `scripts/setup-messages/*.txt` および ASCII 要約行のプレフィックスを `[Setup] ` から
-  `[OpenCode WebUI] ` に統一する（`start-webui.bat` の既存 echo と揃える。「setup」という
+  `[LeafCode] ` に統一する（`start-webui.bat` の既存 echo と揃える。「setup」という
   別工程が無くなるため）。
 - `success.txt` の「トレイアイコンが表示されない場合は start-webui.bat を手動で実行して
   ください」、`guard-stopped.txt` の「セットアップ完了後にトレイまたは start-webui.bat から
@@ -79,7 +79,7 @@
 
 - 削除: `setup.bat`
 - 変更: `start-webui.bat`（goto/label ベースへ再構成し、上記ロジックを吸収）
-- 変更: `scripts/setup-messages/*.txt`（`[Setup] ` → `[OpenCode WebUI] `、文言更新）
+- 変更: `scripts/setup-messages/*.txt`（`[Setup] ` → `[LeafCode] `、文言更新）
 - 変更: `host/src/setup-bat.test.js` → `host/src/start-webui-bat.test.js` へ改名しつつ、
   新しい単一スクリプトの挙動（chcp/エラーコード/冪等スキップ/ホスト起動テール）を検証する
   内容に書き換え。既存の `start-webui-launcher-routing.test.js` とはテスト対象領域が
@@ -87,7 +87,7 @@
   処理する形にする。
 - 変更: `host/src/bat-encoding.test.js`
   - メッセージキー相互参照テストの対象を `setup.bat` から `start-webui.bat` へ変更
-  - `[Setup] ` プレフィックス検証を `[OpenCode WebUI] ` へ変更
+  - `[Setup] ` プレフィックス検証を `[LeafCode] ` へ変更
 - 変更: `README.md`（起動手順を「`start-webui.bat` を実行するだけ」の1ステップに書き換え、
   終了コード表の説明文言更新）
 - 変更: `.github/workflows/encoding-check.yml`（コメント文言の setup.bat 言及を更新）
@@ -103,7 +103,7 @@
    該当する `npm ci`/`npm run build`/guard 呼び出しは行われず、現行同様に高速に
    host 起動テールへ進む
 4. `host` の `npm test` が全件通る（新規テスト含む）
-5. `npm run test:encoding` が全件通る（`[OpenCode WebUI] ` プレフィックス、CRLF/ASCII、
+5. `npm run test:encoding` が全件通る（`[LeafCode] ` プレフィックス、CRLF/ASCII、
    README fence を含む）
 6. README・`.github/workflows/encoding-check.yml` に `setup.bat` への言及が残っていない
    （`docs/specs/` 内の歴史的記録・過去バグ台帳を除く）

@@ -90,7 +90,7 @@ async function hostControlIsHealthy(controlUrl, doFetch, timeoutMs) {
       // to stop the WebUI. Unrecognised bodies fall through to /stop/webui,
       // which fails closed with host-outdated.
       if (body && typeof body.service === "string") {
-        return body.service === "opencode-webui-host";
+        return body.service === "leafcode-host";
       }
     } catch {
       // Not JSON — let /stop/webui decide.
@@ -213,7 +213,7 @@ export async function main(argv = process.argv.slice(2)) {
   // nothing to restart. Kept for backward compatibility with older build.bat.
   if (argv.includes("--restart")) {
     console.log(
-      "[OpenCode WebUI] --restart is a no-op; build.bat no longer stops the WebUI. Start it from the tray or OpenCodeWebUI.exe if needed.",
+      "[LeafCode] --restart is a no-op; build.bat no longer stops the WebUI. Start it from the tray or LeafCode.exe if needed.",
     );
     return;
   }
@@ -225,7 +225,7 @@ export async function main(argv = process.argv.slice(2)) {
     const result = inspectProductionWebUi({ port });
     if (result.state === "absent") return;
     console.error(
-      `[OpenCode WebUI] --stop is no longer supported. Stop the running production WebUI (port ${port}) from the tray or OpenCodeWebUI.exe, then re-run build.bat.`,
+      `[LeafCode] --stop is no longer supported. Stop the running production WebUI (port ${port}) from the tray or LeafCode.exe, then re-run build.bat.`,
     );
     process.exitCode = 1;
     return;
@@ -236,14 +236,14 @@ export async function main(argv = process.argv.slice(2)) {
 
   if (result.state === "unknown") {
     console.error(
-      `[OpenCode WebUI] A listener on port ${port} could not be identified. Build was cancelled to protect the running production WebUI.`,
+      `[LeafCode] A listener on port ${port} could not be identified. Build was cancelled to protect the running production WebUI.`,
     );
     process.exitCode = 1;
     return;
   }
 
   console.error(
-    `[OpenCode WebUI] Production WebUI is running on port ${port} (PID ${result.pid}). Stop it from the tray or OpenCodeWebUI.exe before building.`,
+    `[LeafCode] Production WebUI is running on port ${port} (PID ${result.pid}). Stop it from the tray or LeafCode.exe before building.`,
   );
   process.exitCode = 1;
 }
@@ -251,7 +251,7 @@ export async function main(argv = process.argv.slice(2)) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((err) => {
     console.error(
-      `[OpenCode WebUI] Production WebUI guard failed: ${err instanceof Error ? err.message : String(err)}`,
+      `[LeafCode] Production WebUI guard failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     process.exitCode = 1;
   });

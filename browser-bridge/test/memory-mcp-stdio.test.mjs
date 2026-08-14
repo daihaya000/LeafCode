@@ -97,7 +97,7 @@ async function connectClient(transport) {
 }
 
 test('memory MCP: add, search (FTS + bump), update, delete flows', async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'leafcode-memory-mcp-'));
   const db = new Database(path.join(dir, 'webui.db'));
   createMemorySchema(db);
   db.pragma('journal_mode = WAL');
@@ -198,7 +198,7 @@ test('memory MCP: add, search (FTS + bump), update, delete flows', async (t) => 
 });
 
 test('memory MCP: validation and not-found errors', async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'leafcode-memory-mcp-'));
   const db = new Database(path.join(dir, 'webui.db'));
   createMemorySchema(db);
   db.pragma('journal_mode = WAL');
@@ -248,7 +248,7 @@ test('memory MCP: validation and not-found errors', async (t) => {
 });
 
 test('memory MCP: cannot modify a memory in another workspace', async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'leafcode-memory-mcp-'));
   const db = new Database(path.join(dir, 'webui.db'));
   createMemorySchema(db);
   db.prepare(
@@ -275,7 +275,7 @@ test('memory MCP: cannot modify a memory in another workspace', async (t) => {
 });
 
 test('memory MCP: write approval gate stages agent writes as candidates', async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'leafcode-memory-mcp-'));
   const db = new Database(path.join(dir, 'webui.db'));
   createMemorySchema(db);
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('memory.write_approval', '1');
@@ -319,7 +319,7 @@ test('memory MCP: write approval gate stages agent writes as candidates', async 
 });
 
 test('memory MCP: reads and writes the project scope, not the single task', async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'leafcode-memory-mcp-'));
   const db = new Database(path.join(dir, 'webui.db'));
   createMemorySchema(db);
   createWorkspaceSchema(db);
@@ -378,7 +378,7 @@ test('memory MCP: reads and writes the project scope, not the single task', asyn
 });
 
 test('memory MCP: re-adding a stored proposition returns the existing row', async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'leafcode-memory-mcp-'));
   const db = new Database(path.join(dir, 'webui.db'));
   createMemorySchema(db);
   db.pragma('journal_mode = WAL');

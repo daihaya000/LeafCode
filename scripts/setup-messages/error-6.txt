@@ -1,2 +1,2 @@
-[OpenCode WebUI] webのビルドに失敗しました。
-[OpenCode WebUI] 復旧案内: 表示されたビルドエラーとNode.jsのバージョンを確認してください。
+[LeafCode] webのビルドに失敗しました。
+[LeafCode] 復旧案内: 表示されたビルドエラーとNode.jsのバージョンを確認してください。

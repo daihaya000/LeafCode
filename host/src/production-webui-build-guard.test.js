@@ -11,7 +11,7 @@ import {
 } from "../../scripts/production-webui-build-guard.mjs";
 import { resolveHostControlUrl } from "../../scripts/lib/host-control.mjs";
 
-const webDir = "C:\\workspace\\OpenCodeWebUI\\web";
+  const webDir = "C:\\workspace\\LeafCode\\web";
 const nextStart = `"C:\\Program Files\\nodejs\\node.exe" "${webDir}\\node_modules\\next\\dist\\bin\\next" start --port 3000`;
 
 test("production build guard identifies only this WebUI's next start listener", () => {
@@ -107,7 +107,7 @@ function fakeFetch(routes) {
 const healthyHost = {
   ok: true,
   status: 200,
-  json: async () => ({ ok: true, service: 'opencode-webui-host' }),
+  json: async () => ({ ok: true, service: 'leafcode-host' }),
 };
 
 test("stopProductionWebUi stops through the host control plane", async () => {

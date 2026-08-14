@@ -11,8 +11,8 @@ set QUIET=
 if /i "%~1"=="/quiet" set QUIET=1
 
 set LAUNCHER_DIR=%CD%\scripts\launcher
-set OUT_EXE=%CD%\OpenCodeWebUI.exe
-set OLD_EXE=%CD%\OpenCodeWebUI.exe.old
+set OUT_EXE=%CD%\LeafCode.exe
+set OLD_EXE=%CD%\LeafCode.exe.old
 set CSC=
 
 rem Prefer the .NET Framework compiler that ships with Windows (no extra
@@ -27,18 +27,18 @@ rem empty PATH-search result made cmd choke on the expanded line, so this
 rem intentionally stays limited to the two well-known Framework paths above.
 
 if not defined CSC (
-  echo [OpenCode WebUI] C# compiler ^(csc.exe^) not found.
-  echo [OpenCode WebUI] Install .NET Framework 4.x ^(Windows Features^) or the .NET SDK, then retry.
+  echo [LeafCode] C# compiler ^(csc.exe^) not found.
+  echo [LeafCode] Install .NET Framework 4.x ^(Windows Features^) or the .NET SDK, then retry.
   if not defined QUIET pause
   exit /b 1
 )
 
-echo [OpenCode WebUI] Using compiler: %CSC%
+echo [LeafCode] Using compiler: %CSC%
 
-echo [OpenCode WebUI] Extracting app icon from host\src\icon.json...
+echo [LeafCode] Extracting app icon from host\src\icon.json...
 node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('host/src/icon.json','utf8'));fs.writeFileSync('scripts/launcher/app.ico', Buffer.from(j.base64,'base64'));"
 if errorlevel 1 (
-  echo [OpenCode WebUI] Icon extraction failed. Run 'node scripts\gen-icons.mjs' first.
+  echo [LeafCode] Icon extraction failed. Run 'node scripts\gen-icons.mjs' first.
   if not defined QUIET pause
   exit /b 1
 )
@@ -53,23 +53,23 @@ if exist "%OLD_EXE%" del /f /q "%OLD_EXE%" >nul 2>&1
 if exist "%OUT_EXE%" (
   move /y "%OUT_EXE%" "%OLD_EXE%" >nul
   if errorlevel 1 (
-    echo [OpenCode WebUI] Could not move the current exe aside; is another build running?
+    echo [LeafCode] Could not move the current exe aside; is another build running?
     if not defined QUIET pause
     exit /b 1
   )
 )
 
-echo [OpenCode WebUI] Compiling OpenCodeWebUI.exe ^(repo root^)...
+echo [LeafCode] Compiling LeafCode.exe ^(repo root^)...
 "%CSC%" /nologo /target:exe /platform:anycpu /out:"%OUT_EXE%" /win32icon:"%LAUNCHER_DIR%\app.ico" "%LAUNCHER_DIR%\Launcher.cs"
 if errorlevel 1 (
-  echo [OpenCode WebUI] Compile failed. See the errors above.
+  echo [LeafCode] Compile failed. See the errors above.
   if exist "%OLD_EXE%" move /y "%OLD_EXE%" "%OUT_EXE%" >nul
   if not defined QUIET pause
   exit /b 1
 )
 if exist "%OLD_EXE%" del /f /q "%OLD_EXE%" >nul 2>&1
 
-echo [OpenCode WebUI] Built: %OUT_EXE%
-echo [OpenCode WebUI] Next: run scripts\create-shortcut.bat to (re)create the Desktop shortcut.
+echo [LeafCode] Built: %OUT_EXE%
+echo [LeafCode] Next: run scripts\create-shortcut.bat to (re)create the Desktop shortcut.
 if not defined QUIET pause
 endlocal

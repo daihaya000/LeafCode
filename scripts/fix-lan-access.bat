@@ -1,7 +1,7 @@
 @echo off
 rem KEEP THIS FILE ASCII-ONLY (bytes 0x00-0x7F, CRLF, no BOM).
 rem See docs\specs\bat-encoding-safety.md
-:: Fix LAN access for OpenCode WebUI (port 3000)
+:: Fix LAN access for LeafCode (port 3000)
 :: Run as Administrator
 
 echo [1] Set network profiles to Private...
@@ -9,7 +9,8 @@ powershell -NoProfile -Command "Get-NetConnectionProfile | ForEach-Object { try 
 
 echo [2] Allow TCP 3000 inbound...
 netsh advfirewall firewall delete rule name="OpenCode WebUI" >nul 2>&1
-netsh advfirewall firewall add rule name="OpenCode WebUI" dir=in action=allow protocol=TCP localport=3000 profile=any enable=yes
+netsh advfirewall firewall delete rule name="LeafCode" >nul 2>&1
+netsh advfirewall firewall add rule name="LeafCode" dir=in action=allow protocol=TCP localport=3000 profile=any enable=yes
 if errorlevel 1 (
   echo [FAIL] firewall port rule
 ) else (
@@ -18,7 +19,8 @@ if errorlevel 1 (
 
 echo [3] Allow node.exe inbound...
 netsh advfirewall firewall delete rule name="OpenCode WebUI Node" >nul 2>&1
-netsh advfirewall firewall add rule name="OpenCode WebUI Node" dir=in action=allow program="C:\Program Files\nodejs\node.exe" enable=yes profile=any
+netsh advfirewall firewall delete rule name="LeafCode Node" >nul 2>&1
+netsh advfirewall firewall add rule name="LeafCode Node" dir=in action=allow program="C:\Program Files\nodejs\node.exe" enable=yes profile=any
 if errorlevel 1 (
   echo [FAIL] node.exe rule
 ) else (

@@ -4,7 +4,7 @@
 
 ## 1. 背景
 
-現行の OpenCodeWebUI は、`Project → Workspace（UI上のTask）→ OpenCode Session` を中心に、会話、差分、承認、質問、Goal Loop、子Session表示を提供している。
+現行の LeafCode は、`Project → Workspace（UI上のTask）→ OpenCode Session` を中心に、会話、差分、承認、質問、Goal Loop、子Session表示を提供している。
 
 一方、UI実装を行った後に独立した Code Review と Visual Judge を並列実行し、指摘を実装担当へ戻す処理は、現在はメインAgentのプロンプトと `task` tool に委ねられている。この方法では、実行順、担当モデル、再試行、承認待ち、コスト、レビュー結果をTask全体として永続化・再開・可視化できない。
 

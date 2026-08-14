@@ -4,7 +4,7 @@
 
 ## 背景・目的
 
-別環境で `OpenCodeWebUI.exe` を実行すると「コンソールが一瞬表示されて閉じる・何も起きない」
+別環境で `LeafCode.exe` を実行すると「コンソールが一瞬表示されて閉じる・何も起きない」
 という報告があった（詳細なエラーコード等の追加情報はユーザー側でも不明）。
 
 `scripts/launcher/Launcher.cs`（コンソールサブシステムの薄いラッパー exe）の現行実装を
@@ -34,7 +34,7 @@
 ### 変更1: `scripts/launcher/Launcher.cs` — 早期失敗時のポーズ導入
 
 - `Main()` 全体を `try/catch (Exception ex)` で包む。catch節では
-  `Console.Error.WriteLine("OpenCodeWebUI.exe failed to start: " + ex.Message)` を出力し、
+  `Console.Error.WriteLine("LeafCode.exe failed to start: " + ex.Message)` を出力し、
   失敗時共通のポーズ処理へ渡してから `return 1`。
 - `scripts\start-webui.bat not found` の既存分岐にも同じポーズ処理を適用する。
 - ポーズ処理: 環境変数 `LEAFCODE_NONINTERACTIVE` が `"1"` でない場合のみ、
@@ -45,7 +45,7 @@
 - `scripts\start-webui.bat not found` メッセージに、**原因の当たりを付けやすい一文**を追記する:
   「この exe はリポジトリ直下に repo 全体（scripts/, host/, web/）と共に配置する必要があります。
   exe だけをコピーした場合はこのエラーになります。」（英語1行 + 日本語1行の二段、
-  bat の `[OpenCode WebUI] ERROR n: ...` → `type` 詳細という既存方式に合わせる）。
+  bat の `[LeafCode] ERROR n: ...` → `type` 詳細という既存方式に合わせる）。
 
 ### 変更2: `host/src/launcher-exe.test.js` — 回帰テスト追加
 
@@ -57,9 +57,9 @@
 - 新規: 正常系（既存の「exit code 42 を転送する」テスト）が今回の変更後も無変更で
   通ることを確認する（既存テストの再実行で足りる。新規追加は不要）。
 
-### 変更3: `scripts/launcher/Launcher.cs` の変更をリポジトリ直下の `OpenCodeWebUI.exe` へ反映
+### 変更3: `scripts/launcher/Launcher.cs` の変更をリポジトリ直下の `LeafCode.exe` へ反映
 
-- `scripts\build-launcher.bat` で再ビルドし、`OpenCodeWebUI.exe` を再コミットする
+- `scripts\build-launcher.bat` で再ビルドし、`LeafCode.exe` を再コミットする
   （README記載の「新規cloneでもダブルクリックで即起動できる」という前提を維持するため、
   ビルド成果物のコミットは必須。`start-webui.bat` 側の自動再ビルド機構に頼ると、
   今回のバグ自体でその機構に到達できないケースがあるため）。
@@ -68,7 +68,7 @@
 
 - `*.exe binary` と `*.ico binary` を追記する。現状は git の内容ベース自動判定に
   依存しており通常は問題ないが、将来 contributor 側の `core.autocrlf` 設定次第で
-  コミット済み `OpenCodeWebUI.exe` が意図せず改変されるリスクを明示的に閉じる
+  コミット済み `LeafCode.exe` が意図せず改変されるリスクを明示的に閉じる
   （「別環境で動かない」の別経路をあらかじめ塞ぐ、影響範囲の小さい保険）。
 
 ### 変更5: `README.md` — exeの動作条件（前提条件）セクション新設
@@ -76,7 +76,7 @@
 現状README各所に分散している前提を、起動手順の直前に集約したセクションとして追加する:
 
 - OS: Windows 10 (1809以降) または Windows 11、x64
-- **`OpenCodeWebUI.exe` は単体でコピーせず、`scripts/` `host/` `web/` を含む
+- **`LeafCode.exe` は単体でコピーせず、`scripts/` `host/` `web/` を含む
   リポジトリ全体と同じ場所（直下）に置いたまま実行する**こと
   （exe単体をUSB/別PCへコピーすると起動時に即エラーになる — 今回追加するメッセージへの導線）
 - 初回実行はインターネット接続必須（winget/npm/OpenCode CLIのダウンロード）
@@ -94,7 +94,7 @@
    「exeだけをコピーした場合はこのエラーになる」旨の追加メッセージが含まれる
 3. `LEAFCODE_NONINTERACTIVE=1` 環境下では上記と同じ exit code / メッセージのまま、
    テスト実行がハングしない
-4. リポジトリ直下の `OpenCodeWebUI.exe` が変更後の `Launcher.cs` から再ビルドされている
+4. リポジトリ直下の `LeafCode.exe` が変更後の `Launcher.cs` から再ビルドされている
    （`scripts\build-launcher.bat` 実行結果をコミット）
 5. `.gitattributes` に `*.exe binary` / `*.ico binary` が追加されている
 6. README に「exeの動作条件」セクションが追加されている

@@ -4,7 +4,7 @@
 
 ## 背景
 
-OpenCodeWebUI から、ユーザーが普段使っている Chrome / Brave のタブ情報を取得し、
+LeafCode から、ユーザーが普段使っている Chrome / Brave のタブ情報を取得し、
 ユーザーの許可の下でクリック・入力・スクロール・移動などを実行したい。
 Playwright MCP のように独立ブラウザを起動する方式では、既存プロファイルのログイン状態や
 ユーザーが現在見ているタブを安全に共有しにくい。
@@ -22,7 +22,7 @@ Playwright MCP のように独立ブラウザを起動する方式では、既�
 
 ## 初期スコープ
 
-- Windows 上の既存 OpenCodeWebUI host と同一端末で動く Chrome / Brave。
+- Windows 上の既存 LeafCode host と同一端末で動く Chrome / Brave。
 - 開発者モードで読み込む未パッケージ拡張。ストア配布・自動更新は後続フェーズ。
 - Content Script と `chrome.tabs` / `chrome.scripting` / `activeTab` を使う DOM 操作。
 - ユーザーが拡張 UI から明示的に共有したタブだけを対象にする。
@@ -49,7 +49,7 @@ OpenCode
   -> content script
   -> explicitly shared tab
 
-OpenCodeWebUI
+LeafCode
   -> host-only Browser Bridge management API
   -> Broker status / approval / audit
 ```
@@ -80,7 +80,7 @@ OpenCodeWebUI
 - Broker 未起動、拡張未接続、未共有、承認拒否、timeout を区別した構造化エラーを返す。
 - MCP プロセスは状態を保持せず、再起動しても Broker の接続状態を利用できる。
 
-### OpenCodeWebUI
+### LeafCode
 
 - Browser Bridge アドオンまたは設定セクションに、接続状態、ブラウザ種別、共有タブ、
   許可ドメイン、承認要求、直近監査イベントを表示する。

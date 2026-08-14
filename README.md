@@ -10,7 +10,7 @@ CLI エージェント [OpenCode](https://opencode.ai) をブラウザから操�
 
 WebUI と OpenCode は既定で `127.0.0.1` のみを待ち受けます。LAN や VPN への公開は、後述の設定を明示的に行った場合にだけ有効になります。
 
-> **改名移行中**: 表示名は LeafCode です。環境変数は `LEAFCODE_*` に改名済みですが、旧 `OPENCODE_WEBUI_*` も引き続き有効です（新名優先、未設定時のみ旧名を採用）。実行ファイル名（`OpenCodeWebUI.exe`）とデータ保存先 `%APPDATA%\opencode-webui`（初回起動時に `%APPDATA%\leafcode` へ自動移行）は互換性のため移行前の名称を引き継ぎます。
+> **改名移行中**: 表示名は LeafCode です。環境変数は `LEAFCODE_*` に改名済みですが、旧 `OPENCODE_WEBUI_*` も引き続き有効です（新名優先、未設定時のみ旧名を採用）。実行ファイル名（`LeafCode.exe`）とデータ保存先 `%APPDATA%\opencode-webui`（初回起動時に `%APPDATA%\leafcode` へ自動移行）は互換性のため移行前の名称を引き継ぎます。
 
 ## 動作条件
 
@@ -28,17 +28,17 @@ git clone https://github.com/daihaya000/LeafCode.git
 cd LeafCode
 ```
 
-リポジトリ直下の `OpenCodeWebUI.exe` を実行します。初回起動時に winget → Node.js → OpenCode CLI → Caddy（リモートアクセス用・任意）→ 依存関係 → production build の順に確認と導入を行います。2 回目以降は完了済みの手順を飛ばして起動します。
+リポジトリ直下の `LeafCode.exe` を実行します。初回起動時に winget → Node.js → OpenCode CLI → Caddy（リモートアクセス用・任意）→ 依存関係 → production build の順に確認と導入を行います。2 回目以降は完了済みの手順を飛ばして起動します。
 
 起動後、トレイにアイコンが常駐したら `http://127.0.0.1:3000` を開きます。トレイメニューからブラウザの起動、稼働状況の確認、WebUI / OpenCode の再起動、終了ができます。
 
-`OpenCodeWebUI.exe` は同じフォルダーの `scripts\start-webui.bat` を実行する薄いランチャー（`scripts/launcher/Launcher.cs`）です。exe 単体を別の場所へコピーしても動作しません。`scripts/` `host/` `web/` を含むリポジトリごと配置してください。exe には署名がないため、SmartScreen の警告が出た場合は「詳細情報」→「実行」で続行します。`Launcher.cs` やアイコンを更新した場合は起動時に自動で再ビルドされます（手動で行う場合は `scripts\build-launcher.bat`）。
+`LeafCode.exe` は同じフォルダーの `scripts\start-webui.bat` を実行する薄いランチャー（`scripts/launcher/Launcher.cs`）です。exe 単体を別の場所へコピーしても動作しません。`scripts/` `host/` `web/` を含むリポジトリごと配置してください。exe には署名がないため、SmartScreen の警告が出た場合は「詳細情報」→「実行」で続行します。`Launcher.cs` やアイコンを更新した場合は起動時に自動で再ビルドされます（手動で行う場合は `scripts\build-launcher.bat`）。
 
-セットアップが失敗した場合、ウィンドウは自動で閉じずにエラー行（`[OpenCode WebUI] ERROR <コード>: ...`）と日本語の復旧案内を表示して待機します。`LEAFCODE_NONINTERACTIVE=1` を設定すると待機しません。
+セットアップが失敗した場合、ウィンドウは自動で閉じずにエラー行（`[LeafCode] ERROR <コード>: ...`）と日本語の復旧案内を表示して待機します。`LEAFCODE_NONINTERACTIVE=1` を設定すると待機しません。
 
 ### タスクバーへのピン留め
 
-`scripts\create-shortcut.bat` を実行するとデスクトップに `OpenCode WebUI.lnk` が作成されます。ショートカットを右クリックして「タスクバーにピン留めする」を選択してください。Windows 10 1809 以降は自動ピン留めの API が提供されていないため、最後の手順のみ手動です。
+`scripts\create-shortcut.bat` を実行するとデスクトップに `LeafCode.lnk` が作成されます。ショートカットを右クリックして「タスクバーにピン留めする」を選択してください。Windows 10 1809 以降は自動ピン留めの API が提供されていないため、最後の手順のみ手動です。
 
 ## 基本操作
 
@@ -99,7 +99,7 @@ cd LeafCode
 | `LEAFCODE_AUTO_UPDATE_OPENCODE` | `1` | 起動時に `opencode upgrade` を実行して CLI を自動アップデート。`0` で無効化（失敗時は既存バイナリで起動継続） |
 | `LEAFCODE_CADDY` | 未設定 | `1` で Caddy 逆プロキシを連動起動。`0` で自動導入も行わない |
 | `LEAFCODE_CADDYFILE` | `deploy/Caddyfile` | Caddyfile のパス |
-| `LEAFCODE_BUILD_DIR` | `%LOCALAPPDATA%\opencode-webui\build\...` | production build のミラー先 |
+| `LEAFCODE_BUILD_DIR` | `%LOCALAPPDATA%\leafcode\build\...` | production build のミラー先 |
 | `LEAFCODE_QWEN_NATIVE` | 未設定 | `1` で画像事前解析を有効化（設定画面からも切り替え可能） |
 | `LEAFCODE_QWEN_MODEL` | 未設定 | 事前解析に使うモデルを `providerID::modelID` で指定 |
 | `LEAFCODE_WORKFLOW_MODE` | `true` | ワークフロー機能全体。`false` で旧 UI へ戻す |
@@ -120,7 +120,7 @@ cd LeafCode
 
 ```bat
 set LEAFCODE_CADDY=1
-OpenCodeWebUI.exe
+LeafCode.exe
 ```
 
 - Caddy は初回起動時に winget（`CaddyServer.Caddy`）で導入されます。手動導入は不要です。
@@ -166,7 +166,7 @@ scripts\allow-firewall-8080.bat
 
 ## トラブルシューティング
 
-`scripts/start-webui.bat` は失敗時に `[OpenCode WebUI] ERROR <code>: <english summary>` を出力し、続けて `scripts/setup-messages/` の日本語案内を表示します。
+`scripts/start-webui.bat` は失敗時に `[LeafCode] ERROR <code>: <english summary>` を出力し、続けて `scripts/setup-messages/` の日本語案内を表示します。
 
 | コード | 意味 | 対処 |
 | ---: | --- | --- |

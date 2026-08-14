@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "OpenCode WebUI Browser Bridge",
+  "name": "LeafCode Browser Bridge",
   "version": "0.1.0",
-  "description": "Chrome / Brave の現在のタブをローカル OpenCode WebUI Broker と明示的に共有します。",
+  "description": "Chrome / Brave の現在のタブをローカル LeafCode Broker と明示的に共有します。",
   "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
   "background": {

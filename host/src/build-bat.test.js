@@ -56,7 +56,7 @@ test("build.bat cancels with a clear message when the guard fails", () => {
 test("build.bat tells the user to start the WebUI after a successful build", () => {
   assert.match(
     source,
-    /Start the WebUI from the tray or OpenCodeWebUI\.exe to serve the new build\./,
+    /Start the WebUI from the tray or LeafCode\.exe to serve the new build\./,
   );
 });
 

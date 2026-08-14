@@ -1,4 +1,4 @@
-// OpenCode WebUI service worker: offline app shell + static asset caching.
+// LeafCode service worker: offline app shell + static asset caching.
 // Never touches /api/* (BFF proxy + SSE streams) so live data stays live.
 
 // v6: build-id aware cache invalidation that actually clears the navigation

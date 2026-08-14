@@ -73,7 +73,7 @@ export function mirrorSlug(installRoot) {
 
 /**
  * Mirror root for an installation.
- * Priority: LEAFCODE_BUILD_DIR → %LOCALAPPDATA%\opencode-webui\build\<slug>
+ * Priority: LEAFCODE_BUILD_DIR → %LOCALAPPDATA%\leafcode\build\<slug>
  * → %APPDATA%\... → <installRoot>\.build-mirror (last resort, e.g. no env at all).
  */
 export function resolveMirrorRoot(env = process.env, installRoot = DEFAULT_INSTALL_ROOT) {
@@ -81,7 +81,7 @@ export function resolveMirrorRoot(env = process.env, installRoot = DEFAULT_INSTA
   if (explicit) return resolve(explicit);
 
   const base = env.LOCALAPPDATA?.trim() || env.APPDATA?.trim();
-  if (base) return join(base, "opencode-webui", "build", mirrorSlug(installRoot));
+  if (base) return join(base, "leafcode", "build", mirrorSlug(installRoot));
 
   return join(resolve(installRoot), ".build-mirror");
 }

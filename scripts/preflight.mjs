@@ -34,7 +34,7 @@ import {
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Build inputs of the committed root launcher OpenCodeWebUI.exe. */
+/** Build inputs of the committed root launcher LeafCode.exe. */
 const LAUNCHER_INPUTS = [
   'scripts/launcher/Launcher.cs',
   'scripts/build-launcher.bat',
@@ -49,7 +49,7 @@ const LAUNCHER_INPUTS = [
  * @returns {boolean}
  */
 export function launcherIsStale(repoRoot = REPO_ROOT) {
-  const exe = join(repoRoot, 'OpenCodeWebUI.exe');
+  const exe = join(repoRoot, 'LeafCode.exe');
   try {
     if (!existsSync(exe)) return true;
     const exeTime = statSync(exe).mtimeMs;

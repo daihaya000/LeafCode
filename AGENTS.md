@@ -6,7 +6,7 @@
 
 - **禁止**: `next dev` / `next start` / `npx next dev` / `npm run dev` / watch 系など、終了しない常駐プロセスを bash でフォアグラウンド起動すること
   - 理由: bash ツールはプロセス終了待ちのため必ずタイムアウトする。複数 Next 並走は `.next` 破壊の原因にもなる
-- トレイ host（`OpenCodeWebUI.exe` ランチャー）が既に WebUI を起動している。エージェント側で追加起動しない
+- トレイ host（`LeafCode.exe` ランチャー）が既に WebUI を起動している。エージェント側で追加起動しない
 - 検証は `tsc` / `eslint` / `vitest`、または既存 host（例: `http://127.0.0.1:3000`）への短いヘルスチェックに限定する
 - **禁止**: `build.bat` / `next build` / `npm run build`（web）をエージェントが勝手に起動すること
   - 理由: 本番ビルドは稼働中の WebUI を停止させ、ブラウザの SSE 接続を切断してクラッシュさせる。ビルドはユーザーが明示的に指示した時のみ実行する
