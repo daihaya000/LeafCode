@@ -90,7 +90,7 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 | 18b | `running` / `verifying_completed` | `PATCH action=pause` | `paused` | `pause_reason = 'user'`。実行中のOpenCodeリクエストをabortし、後着結果は破棄する |
 | 18c | `running` (`pause_requested = 1`) | 旧形式の遅延停止結果 | `paused` | 既存データ互換のため残す。新規の一時停止では使用しない |
 | 19 | `queued` / `running` / `verifying_completed` | 手動送信を検出 | `paused` | `pause_reason = 'manual_send'`、`last_message_id` = 履歴末尾（読めた場合）。in-flight ターン（running / verifying_completed）は abort する（BR-26）。手動送信はループとは別に転送される |
-| 20 | `paused` (`pause_reason='unknown_delivery'`) | `PATCH action=resume`・マーカー付きプロンプトへの構造化応答を発見 | 6〜12 に従う | 失われた進捗を復元して適用する |
+| 20 | `paused` (`pause_reason='unknown_delivery'` / `'user'` / `'manual_send'`) | `PATCH action=resume`・マーカー付きプロンプトへの構造化応答を発見 | 6〜12 に従う | 失われた進捗を復元して適用する。`unknown_delivery` 以外に拡張したのは BR-23/24: 応答着弾〜適用前（最大 `SCHEDULER_INTERVAL_MS`）の pause で結果が失われるため |
 | 21 | `paused` (`pause_reason='unknown_delivery'`) | `PATCH action=resume`・応答未発見 | `paused` | `pause_reason` は**維持**。`error` 本文のみ更新。**再送しない** |
 | 22 | `paused` (上記以外) | `PATCH action=resume`・履歴読取成功 | `verifying_completed` または `queued` | `turn_kind = 'verification'` または 停止時 `verifying_completed` なら `verifying_completed`、それ以外は `queued`。`last_message_id` = 履歴末尾、`pause_reason = ''`、`error = ''` |
 | 23 | `paused` | `PATCH action=resume`・履歴読取失敗 | `paused` | `pause_reason` 維持。`error` に理由。**queued にしない** |
@@ -99,6 +99,9 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 遷移 22 が A の是正点である。停止前が検証フェーズだったかを `turn_kind` と停止時の状態から復元し、
 検証を必ず再実行する。`running` からの resume は同じターンを再開できないため `queued`（または
 `verifying_completed`）に戻し、`last_message_id` を履歴末尾へ再アンカーする。
+注: resume はまず遷移 20 の復元検査を行い、マーカー付きプロンプトへの未適用応答が見つかれば
+それを適用してから遷移 22 に進む。`user` / `manual_send` pause は pause と結果適用の間の
+2.5s ウィンドウで応答が着弾していることがあるため、この検査を最初に必ず行う（BR-23/24）。
 
 ### 不変条件
 
