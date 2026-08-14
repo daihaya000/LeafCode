@@ -1621,7 +1621,13 @@ async function stopOpencodeOnly() {
   });
   for (const pid of pids) expectedOpencodeExitPids.add(pid);
   opencodeProc = null;
-  await stopOpencodeProcessTree(pids);
+  await stopOpencodeProcessTree(pids, {
+    opencodeUrl: OPENCODE_URL,
+    log,
+    sleep,
+    isAlive: isProcessAlive,
+    hardKill: hardKillTree,
+  });
   await httpWaiter.waitForPortFree(OPENCODE_PORT);
 }
 

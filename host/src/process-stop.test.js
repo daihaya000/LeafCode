@@ -227,6 +227,30 @@ test('stopOpencodeProcessTree is a no-op for empty pid lists', async () => {
   assert.equal(fetched, false);
 });
 
+test('stopOpencodeProcessTree disposes opencode when deps.opencodeUrl is set', async () => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), method: init.method });
+    return { ok: true };
+  };
+  try {
+    // A dead pid is skipped by isAlive, but the dispose must still fire.
+    await stopOpencodeProcessTree([7777], {
+      opencodeUrl: 'http://127.0.0.1:4096',
+      log: () => {},
+      sleep: async () => {},
+      isAlive: () => false,
+      hardKill: () => true,
+    });
+    assert.deepEqual(calls, [
+      { url: 'http://127.0.0.1:4096/global/dispose', method: 'POST' },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('reapOpencodePortHolders kills leftover live holders', () => {
   const killed = [];
   reapOpencodePortHolders(10, {
