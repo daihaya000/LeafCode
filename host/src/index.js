@@ -633,6 +633,75 @@ function resolveCursorAcpProxyPort() {
   }
 }
 
+/**
+ * Handle an OpenCode child exit: log the outcome, clear the current-process
+ * reference, decide whether the listener port needs recovery, and (on an
+ * unexpected exit of the current process) re-spawn after the retry budget
+ * check. Extracted from `spawnOpencode` so the spawn function stays small.
+ */
+function handleOpencodeExit(child, code, signal) {
+  const exitedPid = child.pid;
+  const expected = exitedPid ? expectedOpencodeExitPids.delete(exitedPid) : false;
+  const wasCurrent = opencodeProc === child;
+  if (!quitting) {
+    log(`OpenCode exited (code=${code}, signal=${signal ?? 'none'})`);
+  }
+  if (wasCurrent) opencodeProc = null;
+
+  const exitDecision = getOpencodeExitDecision({
+    quitting,
+    exitedPid,
+    currentPid: wasCurrent ? exitedPid : null,
+    isPlannedExit: expected,
+    restartBudgetAvailable:
+      !quitting && Boolean(exitedPid) && !expected && wasCurrent
+        ? shouldRestartOpencode()
+        : false,
+  });
+  for (const { level, message } of exitDecision.logMessages) {
+    if (level === 'error') error(message);
+    else log(message);
+  }
+  // Only an unexpected exit of the current process can leave an inherited
+  // listener behind. Planned or stale exits must not trigger recovery work.
+  if (exitDecision.shouldReapPortHolders) {
+    try {
+      reapOpencodePortHolders(exitedPid, {
+        port: OPENCODE_PORT,
+        log,
+        isAlive: isProcessAlive,
+        hardKill: hardKillTree,
+        getListeningPids,
+      });
+    } catch (err) {
+      error(
+        `OpenCode orphan reap failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (exitDecision.shouldAutoRestart) {
+      setTimeout(async () => {
+        try {
+          const opencodePath = opencodeUpgrader.findOpencode();
+          spawnOpencode(opencodePath);
+          const ready = await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45, {
+            proc: () => opencodeProc,
+          });
+          if (!ready) {
+            throw new Error(
+              `OpenCode failed to become ready on :${OPENCODE_PORT} (${OPENCODE_URL}/global/health)`,
+            );
+          }
+        } catch (restartErr) {
+          error(
+            `OpenCode auto-restart failed: ${restartErr instanceof Error ? restartErr.message : String(restartErr)}`,
+          );
+        }
+      }, 1000);
+    }
+  }
+  refreshStatusMenu();
+}
+
 function spawnOpencode(opencodePath) {
   const useShell = /\.(cmd|bat)$/i.test(opencodePath);
   const proxyPort = resolveCursorAcpProxyPort();
@@ -666,66 +735,7 @@ function spawnOpencode(opencodePath) {
     recordLog('opencode', 'error', chunk.toString());
   });
   child.on('exit', (code, signal) => {
-    const exitedPid = child.pid;
-    const expected = exitedPid ? expectedOpencodeExitPids.delete(exitedPid) : false;
-    const wasCurrent = opencodeProc === child;
-    if (!quitting) {
-      log(`OpenCode exited (code=${code}, signal=${signal ?? 'none'})`);
-    }
-    if (wasCurrent) opencodeProc = null;
-
-    const exitDecision = getOpencodeExitDecision({
-      quitting,
-      exitedPid,
-      currentPid: wasCurrent ? exitedPid : null,
-      isPlannedExit: expected,
-      restartBudgetAvailable:
-        !quitting && Boolean(exitedPid) && !expected && wasCurrent
-          ? shouldRestartOpencode()
-          : false,
-    });
-    for (const { level, message } of exitDecision.logMessages) {
-      if (level === 'error') error(message);
-      else log(message);
-    }
-    // Only an unexpected exit of the current process can leave an inherited
-    // listener behind. Planned or stale exits must not trigger recovery work.
-    if (exitDecision.shouldReapPortHolders) {
-      try {
-        reapOpencodePortHolders(exitedPid, {
-        port: OPENCODE_PORT,
-        log,
-        isAlive: isProcessAlive,
-        hardKill: hardKillTree,
-        getListeningPids,
-      });
-      } catch (err) {
-        error(
-          `OpenCode orphan reap failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      if (exitDecision.shouldAutoRestart) {
-        setTimeout(async () => {
-          try {
-            const opencodePath = opencodeUpgrader.findOpencode();
-            spawnOpencode(opencodePath);
-            const ready = await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45, {
-              proc: () => opencodeProc,
-            });
-            if (!ready) {
-              throw new Error(
-                `OpenCode failed to become ready on :${OPENCODE_PORT} (${OPENCODE_URL}/global/health)`,
-              );
-            }
-          } catch (restartErr) {
-            error(
-              `OpenCode auto-restart failed: ${restartErr instanceof Error ? restartErr.message : String(restartErr)}`,
-            );
-          }
-        }, 1000);
-      }
-    }
-    refreshStatusMenu();
+    handleOpencodeExit(child, code, signal);
   });
 }
 
