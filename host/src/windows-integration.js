@@ -8,8 +8,10 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-export function launchWindowsVoiceInput() {
-  if (process.platform !== 'win32') {
+export function launchWindowsVoiceInput(deps = {}) {
+  const isWindows = deps.isWindows ?? (process.platform === 'win32');
+  const exec = deps.execFileSync ?? execFileSync;
+  if (!isWindows) {
     throw new Error('Windows voice input is only available on Windows');
   }
   const script = `
@@ -20,7 +22,7 @@ Add-Type -MemberDefinition $signature -Name Keyboard -Namespace Win32
 [Win32.Keyboard]::keybd_event(0x48, 0, 2, [UIntPtr]::Zero)
 [Win32.Keyboard]::keybd_event(0x5B, 0, 2, [UIntPtr]::Zero)
 `;
-  execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+  exec('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
     stdio: 'ignore',
     windowsHide: true,
   });
@@ -31,9 +33,10 @@ const FIREWALL_RULE_NAME = 'OpenCode WebUI';
 
 /** True when a Windows Firewall inbound rule with FIREWALL_RULE_NAME exists.
  *  Read-only; does not require elevation. */
-export function firewallRuleExists() {
+export function firewallRuleExists(deps = {}) {
+  const exec = deps.execFileSync ?? execFileSync;
   try {
-    execFileSync(
+    exec(
       'netsh',
       ['advfirewall', 'firewall', 'show', 'rule', `name=${FIREWALL_RULE_NAME}`],
       { stdio: 'ignore', windowsHide: true },
@@ -49,11 +52,14 @@ export function firewallRuleExists() {
  *  Returns immediately (no UAC prompt) when the rule already exists. Throws
  *  if the user cancels the UAC prompt or the elevated command fails.
  *  Windows only — the WebUI itself never runs netsh directly. */
-export async function allowFirewallPort(webuiPort) {
-  if (process.platform !== 'win32') {
+export async function allowFirewallPort(webuiPort, deps = {}) {
+  const isWindows = deps.isWindows ?? (process.platform === 'win32');
+  const ruleExists = deps.firewallRuleExists ?? firewallRuleExists;
+  const exec = deps.execFileAsync ?? execFileAsync;
+  if (!isWindows) {
     throw new Error('ファイアウォール設定は Windows でのみ対応しています');
   }
-  if (firewallRuleExists()) {
+  if (ruleExists({ execFileSync: deps.execFileSync })) {
     return { alreadyExists: true, port: webuiPort };
   }
   const script = `
@@ -62,7 +68,7 @@ $p = Start-Process -FilePath netsh -ArgumentList $fwArgs -Verb RunAs -Wait -Pass
 exit $p.ExitCode
 `;
   try {
-    await execFileAsync(
+    await exec(
       'powershell.exe',
       ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
       { windowsHide: true, timeout: 60000 },
