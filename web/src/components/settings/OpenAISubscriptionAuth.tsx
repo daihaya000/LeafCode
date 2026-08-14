@@ -35,7 +35,8 @@ export function OpenAISubscriptionAuth({
     timeoutMessage: "認証完了を確認できませんでした。認証後に再確認してください。",
     startErrorMessage: "OpenAI のブラウザ認証を開始できませんでした",
   });
-  const { state, connected, methodIndex, authUrl, instructions, error } = auth;
+  const { state, connected, methodIndex, authUrl, instructions, error, reauth } =
+    auth;
 
   return (
     <section
@@ -103,7 +104,9 @@ export function OpenAISubscriptionAuth({
         </div>
         {state === "waiting" && (
           <p className="mt-3 text-xs text-muted" aria-live="polite">
-            認証ページを開いています。完了すると自動で接続状態を更新します。
+            {reauth
+              ? "認証ページを開いています。完了したら「認証完了を確認」を押してください。"
+              : "認証ページを開いています。完了すると自動で接続状態を更新します。"}
           </p>
         )}
         {instructions && <p className="mt-2 text-xs text-faint">{instructions}</p>}

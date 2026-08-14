@@ -63,13 +63,42 @@ describe("OpenAISubscriptionAuth", () => {
     expect(screen.getByRole("button", { name: "再認証" })).toBeTruthy();
   });
 
+  it("keeps the authorization page open while re-authenticating a connected account", async () => {
+    mockApi(true);
+    const popup = {
+      location: { href: "about:blank" },
+      close: vi.fn(),
+    } as unknown as Window;
+    const open = vi.spyOn(window, "open").mockReturnValue(popup);
+
+    render(<OpenAISubscriptionAuth />);
+    fireEvent.click(await screen.findByRole("button", { name: "再認証" }));
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/provider/openai/oauth/authorize",
+        { method: 0 },
+      ),
+    );
+    // The pre-existing connection must not immediately end the re-auth flow.
+    expect(
+      await screen.findByRole("link", { name: /認証ページを開く/ }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "認証完了を確認" })).toBeTruthy();
+    expect(popup.location.href).toBe(
+      "https://auth.openai.com/oauth/authorize?state=test",
+    );
+    open.mockRestore();
+  });
+
   it("starts browser authentication and provides a fallback link", async () => {
     mockApi(false);
     const popup = {
       location: { href: "about:blank" },
       close: vi.fn(),
     } as unknown as Window;
-    vi.spyOn(window, "open").mockReturnValue(popup);
+    const open = vi.spyOn(window, "open").mockReturnValue(popup);
 
     render(<OpenAISubscriptionAuth />);
     const button = await screen.findByRole("button", { name: "ブラウザで認証" });
@@ -82,6 +111,10 @@ describe("OpenAISubscriptionAuth", () => {
         { method: 0 },
       ),
     );
+    // The popup handle must stay usable: `noopener`/`noreferrer` make
+    // window.open return null in real browsers, silently dropping the
+    // navigation and leaving a blank popup behind.
+    expect(String(open.mock.calls[0]?.[2] ?? "")).not.toMatch(/noopener|noreferrer/);
     expect(popup.location.href).toBe(
       "https://auth.openai.com/oauth/authorize?state=test",
     );

@@ -148,6 +148,95 @@ describe("useSubscriptionOAuth", () => {
     window.open = originalOpen;
   });
 
+  it("keeps a re-auth waiting instead of resolving on the previous connection", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider/auth") {
+        return Promise.resolve({
+          "test-provider": [{ type: "oauth", label: "OAuth" }],
+        });
+      }
+      if (path === "/api/opencode/provider") {
+        // A re-auth never changes this: the provider stays connected on the
+        // credentials that are about to be replaced.
+        return Promise.resolve({ connected: ["test-provider"] });
+      }
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    const popup = { location: { href: "" } } as unknown as Window;
+    const originalOpen = window.open;
+    window.open = vi.fn(() => popup) as typeof window.open;
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const { result } = renderHook(() => useSubscriptionOAuth(baseConfig()));
+
+    await waitFor(() => {
+      expect(result.current.state).toBe("connected");
+    });
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(result.current.state).toBe("waiting");
+    expect(result.current.reauth).toBe(true);
+    expect(popup.location.href).toBe(
+      "https://auth.example.com/authorize?state=test",
+    );
+
+    // Polling must stay off; otherwise the old connection ends the flow at once.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_000);
+    });
+    expect(result.current.state).toBe("waiting");
+    expect(result.current.authUrl).toBe(
+      "https://auth.example.com/authorize?state=test",
+    );
+
+    await act(async () => {
+      await result.current.checkConnection();
+    });
+    expect(result.current.state).toBe("connected");
+    expect(result.current.reauth).toBe(false);
+
+    vi.useRealTimers();
+    window.open = originalOpen;
+  });
+
+  it("opens the popup with a handle that can be navigated", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider/auth") {
+        return Promise.resolve({
+          "test-provider": [{ type: "oauth", label: "OAuth" }],
+        });
+      }
+      if (path === "/api/opencode/provider") {
+        return Promise.resolve({ connected: [] });
+      }
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    const popup = { location: { href: "" } } as unknown as Window;
+    const open = vi.fn(() => popup) as typeof window.open;
+    const originalOpen = window.open;
+    window.open = open;
+
+    const { result } = renderHook(() => useSubscriptionOAuth(baseConfig()));
+    await waitFor(() => {
+      expect(result.current.state).toBe("ready");
+    });
+    await act(async () => {
+      await result.current.start();
+    });
+
+    // `noopener`/`noreferrer` would make window.open return null.
+    expect(String(vi.mocked(open).mock.calls[0]?.[2] ?? "")).not.toMatch(
+      /noopener|noreferrer/,
+    );
+    expect(popup.location.href).toBe(
+      "https://auth.example.com/authorize?state=test",
+    );
+    window.open = originalOpen;
+  });
+
   it("recovers to ready when the authorize call fails", async () => {
     getJson.mockImplementation((path: string) => {
       if (path === "/api/opencode/provider/auth") {

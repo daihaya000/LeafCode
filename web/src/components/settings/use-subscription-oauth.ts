@@ -50,6 +50,14 @@ export function useSubscriptionOAuth(config: UseSubscriptionOAuthConfig) {
   const [instructions, setInstructions] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  /**
+   * True while re-authenticating an account that is already connected.
+   * The provider endpoint only reports *whether* a provider is connected, so a
+   * re-auth never changes it: polling would resolve instantly on the old
+   * credentials and tear the flow down before the user reaches the auth page.
+   * Such flows therefore end on explicit user confirmation instead.
+   */
+  const [reauth, setReauth] = useState(false);
   const attempts = useRef(0);
   const connectionRequestBusyRef = useRef(false);
   const connectionRequestGenerationRef = useRef(0);
@@ -109,6 +117,7 @@ export function useSubscriptionOAuth(config: UseSubscriptionOAuthConfig) {
   const load = useCallback(async () => {
     setState("loading");
     setError(null);
+    setReauth(false);
     try {
       const [methods, provider] = await Promise.all([
         getJson<AuthMethodsResponse>(configRef.current.methodsEndpoint),
@@ -142,7 +151,7 @@ export function useSubscriptionOAuth(config: UseSubscriptionOAuthConfig) {
   }, [load]);
 
   useEffect(() => {
-    if (state !== "waiting" || !pageVisible) return;
+    if (state !== "waiting" || !pageVisible || reauth) return;
     let cancelled = false;
     attempts.current = 0;
     const poll = async () => {
@@ -169,19 +178,20 @@ export function useSubscriptionOAuth(config: UseSubscriptionOAuthConfig) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [pageVisible, refresh, state]);
+  }, [pageVisible, reauth, refresh, state]);
 
   const start = async () => {
     if (methodIndex === null || state === "starting" || state === "waiting") {
       return;
     }
-    const popup = window.open(
-      "about:blank",
-      configRef.current.popupName,
-      "noopener,noreferrer",
-    );
+    // No `noopener`/`noreferrer`: those make window.open return null, so the
+    // handle needed to navigate the popup to the authorization URL is lost and
+    // only a blank window remains. The popup must be opened inside the click
+    // handler, before awaiting the authorize call, or popup blockers reject it.
+    const popup = window.open("about:blank", configRef.current.popupName);
     setState("starting");
     setError(null);
+    setReauth(connected);
     try {
       const authorization = await sendJson<AuthorizationResponse>(
         "POST",
@@ -199,6 +209,7 @@ export function useSubscriptionOAuth(config: UseSubscriptionOAuthConfig) {
     } catch (cause) {
       popup?.close();
       if (!mountedRef.current) return;
+      setReauth(false);
       setState(connected ? "connected" : "ready");
       setError(
         cause instanceof Error
@@ -213,6 +224,7 @@ export function useSubscriptionOAuth(config: UseSubscriptionOAuthConfig) {
     setChecking(true);
     try {
       await refresh();
+      if (mountedRef.current) setReauth(false);
     } finally {
       if (mountedRef.current) setChecking(false);
     }
@@ -220,6 +232,7 @@ export function useSubscriptionOAuth(config: UseSubscriptionOAuthConfig) {
 
   return {
     state,
+    reauth,
     connected,
     methodIndex,
     authUrl,
