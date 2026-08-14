@@ -2,16 +2,19 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CursorCliProxyAuth } from "./CursorCliProxyAuth";
 
-const { getJson } = vi.hoisted(() => ({
+const { getJson, sendJson } = vi.hoisted(() => ({
   getJson: vi.fn(),
+  sendJson: vi.fn(),
 }));
 
 vi.mock("@/lib/client", () => ({
   getJson,
+  sendJson,
 }));
 
 beforeEach(() => {
   getJson.mockReset();
+  sendJson.mockReset().mockResolvedValue({ ok: true });
 });
 
 afterEach(() => {
