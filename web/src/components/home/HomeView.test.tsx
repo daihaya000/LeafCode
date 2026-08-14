@@ -2544,3 +2544,100 @@ describe("HomeView auto model", () => {
   });
 
 });
+
+describe("HomeView next task suggestion", () => {
+  beforeEach(() => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            { id: "project-1", name: "Project", rootPath: "/repo", favorite: false },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({
+          branches: ["main"],
+          defaultTarget: "main",
+          current: "main",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (path.endsWith("/next-task")) {
+        return Promise.resolve({ suggestions: ["テストを追加する"] });
+      }
+      return Promise.resolve({ taskId: "task-1", sessionId: "session-1" });
+    });
+    timedFetch.mockReset();
+    timedFetch.mockResolvedValue({ ok: false });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("generates against the selected project and fills the composer without sending", async () => {
+    render(<HomeView />);
+    const generate = await screen.findByRole("button", {
+      name: "次のタスクを提案",
+    });
+    await waitFor(() =>
+      expect((generate as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(generate);
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/projects/project-1/next-task",
+        expect.objectContaining({ count: 3 }),
+        undefined,
+        expect.objectContaining({ timeoutMs: expect.any(Number) }),
+      ),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /テストを追加する/ }));
+
+    const prompt = screen.getByRole("combobox", {
+      name: "タスクの説明",
+    }) as HTMLTextAreaElement;
+    expect(prompt.value).toBe("テストを追加する");
+    // Applying a proposal must never start the task by itself.
+    expect(
+      sendJson.mock.calls.some(([, path]) => path === "/api/tasks"),
+    ).toBe(false);
+  });
+
+  it("disables generation while the engine is disconnected", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            { id: "project-1", name: "Project", rootPath: "/repo", favorite: false },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: false });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({
+          branches: ["main"],
+          defaultTarget: "main",
+          current: "main",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    render(<HomeView />);
+
+    const generate = await screen.findByRole("button", {
+      name: "次のタスクを提案",
+    });
+    await waitFor(() =>
+      expect((generate as HTMLButtonElement).disabled).toBe(true),
+    );
+  });
+});
