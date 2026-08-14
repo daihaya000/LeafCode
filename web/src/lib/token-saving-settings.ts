@@ -8,7 +8,7 @@
  * or unavailable value never blocks the composer.
  */
 
-import { getJson, sendJson } from "./client";
+import { createSettingSync } from "./setting-sync";
 
 export type TokenSavingMode = "off" | "suggest" | "auto";
 
@@ -19,6 +19,18 @@ export const TOKEN_SAVING_THRESHOLD_EVENT = "webui:token-saving-threshold";
 
 const MODE_STORAGE_KEY = "webui:token-saving";
 const THRESHOLD_STORAGE_KEY = "webui:token-saving-threshold";
+
+const modeSync = createSettingSync({
+  storageKey: MODE_STORAGE_KEY,
+  serverPath: `/api/settings/${TOKEN_SAVING_SETTING_KEY}`,
+  eventName: TOKEN_SAVING_EVENT,
+});
+
+const thresholdSync = createSettingSync({
+  storageKey: THRESHOLD_STORAGE_KEY,
+  serverPath: `/api/settings/${TOKEN_SAVING_THRESHOLD_KEY}`,
+  eventName: TOKEN_SAVING_THRESHOLD_EVENT,
+});
 
 export const DEFAULT_TOKEN_SAVING_MODE: TokenSavingMode = "off";
 export const DEFAULT_TOKEN_SAVING_THRESHOLD = 80;
@@ -106,16 +118,8 @@ export async function syncTokenSavingToServer(
   mode: TokenSavingMode,
   threshold: number,
 ): Promise<void> {
-  try {
-    await sendJson("PUT", `/api/settings/${TOKEN_SAVING_SETTING_KEY}`, {
-      value: mode,
-    });
-    await sendJson("PUT", `/api/settings/${TOKEN_SAVING_THRESHOLD_KEY}`, {
-      value: String(clampThreshold(threshold)),
-    });
-  } catch {
-    // localStorage remains the synchronous source of truth.
-  }
+  await modeSync.writeToServer(mode);
+  await thresholdSync.writeToServer(String(clampThreshold(threshold)));
 }
 
 export async function readTokenSavingFromServer(): Promise<{
@@ -123,20 +127,14 @@ export async function readTokenSavingFromServer(): Promise<{
   threshold?: number;
 }> {
   const result: { mode?: TokenSavingMode; threshold?: number } = {};
-  try {
-    const [modeData, thresholdData] = await Promise.all([
-      getJson<{ value: string | null }>(`/api/settings/${TOKEN_SAVING_SETTING_KEY}`),
-      getJson<{ value: string | null }>(
-        `/api/settings/${TOKEN_SAVING_THRESHOLD_KEY}`,
-      ),
-    ]);
-    if (isTokenSavingMode(modeData?.value)) result.mode = modeData.value;
-    const thresholdNum = Number(thresholdData?.value);
-    if (thresholdData?.value && Number.isFinite(thresholdNum)) {
-      result.threshold = clampThreshold(thresholdNum);
-    }
-  } catch {
-    // Best-effort: fall back to localStorage defaults.
+  const [modeRaw, thresholdRaw] = await Promise.all([
+    modeSync.readFromServer(),
+    thresholdSync.readFromServer(),
+  ]);
+  if (isTokenSavingMode(modeRaw)) result.mode = modeRaw;
+  const thresholdNum = Number(thresholdRaw);
+  if (thresholdRaw !== null && Number.isFinite(thresholdNum)) {
+    result.threshold = clampThreshold(thresholdNum);
   }
   return result;
 }
