@@ -39,6 +39,48 @@ afterEach(() => {
 });
 
 describe("readState / writeState", () => {
+  it("rewrites internal profile paths under the legacy data dir (BR-15)", () => {
+    const appdata = path.join(sandbox, "appdata");
+    const legacy = path.join(appdata, "opencode-webui");
+    const legacyProfile = path.join(legacy, "profiles", "main");
+    const newProfile = path.join(appdata, "leafcode", "profiles", "main");
+    fs.mkdirSync(newProfile, { recursive: true });
+    fs.writeFileSync(
+      profilesStatePath(),
+      JSON.stringify({
+        profiles: [
+          {
+            id: "legacy-internal",
+            name: "default",
+            path: legacyProfile,
+          },
+          {
+            id: "legacy-external",
+            name: "backup",
+            path: legacyProfile,
+            external: true,
+          },
+          {
+            id: "fresh",
+            name: "fresh",
+            path: newProfile,
+          },
+        ],
+        activeId: "legacy-internal",
+      }),
+      "utf8",
+    );
+
+    const state = readState();
+    expect(state.profiles).toHaveLength(3);
+    // Internal profile under the legacy data dir is rewritten to the new one.
+    expect(state.profiles[0].path).toBe(newProfile);
+    // External profiles are user-picked paths and stay untouched.
+    expect(state.profiles[1].path).toBe(legacyProfile);
+    // Paths already under the new data dir are unchanged.
+    expect(state.profiles[2].path).toBe(newProfile);
+  });
+
   it("round-trips and writes atomically without leaving temp files", () => {
     const state = {
       profiles: [makeProfile("default", path.join(sandbox, "A"))],

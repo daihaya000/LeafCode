@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { dataDir, migrateLegacyDataDir } from "../../../scripts/lib/data-dir.mjs";
+import { dataDir, legacyDataDir, migrateLegacyDataDir } from "../../../scripts/lib/data-dir.mjs";
 
-export { dataDir };
+export { dataDir, legacyDataDir };
 
 export function dbPath(): string {
   return path.join(dataDir(), "webui.db");

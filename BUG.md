@@ -24,7 +24,7 @@
 | **BR-12** | 中 | ✅ **修正済み（ソケット検証追加）** | Host ヘッダ偽装による control-plane のセッションなし admin 昇格 — isLocalHostRequest に実ソケット remoteAddress 検証を追加（LEAFCODE_HOST=0.0.0.0 時も偽装不可） |
 | **BR-13** | 低 | ⬜ **未修正** | README のビルドミラーパス記述が旧名のまま |
 | **BR-14** | 低 | ⬜ **未修正** | ProfilesSettings の「OpenCode host」（二重置換の取り違え・1 箇所のみ） |
-| **BR-15** | 中 | ⬜ **未修正** | dataDir rename 後に profiles.json / DB worktree_path の絶対パスが旧名残存（切替 409・worktree ワークスペース再開失敗・実測済み） |
+| **BR-15** | 中 | 🔶 **一部修正済み（レジストリ正規化・DB worktree_path は未対応）** | dataDir rename 後に profiles.json / DB worktree_path の絶対パスが旧名残存 — readState で internal プロファイルの path を新 dataDir に正規化（DB 側は要対応） |
 | **BR-16** | 低 | ⬜ **未修正** | docs/specs の 5 仕様書がデータディレクトリを `%APPDATA%\opencode-webui` と記載したまま |
 | **BR-17** | 低 | ⬜ **未修正** | proxy.ts:133 の 403 エラーのみ「disabled in WebUI」残存（oc-server.ts は LeafCode 済み・文言不統一） |
 | **BR-18** | 低 | ⬜ **未修正** | host ログ文言に「WebUI」が 5 箇所残存（2dd9bbeb のログ文言統一からの漏れ） |

@@ -6,6 +6,7 @@ import { cleanupStaleArtifacts, readLinkState } from "./link";
 import {
   globalConfigLinkPath,
   isInside,
+  normalizeProfilePath,
   profilesRoot,
   profilesStatePath,
   samePath,
@@ -46,9 +47,17 @@ export function readState(): ProfilesState {
   }
   try {
     const parsed = JSON.parse(raw) as Partial<ProfilesState>;
-    const profiles = Array.isArray(parsed.profiles)
-      ? parsed.profiles.filter(isProfile)
-      : [];
+    const profiles = Array.from(parsed.profiles ?? [])
+      .filter(isProfile)
+      .map((p) =>
+        p.external === true
+          ? p
+          : // BR-15: a registry written before the data-dir rename still
+            // records `%APPDATA%\opencode-webui\profiles\...`; the rename moved
+            // the tree, so rewrite internal paths to the new location. External
+            // profiles are user-picked paths and must stay untouched.
+            { ...p, path: normalizeProfilePath(p.path) },
+      );
     const activeId =
       typeof parsed.activeId === "string" ? parsed.activeId : null;
     return { profiles, activeId };

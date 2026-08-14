@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { dataDir } from "../paths";
+import { dataDir, legacyDataDir } from "../paths";
 
 /**
  * The global OpenCode config link we swap: always `~/.config/opencode`.
@@ -12,6 +12,25 @@ import { dataDir } from "../paths";
  */
 export function globalConfigLinkPath(): string {
   return path.join(os.homedir(), ".config", "opencode");
+}
+
+/**
+ * Rewrite a recorded profile path that still points at the pre-rebrand data
+ * directory (e.g. a registry written before `%APPDATA%\opencode-webui` was
+ * renamed to `%APPDATA%\leafcode`) to the new location. The data-dir
+ * migration renames the whole tree, so the relative suffix under the legacy
+ * data dir is preserved under the new one. External profiles (user-picked
+ * paths, `external: true`) are intentionally left alone — they may point at a
+ * real directory that must keep working unchanged.
+ */
+export function normalizeProfilePath(p: string): string {
+  const legacy = path.resolve(legacyDataDir());
+  const resolved = path.resolve(p);
+  if (isInside(legacy, resolved)) {
+    const rel = path.relative(legacy, resolved);
+    return path.join(dataDir(), rel);
+  }
+  return p;
 }
 
 /** Root holding every WebUI-managed profile directory. */
