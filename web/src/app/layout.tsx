@@ -52,7 +52,7 @@ export default function RootLayout({
           attribute="class"
           defaultTheme="oyster"
           enableSystem
-          themes={["light", "dark", "oyster", "system"]}
+          themes={["light", "dark", "oyster", "custom", "system"]}
         >
           {children}
           <ThemeTokenSync />

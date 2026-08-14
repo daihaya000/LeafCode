@@ -1,5 +1,6 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CUSTOM_THEME_STORAGE_KEY } from "@/lib/custom-theme";
 import { ThemeTokenSync } from "./ThemeTokenSync";
 
 const themeState = { resolvedTheme: "oyster" };
@@ -95,5 +96,42 @@ describe("ThemeTokenSync", () => {
     });
 
     expect(setProperty).not.toHaveBeenCalled();
+  });
+
+  it("applies saved custom tokens when the theme is custom", async () => {
+    themeState.resolvedTheme = "custom";
+    localStorage.setItem(
+      CUSTOM_THEME_STORAGE_KEY,
+      JSON.stringify({ "--bg": "#112233", "--text": "#eeeeee" }),
+    );
+
+    render(<ThemeTokenSync />);
+
+    await waitFor(() => expect(setProperty).toHaveBeenCalledWith("--bg", "#112233"));
+    expect(setProperty).toHaveBeenCalledWith("--text", "#eeeeee");
+    // Defaults fill parts the user did not save.
+    expect(setProperty).toHaveBeenCalledWith("--surface", "#fbf8f2");
+  });
+
+  it("re-applies custom tokens on the change event", async () => {
+    themeState.resolvedTheme = "custom";
+    localStorage.setItem(
+      CUSTOM_THEME_STORAGE_KEY,
+      JSON.stringify({ "--bg": "#112233" }),
+    );
+
+    render(<ThemeTokenSync />);
+    await waitFor(() => expect(setProperty).toHaveBeenCalledWith("--bg", "#112233"));
+
+    setProperty.mockClear();
+    localStorage.setItem(
+      CUSTOM_THEME_STORAGE_KEY,
+      JSON.stringify({ "--bg": "#445566" }),
+    );
+    fireEvent(window, new CustomEvent("webui:custom-theme-changed"));
+
+    await waitFor(() =>
+      expect(setProperty).toHaveBeenCalledWith("--bg", "#445566"),
+    );
   });
 });

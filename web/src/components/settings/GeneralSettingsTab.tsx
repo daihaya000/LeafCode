@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Monitor, Moon, Shell, Sun } from "lucide-react";
+import { Monitor, Moon, Palette, Shell, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { HostLogPanel } from "@/components/settings/HostLogPanel";
 import { cx } from "@/components/ui";
+import {
+  CUSTOM_THEME_DEFAULT_TOKENS,
+  CUSTOM_THEME_PARTS,
+  clearCustomThemeTokens,
+  dispatchCustomThemeChanged,
+  resolveCustomThemeTokens,
+  writeCustomThemeTokens,
+} from "@/lib/custom-theme";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import {
   clampUsdJpyRate,
@@ -43,7 +51,66 @@ interface GeneralSettingsTabProps {
   setError: (error: string | null) => void;
 }
 
-function ThemeSettings() {
+function CustomThemeEditor() {
+  const [tokens, setTokens] = useState<Record<string, string>>(() =>
+    resolveCustomThemeTokens(),
+  );
+
+  const update = (key: string, value: string) => {
+    setTokens((prev) => {
+      const next = { ...prev, [key]: value };
+      writeCustomThemeTokens(next);
+      dispatchCustomThemeChanged();
+      return next;
+    });
+  };
+
+  const reset = () => {
+    setTokens({ ...CUSTOM_THEME_DEFAULT_TOKENS });
+    clearCustomThemeTokens();
+    dispatchCustomThemeChanged();
+  };
+
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-surface-2/60 p-3">
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold text-muted">カスタムテーマの色</h4>
+        <button
+          type="button"
+          onClick={reset}
+          className="cursor-pointer rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+        >
+          デフォルトに戻す
+        </button>
+      </div>
+      <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+        {CUSTOM_THEME_PARTS.map(({ key, label }) => (
+          <label
+            key={key}
+            className="flex min-w-0 items-center gap-2 text-xs text-muted"
+          >
+            <input
+              type="color"
+              value={tokens[key] ?? ""}
+              onChange={(e) => update(key, e.target.value)}
+              aria-label={`${label}の色`}
+              className="h-8 w-10 shrink-0 cursor-pointer rounded border border-border bg-transparent p-0.5"
+            />
+            <span className="shrink-0">{label}</span>
+            <code className="ml-auto min-w-0 truncate font-mono text-[10px] text-faint">
+              {tokens[key]}
+            </code>
+          </label>
+        ))}
+      </div>
+      <p className="mt-2.5 text-[11px] text-faint">
+        変更は即座に反映され、自動で保存されます（リビルド不要）。
+      </p>
+    </div>
+  );
+}
+
+export function ThemeSettings() {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -55,7 +122,9 @@ function ThemeSettings() {
       ? "ダーク"
       : resolvedTheme === "oyster"
         ? "オフホワイト（オイスター）"
-        : "ライト";
+        : resolvedTheme === "custom"
+          ? "カスタム"
+          : "ライト";
   const options = [
     { key: "light", label: "ライト", description: "明るい配色で固定", icon: Sun },
     { key: "dark", label: "ダーク", description: "暗い配色で固定", icon: Moon },
@@ -64,6 +133,12 @@ function ThemeSettings() {
       label: "オフホワイト",
       description: "温かみのあるオイスター系の明るい配色",
       icon: Shell,
+    },
+    {
+      key: "custom",
+      label: "カスタム",
+      description: "各パーツの色を自由に指定",
+      icon: Palette,
     },
     { key: "system", label: "システム", description: "OS の設定に合わせる", icon: Monitor },
   ] as const;
@@ -107,6 +182,7 @@ function ThemeSettings() {
             );
           })}
         </div>
+        {mounted && current === "custom" && <CustomThemeEditor />}
       </div>
     </section>
   );
