@@ -78,6 +78,26 @@ export function autoOptimizeModeLabel(mode: AutoOptimizeMode): string {
 }
 
 /**
+ * モード × tier のプリセット候補列。差分保存と UI 表示の唯一のソース。
+ * 戻り値は freeze して返す。
+ */
+export function presetTierRoute(
+  mode: AutoOptimizeMode,
+  tier: AutoTier,
+): AutoTierRoute {
+  const costOrder = MODE_COST_ORDER[mode][tier];
+  const variantOrder = MODE_VARIANT_ORDER[mode][tier];
+  const candidates: AutoRouteCandidate[] =
+    costOrder === null
+      ? [{ kind: "strongest" }]
+      : costOrder.map((cost) => ({ kind: "cost", cost }));
+  return Object.freeze({
+    candidates: Object.freeze(candidates),
+    variantFallbackOrder: Object.freeze(variantOrder),
+  });
+}
+
+/**
  * Per-tier routing override. A missing field falls back to the preset
  * (`MODE_COST_ORDER` / `MODE_VARIANT_ORDER`) for the selected optimize mode.
  * Both arrays are deduped to their first occurrence; unknown entries are
@@ -101,6 +121,55 @@ export type RouteOverrides = Partial<Record<AutoTier, TierRouteOverride>>;
  * default.
  */
 export const EMPTY_ROUTE_OVERRIDES: RouteOverrides = Object.freeze({});
+
+/** ------------------------------------------------------------------ */
+/**  v2 型（本仕様: auto-route-candidates.md）                         */
+/** ------------------------------------------------------------------ */
+
+export const AUTO_ROUTE_CONFIG_VERSION = 2 as const;
+
+/** 1 件のルーティング指定。 */
+export type AutoRouteCandidate =
+  | {
+      kind: "model";
+      providerID: string;
+      modelID: string;
+      variant?: IntelligenceVariant | "";
+    }
+  | { kind: "cost"; cost: ModelCostTier; variant?: IntelligenceVariant | "" }
+  | { kind: "strongest"; variant?: IntelligenceVariant | "" };
+
+/** 全候補が使えなかった時の挙動。既定 "preset"。 */
+export type AutoTierFallback = "preset" | "strongest" | "error";
+
+export type AutoTierRoute = {
+  /** 優先順。空配列 = プリセットの候補列を使う */
+  readonly candidates: readonly AutoRouteCandidate[];
+  /** 候補の variant が使えない時の代替順。省略 = モードプリセット */
+  readonly variantFallbackOrder?: readonly IntelligenceVariant[];
+  /** 省略 = "preset" */
+  fallback?: AutoTierFallback;
+};
+
+export type AutoModeRoute = Partial<Record<AutoTier, AutoTierRoute>>;
+
+export type AutoRouteConfig = {
+  version: typeof AUTO_ROUTE_CONFIG_VERSION;
+  modes: Partial<Record<AutoOptimizeMode, AutoModeRoute>>;
+};
+
+/** 「未設定」の正典値。 */
+export const EMPTY_AUTO_ROUTE_CONFIG: AutoRouteConfig = Object.freeze({
+  version: AUTO_ROUTE_CONFIG_VERSION,
+  modes: Object.freeze({}),
+});
+
+/** 1 セルあたりの候補数上限。 */
+export const MAX_AUTO_ROUTE_CANDIDATES = 8;
+
+export function isAutoTierFallback(value: unknown): value is AutoTierFallback {
+  return value === "preset" || value === "strongest" || value === "error";
+}
 
 function isModelCostTier(value: unknown): value is ModelCostTier {
   return value === "cheap" || value === "mid" || value === "premium";

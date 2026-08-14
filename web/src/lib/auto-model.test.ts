@@ -6,11 +6,15 @@ import {
   chooseAutoModel,
   classifyPrompt,
   DEFAULT_AUTO_OPTIMIZE_MODE,
+  EMPTY_AUTO_ROUTE_CONFIG,
   EMPTY_ROUTE_OVERRIDES,
   isAutoOptimizeMode,
+  isAutoTierFallback,
   isRouteOverridesEmpty,
+  MAX_AUTO_ROUTE_CANDIDATES,
   modelCostTier,
   normalizeRouteOverrides,
+  presetTierRoute,
   SIGNAL_ATTACHMENT_THRESHOLD,
   SIGNAL_HISTORY_THRESHOLD,
   type AutoCandidateProvider,
@@ -1274,5 +1278,188 @@ describe("EMPTY_ROUTE_OVERRIDES", () => {
     expect(() => {
       (EMPTY_ROUTE_OVERRIDES as Record<string, unknown>).standard = { variantOrder: ["high"] };
     }).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v2 types & presetTierRoute
+// ---------------------------------------------------------------------------
+
+describe("presetTierRoute", () => {
+  it("returns a frozen object (including inner arrays)", () => {
+    const route = presetTierRoute("cost", "light");
+    expect(Object.isFrozen(route)).toBe(true);
+    expect(Object.isFrozen(route.candidates)).toBe(true);
+    expect(Object.isFrozen(route.variantFallbackOrder)).toBe(true);
+  });
+
+  describe("cost mode", () => {
+    it("light: prefers cheap cost band with minimal/none/low variants", () => {
+      const route = presetTierRoute("cost", "light");
+      expect(route.candidates).toEqual([
+        { kind: "cost", cost: "cheap" },
+        { kind: "cost", cost: "mid" },
+        { kind: "cost", cost: "premium" },
+      ]);
+      expect(route.variantFallbackOrder).toEqual([
+        "minimal",
+        "none",
+        "low",
+      ]);
+    });
+
+    it("standard: prefers cheap cost band with low/minimal/none/medium variants", () => {
+      const route = presetTierRoute("cost", "standard");
+      expect(route.candidates).toEqual([
+        { kind: "cost", cost: "cheap" },
+        { kind: "cost", cost: "mid" },
+        { kind: "cost", cost: "premium" },
+      ]);
+      expect(route.variantFallbackOrder).toEqual([
+        "low",
+        "minimal",
+        "none",
+        "medium",
+      ]);
+    });
+
+    it("heavy: strongest candidate with medium/high/low variants", () => {
+      const route = presetTierRoute("cost", "heavy");
+      expect(route.candidates).toEqual([{ kind: "strongest" }]);
+      expect(route.variantFallbackOrder).toEqual([
+        "medium",
+        "high",
+        "low",
+      ]);
+    });
+  });
+
+  describe("balanced mode", () => {
+    it("light: cheap first with low/minimal/none/medium variants", () => {
+      const route = presetTierRoute("balanced", "light");
+      expect(route.candidates).toEqual([
+        { kind: "cost", cost: "cheap" },
+        { kind: "cost", cost: "mid" },
+        { kind: "cost", cost: "premium" },
+      ]);
+      expect(route.variantFallbackOrder).toEqual([
+        "low",
+        "minimal",
+        "none",
+        "medium",
+      ]);
+    });
+
+    it("standard: mid first with medium/low/high variants", () => {
+      const route = presetTierRoute("balanced", "standard");
+      expect(route.candidates).toEqual([
+        { kind: "cost", cost: "mid" },
+        { kind: "cost", cost: "premium" },
+        { kind: "cost", cost: "cheap" },
+      ]);
+      expect(route.variantFallbackOrder).toEqual([
+        "medium",
+        "low",
+        "high",
+        "minimal",
+        "none",
+      ]);
+    });
+
+    it("heavy: strongest candidate with high/medium/max/low variants", () => {
+      const route = presetTierRoute("balanced", "heavy");
+      expect(route.candidates).toEqual([{ kind: "strongest" }]);
+      expect(route.variantFallbackOrder).toEqual([
+        "high",
+        "medium",
+        "max",
+        "low",
+      ]);
+    });
+  });
+
+  describe("intelligence mode", () => {
+    it("light: mid first with medium/low/high variants", () => {
+      const route = presetTierRoute("intelligence", "light");
+      expect(route.candidates).toEqual([
+        { kind: "cost", cost: "mid" },
+        { kind: "cost", cost: "cheap" },
+        { kind: "cost", cost: "premium" },
+      ]);
+      expect(route.variantFallbackOrder).toEqual([
+        "medium",
+        "low",
+        "high",
+        "minimal",
+        "none",
+      ]);
+    });
+
+    it("standard: premium first with high/medium/max/low variants", () => {
+      const route = presetTierRoute("intelligence", "standard");
+      expect(route.candidates).toEqual([
+        { kind: "cost", cost: "premium" },
+        { kind: "cost", cost: "mid" },
+        { kind: "cost", cost: "cheap" },
+      ]);
+      expect(route.variantFallbackOrder).toEqual([
+        "high",
+        "medium",
+        "max",
+        "low",
+      ]);
+    });
+
+    it("heavy: strongest candidate with max/high/medium variants", () => {
+      const route = presetTierRoute("intelligence", "heavy");
+      expect(route.candidates).toEqual([{ kind: "strongest" }]);
+      expect(route.variantFallbackOrder).toEqual([
+        "max",
+        "high",
+        "medium",
+      ]);
+    });
+  });
+
+  it("returns equivalent objects for the same mode+tier", () => {
+    const a = presetTierRoute("cost", "light");
+    const b = presetTierRoute("cost", "light");
+    expect(a).toStrictEqual(b);
+  });
+});
+
+describe("AutoRouteConfig types", () => {
+  it("EMPTY_AUTO_ROUTE_CONFIG is frozen with version 2 and empty modes", () => {
+    expect(EMPTY_AUTO_ROUTE_CONFIG.version).toBe(2);
+    expect(EMPTY_AUTO_ROUTE_CONFIG.modes).toEqual({});
+    expect(Object.isFrozen(EMPTY_AUTO_ROUTE_CONFIG)).toBe(true);
+    expect(Object.isFrozen(EMPTY_AUTO_ROUTE_CONFIG.modes)).toBe(true);
+  });
+
+  it("EMPTY_AUTO_ROUTE_CONFIG throws on mutation", () => {
+    expect(() => {
+      (EMPTY_AUTO_ROUTE_CONFIG as Record<string, unknown>).version = 3;
+    }).toThrow();
+  });
+
+  describe("MAX_AUTO_ROUTE_CANDIDATES", () => {
+    it("is 8", () => {
+      expect(MAX_AUTO_ROUTE_CANDIDATES).toBe(8);
+    });
+  });
+});
+
+describe("isAutoTierFallback", () => {
+  it("accepts valid values", () => {
+    expect(isAutoTierFallback("preset")).toBe(true);
+    expect(isAutoTierFallback("strongest")).toBe(true);
+    expect(isAutoTierFallback("error")).toBe(true);
+  });
+
+  it("rejects invalid values", () => {
+    expect(isAutoTierFallback("")).toBe(false);
+    expect(isAutoTierFallback("fallback")).toBe(false);
+    expect(isAutoTierFallback(null)).toBe(false);
+    expect(isAutoTierFallback(undefined)).toBe(false);
   });
 });
