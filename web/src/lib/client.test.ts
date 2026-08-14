@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, getJson, ocJson, sendJson, timedFetch } from "./client";
+import {
+  ApiError,
+  AUTH_REQUIRED_EVENT,
+  getJson,
+  ocJson,
+  sendJson,
+  timedFetch,
+} from "./client";
 import { resetStaleCacheForTests } from "./stale-cache";
 
 describe("ocJson timeout", () => {
@@ -444,5 +451,62 @@ describe("getJson stale-while-revalidate cache", () => {
 
     stubFetch({ projects: ["b"] });
     await expect(getJson("/api/projects")).resolves.toEqual({ projects: ["b"] });
+  });
+});
+
+describe("auth-required 403 notification", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    resetStaleCacheForTests();
+  });
+
+  it.each([
+    ["getJson", () => getJson("/api/tasks")],
+    ["sendJson", () => sendJson("POST", "/api/tasks", {})],
+    ["ocJson", () => ocJson("/session/status", "/repo")],
+  ])(
+    "%s dispatches AUTH_REQUIRED_EVENT on a 403 auth-required body",
+    async (_name, call) => {
+      vi.stubGlobal("location", { origin: "http://192.168.0.5:3000" });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({
+          ok: false,
+          status: 403,
+          text: async () =>
+            JSON.stringify({
+              error: "this endpoint requires the host machine or a signed-in session",
+              code: "auth-required",
+            }),
+        })),
+      );
+
+      const listener = vi.fn();
+      window.addEventListener(AUTH_REQUIRED_EVENT, listener);
+
+      await call().catch(() => {});
+      expect(listener).toHaveBeenCalledTimes(1);
+      window.removeEventListener(AUTH_REQUIRED_EVENT, listener);
+    },
+  );
+
+  it("does not fire the event on unrelated 403 responses", async () => {
+    vi.stubGlobal("location", { origin: "http://192.168.0.5:3000" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({ error: "cross-site requests are not allowed" }),
+      })),
+    );
+
+    const listener = vi.fn();
+    window.addEventListener(AUTH_REQUIRED_EVENT, listener);
+
+    await getJson("/api/tasks").catch(() => {});
+    expect(listener).not.toHaveBeenCalled();
+    window.removeEventListener(AUTH_REQUIRED_EVENT, listener);
   });
 });

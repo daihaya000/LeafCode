@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LoginGate, LoginForm } from "./LoginGate";
+import { AUTH_REQUIRED_EVENT } from "@/lib/client";
 
 const { login, logout, fetchAuthRequirement } = vi.hoisted(() => ({
   login: vi.fn(),
@@ -187,5 +188,31 @@ describe("LoginGate", () => {
     await waitFor(() => expect(screen.getByText("protected content")).toBeTruthy());
     expect(screen.getByRole("button", { name: "ログアウト" })).toBeTruthy();
     expect(screen.getByText("alice")).toBeTruthy();
+  });
+
+  it("forces the login screen when a host-facing API reports auth-required", async () => {
+    fetchAuthRequirement.mockResolvedValue({
+      local: false,
+      hasUsers: true,
+      loginRequired: true,
+      authenticated: true,
+      username: "alice",
+    });
+    render(
+      <LoginGate>
+        <div>protected content</div>
+      </LoginGate>,
+    );
+
+    // The session is accepted initially…
+    await waitFor(() => expect(screen.getByText("protected content")).toBeTruthy());
+    // …then the API starts answering 403 auth-required (e.g. the host restarted
+    // and regenerated its signing secret). The gate must take over.
+    window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "ログイン" })).toBeTruthy(),
+    );
+    expect(screen.queryByText("protected content")).toBeNull();
   });
 });

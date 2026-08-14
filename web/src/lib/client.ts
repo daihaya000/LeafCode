@@ -15,6 +15,28 @@ import {
 /** Default abort for hung BFF/engine calls that omit an explicit timeout. */
 export const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 
+/**
+ * Fired when a host-facing API answers 403 with `code: "auth-required"` — i.e.
+ * a remote caller without a verified session. The LoginGate listens for this
+ * and forces the login screen instead of showing the raw API error.
+ */
+export const AUTH_REQUIRED_EVENT = "leafcode:auth-required";
+
+function isAuthRequiredBody(body: unknown): boolean {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    (body as { code?: unknown }).code === "auth-required"
+  );
+}
+
+/** Tell the app that a signed-in session is required (browser only). */
+export function notifyAuthRequired(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
+  }
+}
+
 export {
   IMAGE_ANALYSIS_SEND_TIMEOUT_MS,
   NEW_TASK_SEND_TIMEOUT_MS,
@@ -326,6 +348,18 @@ function getJsonWithCache<T>(
   return request;
 }
 
+/**
+ * Handle a non-2xx BFF response: notify the login gate when the server demands
+ * a signed-in session, then throw the ApiError the caller will surface.
+ */
+function throwApiError(res: Response, body: unknown, path: string): never {
+  if (res.status === 403 && isAuthRequiredBody(body)) notifyAuthRequired();
+  throw new ApiError(
+    responseErrorMessage(body, path, res.status),
+    res.status,
+  );
+}
+
 async function getJsonUnshared<T>(
   path: string,
   params?: Record<string, string | undefined>,
@@ -343,10 +377,7 @@ async function getJsonUnshared<T>(
     });
     const body = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
-      throw new ApiError(
-        responseErrorMessage(body, path, res.status),
-        res.status,
-      );
+      throwApiError(res, body, path);
     }
     return body as T;
   } catch (err) {
@@ -374,10 +405,7 @@ export async function sendJson<T>(
     });
     const data = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
-      throw new ApiError(
-        responseErrorMessage(data, path, res.status),
-        res.status,
-      );
+      throwApiError(res, data, path);
     }
     // A successful write invalidates the first two URL segments of every
     // cached GET (e.g. PATCH /api/projects/{id} drops the /api/projects list).
@@ -423,10 +451,7 @@ export async function ocJson<T>(
     });
     const data = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
-      throw new ApiError(
-        responseErrorMessage(data, path, res.status),
-        res.status,
-      );
+      throwApiError(res, data, path);
     }
     return data as T;
   } catch (err) {

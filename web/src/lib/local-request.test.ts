@@ -307,6 +307,7 @@ describe("rejectUnlessLocalOrAuthenticated", () => {
     expect(res!.status).toBe(403);
     await expect(res!.json()).resolves.toMatchObject({
       error: expect.stringContaining("signed-in session"),
+      code: "auth-required",
     });
   });
 

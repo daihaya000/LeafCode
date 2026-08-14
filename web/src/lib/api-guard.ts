@@ -38,8 +38,11 @@ export const PUBLIC_API_ROUTES = [
   "/api/auth/logout",
 ] as const;
 
-function forbidden(error: string) {
-  return NextResponse.json({ error }, { status: 403 });
+function forbidden(error: string, code?: string) {
+  return NextResponse.json(
+    code ? { error, code } : { error },
+    { status: 403 },
+  );
 }
 
 /**
@@ -130,7 +133,10 @@ export async function requireAuthorized(
   if (isLocalHostRequest(req)) return null;
   if (await verifySession(req)) return null;
 
-  return forbidden("this endpoint requires the host machine or a signed-in session");
+  return forbidden(
+    "this endpoint requires the host machine or a signed-in session",
+    "auth-required",
+  );
 }
 
 /**

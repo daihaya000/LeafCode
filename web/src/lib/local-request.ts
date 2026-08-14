@@ -140,6 +140,7 @@ export async function rejectUnlessLocalOrAuthenticated(
     {
       error:
         "this endpoint requires the host machine or a signed-in session",
+      code: "auth-required",
     },
     { status: 403 },
   );

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button, Spinner } from "@/components/ui";
+import { AUTH_REQUIRED_EVENT } from "@/lib/client";
 import { currentUser, fetchAuthRequirement, login, logout } from "@/lib/auth";
 
 export function useLoginGate() {
@@ -25,6 +26,19 @@ export function useLoginGate() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // A host-facing API answered 403 auth-required (e.g. the session expired, or
+  // the browser moved to a LAN URL after the initial check). Force the login
+  // screen instead of letting the raw API error surface in the UI.
+  useEffect(() => {
+    const onAuthRequired = () => {
+      setLoginRequired(true);
+      setAuthenticated(false);
+      setUser(null);
+    };
+    window.addEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
   }, []);
 
   const doLogin = useCallback(async (username: string, password: string) => {

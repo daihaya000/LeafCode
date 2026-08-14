@@ -145,6 +145,8 @@ describe("requireAuthorized", () => {
   it("rejects a LAN caller with no session", async () => {
     const res = await requireAuthorized(make("GET", {}, HOST_LAN));
     expect(res?.status).toBe(403);
+    // The client uses `code: "auth-required"` to force the login screen.
+    expect(await res!.json()).toMatchObject({ code: "auth-required" });
   });
 
   it("allows a LAN caller holding a verified session", async () => {
