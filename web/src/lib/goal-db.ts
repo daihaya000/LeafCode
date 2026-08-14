@@ -11,8 +11,8 @@ import {
   applyAssistantResult,
   deliveredGoalResultAfterUnknownPrompt,
   isUnknownPromptDeliveryPause,
-  runGoalLoopSchedulerTick,
-} from "./goal-loop";
+} from "./goal-state";
+import { runGoalLoopSchedulerTick } from "./goal-scheduler";
 import {
   ABORT_TIMEOUT_MS,
   MAX_GOAL_CHARS,

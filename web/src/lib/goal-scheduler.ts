@@ -66,11 +66,19 @@ import {
   collaborationContextFor,
   prependCollaborationContext,
 } from "./collaboration-context";
-import { autoCompactGoalLoop } from "./goal-loop";
 
 let schedulerStarted = false;
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let schedulerTicking = false;
+
+// Lazy reference to break the goal-loop <-> goal-scheduler module cycle.
+let autoCompactGoalLoopRef: typeof import("./goal-loop").autoCompactGoalLoop | null = null;
+async function getAutoCompactGoalLoop() {
+  if (!autoCompactGoalLoopRef) {
+    ({ autoCompactGoalLoop: autoCompactGoalLoopRef } = await import("./goal-loop"));
+  }
+  return autoCompactGoalLoopRef;
+}
 export async function processLoop(loop: GoalLoopDto): Promise<void> {
   if (TERMINAL_STATUSES.includes(loop.status)) return;
   const ws = getWorkspace(loop.workspaceId);
@@ -141,7 +149,11 @@ export async function processLoop(loop: GoalLoopDto): Promise<void> {
 
   if (loop.status === "verifying_completed") {
     if (!transcriptIdleFor(messages, TURN_QUIET_MS)) return;
-    const compactResult = await autoCompactGoalLoop(loop, ws.absolute_path, messages);
+    const compactResult = await (await getAutoCompactGoalLoop())(
+      loop,
+      ws.absolute_path,
+      messages,
+    );
     if (compactResult === "conflict" || compactResult === "retry") {
       return;
     }
@@ -255,7 +267,11 @@ export async function processLoop(loop: GoalLoopDto): Promise<void> {
     return;
   }
 
-  const compactResult = await autoCompactGoalLoop(loop, ws.absolute_path, messages);
+  const compactResult = await (await getAutoCompactGoalLoop())(
+    loop,
+    ws.absolute_path,
+    messages,
+  );
   if (compactResult === "conflict" || compactResult === "retry") {
     // Keep the loop queued. The next scheduler tick retries after the other
     // tab/process releases the session compaction lock or the engine recovers.
