@@ -1,6 +1,6 @@
 # OPTIMIZATION — 大規模リファクタリング（Phase 0-7）後の最適化余地
 
-> 対象リポジトリ: OpenCodeWebUI（`web/` + `host/` + `browser-bridge/` + `scripts/`）
+> 対象リポジトリ: LeafCode（`web/` + `host/` + `browser-bridge/` + `scripts/`）
 > 作成日: 2026-08-14（git HEAD `b065870`）
 > 目的: REFACTORING_PLAN 全 Phase（host P6 分割・goal-loop P3 分割・opencode-proxy P4 分割・
 > UI P5 分割・共有 .mjs 化 P1/P6-3・Phase 7 小分割）の実施後に残る**構造・整理・非効率**の余地を

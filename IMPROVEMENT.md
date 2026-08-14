@@ -1,6 +1,6 @@
 # IMPROVEMENT — リファクタリング / 改善余地のインベントリ
 
-> 対象リポジトリ: OpenCodeWebUI（`web/` + `host/` + `browser-bridge/` + `scripts/` + `addons/`）
+> 対象リポジトリ: LeafCode（`web/` + `host/` + `browser-bridge/` + `scripts/` + `addons/`）
 > 作成日: 2026-08-13（git HEAD `82d4add`）
 > 目的: 機能別にコードベースを走査し、バグではなく **リファクタリング / 改善余地** を優先度別に記録する。
 > 実際の処置は本ファイルを参照して別途まとめて行う（本ファイルはインベントリのみ）。

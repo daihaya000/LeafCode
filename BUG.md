@@ -30,10 +30,10 @@
 | **BR-18** | 低 | ✅ **修正済み** | host ログ文言に「WebUI」が 5 箇所残存 → index.js のログ・エラーメッセージ 6 箇所を「LeafCode」に統一（残存ゼロ） |
 | **BR-19** | 低 | ✅ **修正済み** | 拡張ポップアップの日本語文言と build guard のコンソールメッセージ →「LeafCode」に統一（popup 2 箇所 + guard 5 箇所・テスト期待値も更新） |
 | **BR-20** | 低 | ✅ **修正済み** | 通知のフォールバックタイトル「OpenCode タスク」→「LeafCode タスク」（テスト期待値も更新） |
-| **BR-21** | 低 | ⬜ **未修正** | IMPROVEMENT.md / OPTIMIZATION.md のヘッダ「対象リポジトリ: OpenCodeWebUI」が旧名のまま |
+| **BR-21** | 低 | ✅ **修正済み** | IMPROVEMENT.md / OPTIMIZATION.md のヘッダ「対象リポジトリ: OpenCodeWebUI」→「LeafCode」（他の旧名は履歴的言及で変更不要） |
 
-**修正推奨順**: BR-13 / BR-16 / BR-18 / BR-19 / BR-21（低・表示/ドキュメント）。BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。**BR-11 は別セッションの `9a641a5c` で修正済み**。**BR-12 はソケット検証追加で修正済み**（local-request.ts・29+63 本 PASS）。**BR-15 は読み取り時正規化で修正済み**（paths.ts 共通関数・db/profiles 適用・40 本 PASS）。**BR-14 / BR-17 / BR-20 は文言修正で修正済み**（notify 9 / ProfilesSettings 11 / proxy route 65 本 PASS・tsc クリーン）。
-**未修正 5 件（全て低優先度の表示・ドキュメント）**: BR-13 / BR-16 / BR-18 / BR-19 / BR-21。
+**修正推奨順**: BR-4 はクローズ可（恒久テスト化する場合のみ SettingsView.test.tsx へ「フォーカス中タブ切替で保存が走る」ケースを追加）。**BR-11 は別セッションの `9a641a5c` で修正済み**。**BR-12 はソケット検証追加で修正済み**（local-request.ts・29+63 本 PASS）。**BR-15 は読み取り時正規化で修正済み**（paths.ts 共通関数・db/profiles 適用・40 本 PASS）。**BR-14 / BR-17 / BR-20 は文言修正で修正済み**（notify 9 / ProfilesSettings 11 / proxy route 65 本 PASS・tsc クリーン）。**BR-18 / BR-19 はログ・表示文言の統一で修正済み**（host 68 本・popup 6 / guard 19 本 PASS）。**BR-13 / BR-16 / BR-21 はドキュメント修正で修正済み**（bat-encoding 7 本 PASS）。
+**未修正: なし（発見バグは全て修正済み）**。
 
 # rebrand 追跡調査の完了サマリ（ターン 44・最終版）
 
