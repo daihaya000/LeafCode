@@ -54,11 +54,18 @@ function resolveDataDir(env) {
 }
 
 export function resolveWorkspace({ argv, env }) {
+  // A user-set LEAFCODE_MEMORY_WORKSPACE wins, so the same OpenCode config can
+  // serve different tasks without reinstalling the MCP entry. The CLI
+  // --workspace (pinned by the installer) is the fallback for users who never
+  // set the variable.
+  if (typeof env.LEAFCODE_MEMORY_WORKSPACE === 'string' && env.LEAFCODE_MEMORY_WORKSPACE.trim() !== '') {
+    return env.LEAFCODE_MEMORY_WORKSPACE;
+  }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--workspace' && argv[i + 1] !== undefined) return argv[i + 1];
     if (argv[i].startsWith('--workspace=')) return argv[i].slice('--workspace='.length);
   }
-  return env.LEAFCODE_MEMORY_WORKSPACE ?? null;
+  return null;
 }
 
 function textResult(value) {

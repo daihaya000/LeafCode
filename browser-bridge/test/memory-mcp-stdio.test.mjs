@@ -84,7 +84,9 @@ function mkLaunch(dataDir) {
     env: {
       ...process.env,
       LEAFCODE_DATA_DIR: dataDir,
-      LEAFCODE_MEMORY_WORKSPACE: 'ignored-arg-wins',
+      // Leave LEAFCODE_MEMORY_WORKSPACE unset: the pinned --workspace applies
+      // (the env override is covered by the resolveWorkspace unit test).
+      LEAFCODE_MEMORY_WORKSPACE: undefined,
     },
     stderr: 'pipe',
   };
@@ -425,10 +427,16 @@ test('memory MCP: re-adding a stored proposition returns the existing row', asyn
   assert.ok(rows.every((row) => typeof row.norm_key === 'string' && row.norm_key.length > 0));
 });
 
-test('memory MCP requires a workspace; CLI --workspace wins over env', async () => {
+test('memory MCP requires a workspace; env wins when set, CLI is the fallback', async () => {
   const { resolveWorkspace } = await import('../mcp/memory-server.mjs');
+  // LEAFCODE_MEMORY_WORKSPACE is the dynamic override (same config, new task).
   assert.equal(
     resolveWorkspace({ argv: ['--workspace=ws-9'], env: { LEAFCODE_MEMORY_WORKSPACE: 'env-ws' } }),
+    'env-ws',
+  );
+  // Without the env var the installer-pinned CLI value applies.
+  assert.equal(
+    resolveWorkspace({ argv: ['--workspace=ws-9'], env: {} }),
     'ws-9',
   );
   assert.equal(

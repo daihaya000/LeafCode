@@ -33,6 +33,10 @@ import { applyEdits, modify, parse } from 'jsonc-parser';
 
 const SKELETON = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
 const FORMATTING_OPTIONS = { insertSpaces: true, tabSize: 2, eol: '\n' };
+// OpenCode expands {env:VAR} in environment values (browser-bridge relies on
+// the same pattern). memory-server.mjs resolves the workspace env-first, so a
+// user who sets LEAFCODE_MEMORY_WORKSPACE in the shell can serve any task
+// from this single MCP entry; without it the pinned --workspace applies.
 const ENV_WORKSPACE = '{env:LEAFCODE_MEMORY_WORKSPACE}';
 
 export function parseArgs(argv) {
