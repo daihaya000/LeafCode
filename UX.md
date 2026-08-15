@@ -82,3 +82,4 @@
 - 会話メッセージ（375px）：応答メタデータ行（モデル/モード/エージェント/時間/コスト/トークン）は 343px 内に収まる。コードブロックは `.md pre` のコンテナ内横スクロール（実測 scrollW 482/649px > clientW 341px）でページ全体は 375px のまま。Markdown テーブルも `display: block; overflow-x: auto` で正常。
 - オーバーレイ（375px）：コマンドパレットは全画面オーバーレイ（375×812）で 12 アイテムがオーバーフローなし。「次のタスクを提案」パネルは提案ボタンが 343px 内に収まり正常。AttentionQueueModal は `w-full max-w-lg`（AttentionQueueModal.tsx:242）+ `max-h-[70vh] overflow-y-auto`（276）でモバイル対応（実表示は注目アイテム不在のためコード確認）。
 - エンジン未接続警告（HomeView.tsx:1697、`/api/tasks` を `engineOk:false` にモックして実測）：375px で警告文が 343px 内（x=16〜359）に収まり正常。768px でも 369px 内に収まる。
+- ターミナル（PtyPanel、375px）：空状態（「稼働中の PTY はありません」）と起動後（xterm 351px 幅）の両方でオーバーフローなし。タブ（Terminal nH）・セッション閉じるボタン・input すべて正常動作。
