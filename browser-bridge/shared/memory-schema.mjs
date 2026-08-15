@@ -73,6 +73,9 @@ const PROMPT_INJECTION_PATTERNS = Object.freeze([
   { re: /reveal\s+(?:the\s+)?(?:system|developer)\s+(?:prompt|instructions|message)/i, label: 'prompt extraction' },
   { re: /(?:output|print|show|repeat)\s+(?:the\s+)?(?:system|developer)\s+(?:prompt|instructions|message)/i, label: 'prompt extraction' },
   { re: /<\s*(?:system|developer|assistant)\s*>/i, label: 'role tag injection' },
+  { re: /(?:これまで|以前|上記)の(?:指示|命令|プロンプト|ルール)を(?:全て|すべて)?無視/i, label: 'ignore previous instructions' },
+  { re: /(?:システム|開発者)プロンプトを(?:表示|開示|出力|明かし|漏らし|書き出し)/i, label: 'prompt extraction' },
+  { re: /<(?:システム|開発者)>/i, label: 'role tag injection' },
 ]);
 
 const CREDENTIAL_EXFILTRATION_PATTERNS = Object.freeze([

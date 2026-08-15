@@ -29,6 +29,8 @@ const MEMORY_BOUNDARY_TAG_RE = /<\/?workspace-memory>/i;
 
 // Prompt-injection signals. We match on directives that attempt to override
 // the system prompt or the injected boundary's "reference only" contract.
+// English patterns below; Japanese equivalents are deliberately narrow so
+// ordinary notes (e.g. "システムプロンプトに従う") are not false-flagged.
 const PROMPT_INJECTION_PATTERNS: ReadonlyArray<{ re: RegExp; label: string }> = [
   { re: /ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions/i, label: "ignore previous instructions" },
   { re: /disregard\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above)\s+(?:instructions|prompts|rules)/i, label: "disregard previous instructions" },
@@ -38,6 +40,9 @@ const PROMPT_INJECTION_PATTERNS: ReadonlyArray<{ re: RegExp; label: string }> = 
   { re: /reveal\s+(?:the\s+)?(?:system|developer)\s+(?:prompt|instructions|message)/i, label: "prompt extraction" },
   { re: /(?:output|print|show|repeat)\s+(?:the\s+)?(?:system|developer)\s+(?:prompt|instructions|message)/i, label: "prompt extraction" },
   { re: /<\s*(?:system|developer|assistant)\s*>/i, label: "role tag injection" },
+  { re: /(?:これまで|以前|上記)の(?:指示|命令|プロンプト|ルール)を(?:全て|すべて)?無視/i, label: "ignore previous instructions" },
+  { re: /(?:システム|開発者)プロンプトを(?:表示|開示|出力|明かし|漏らし|書き出し)/i, label: "prompt extraction" },
+  { re: /<(?:システム|開発者)>/i, label: "role tag injection" },
 ];
 
 // Credential exfiltration signals. Matches common secret shapes and
