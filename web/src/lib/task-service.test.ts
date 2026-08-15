@@ -9,11 +9,16 @@ const h = vi.hoisted(() => ({
   messageDelayMs: 0,
   activeMessageCalls: 0,
   maxMessageCalls: 0,
+  activeGoalLoopWorkspaceIds: new Set<string>(),
 }));
 
 vi.mock("./db", () => ({
   listWorkspacesJoined: () => h.workspaces,
   primaryBindings: () => h.bindings,
+}));
+
+vi.mock("./goal-db", () => ({
+  listActiveGoalLoopWorkspaceIds: () => h.activeGoalLoopWorkspaceIds,
 }));
 
 vi.mock("./dirstat", () => ({
@@ -39,7 +44,8 @@ vi.mock("./oc-server", async () => {
       const key = `${dir ?? ""}${path}`;
       h.ocCalls.push(key);
       if (h.ocFail.has(key)) throw new Error("engine unavailable");
-      if (path === "/session/status") return {};
+      if (path === "/session/status")
+        return h.ocResponses[key] ?? {};
       if (path === "/global/health") return { healthy: true };
       if (path.endsWith("/message")) {
         h.activeMessageCalls += 1;
@@ -92,6 +98,7 @@ beforeEach(() => {
   h.messageDelayMs = 0;
   h.activeMessageCalls = 0;
   h.maxMessageCalls = 0;
+  h.activeGoalLoopWorkspaceIds = new Set();
   __clearSessionEstimateCacheForTest();
 });
 
@@ -447,6 +454,27 @@ describe("listTasks archived filter", () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0].id).toBe("ws1");
     expect(archivedCount).toBe(1);
+  });
+});
+
+describe("listTasks goal loop activity", () => {
+  it("marks goalLoopActive for a workspace with a live loop", async () => {
+    h.activeGoalLoopWorkspaceIds = new Set(["ws1"]);
+    const { tasks } = await listTasks();
+    expect(tasks[0].goalLoopActive).toBe(true);
+  });
+
+  it("leaves goalLoopActive false when the loop is not live", async () => {
+    const { tasks } = await listTasks();
+    expect(tasks[0].goalLoopActive).toBe(false);
+  });
+
+  it("treats a task with a live loop as working even when the session is idle", async () => {
+    h.activeGoalLoopWorkspaceIds = new Set(["ws1"]);
+    h.ocResponses["/repo/session/status"] = { sess1: { type: "idle" } };
+    const { tasks } = await listTasks();
+    expect(tasks[0].status).toBe("working");
+    expect(tasks[0].goalLoopActive).toBe(true);
   });
 });
 

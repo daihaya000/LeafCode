@@ -154,6 +154,12 @@ export type TaskSummary = {
   executionMode?: TaskExecutionMode;
   /** Whether the bound session is marked as a favorite. */
   favorite?: boolean;
+  /**
+   * Whether a goal loop is currently live (queued / running / verifying).
+   * Keeps the sidebar dot `working` between loop turns, when the engine is
+   * momentarily idle even though the loop is still advancing.
+   */
+  goalLoopActive?: boolean;
   branch: string | null;
   additions: number;
   deletions: number;

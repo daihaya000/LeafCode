@@ -50,6 +50,24 @@ export function listRunnableGoalLoops(): GoalLoopDto[] {
   return rows.map(toDto);
 }
 
+/**
+ * Workspace ids that currently have a live (non-terminal, non-dismissed) goal
+ * loop. The scheduler considers `queued`/`running`/`verifying_completed`
+ * runnable; a dismissed loop is always terminal (`stopped`/`completed`/
+ * `blocked`), so it cannot appear here. Feeds `TaskSummary.goalLoopActive` so
+ * the sidebar keeps a looping task `working` between turns (BR: sidebar 進行中
+ * 表示).
+ */
+export function listActiveGoalLoopWorkspaceIds(): Set<string> {
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT workspace_id FROM goal_loops
+       WHERE status IN ('queued', 'running', 'verifying_completed')`,
+    )
+    .all() as Array<{ workspace_id: string }>;
+  return new Set(rows.map((r) => r.workspace_id));
+}
+
 function normalizeForceFullRun(value: unknown): boolean {
   return value === true || value === 1 || value === "1" || value === "true";
 }

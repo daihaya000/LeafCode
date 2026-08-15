@@ -62,4 +62,34 @@ describe("deriveTaskStatus", () => {
       deriveTaskStatus({ ...base, hasBinding: false, engineOk: false }),
     ).toBe("idle");
   });
+
+  it("is working while a goal loop is live even with an idle session", () => {
+    expect(
+      deriveTaskStatus({
+        ...base,
+        sessionStatus: { type: "idle" },
+        goalLoopActive: true,
+      }),
+    ).toBe("working");
+  });
+
+  it("is working while a goal loop is live without any session status", () => {
+    expect(deriveTaskStatus({ ...base, goalLoopActive: true })).toBe("working");
+  });
+
+  it("stays idle when the loop is not live and the session is idle", () => {
+    expect(
+      deriveTaskStatus({
+        ...base,
+        sessionStatus: { type: "idle" },
+        goalLoopActive: false,
+      }),
+    ).toBe("idle");
+  });
+
+  it("prefers unknown over an active loop when the engine is down", () => {
+    expect(
+      deriveTaskStatus({ ...base, engineOk: false, goalLoopActive: true }),
+    ).toBe("unknown");
+  });
 });

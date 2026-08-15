@@ -12,6 +12,7 @@ import {
   activeSessionGetPath,
 } from "./opencode-paths";
 import { restoreAllKnownProjects } from "./project-session-sync";
+import { listActiveGoalLoopWorkspaceIds } from "./goal-db";
 import { deriveTaskStatus } from "./task-status";
 import {
   estimateSessionCostWithCache,
@@ -154,6 +155,7 @@ function toTask(
   sessionStatus: SessionStatus | undefined,
   engineOk: boolean,
   meta: SessionMeta | undefined,
+  goalLoopActive: boolean,
 ): TaskSummary {
   const status = deriveTaskStatus({
     workspaceStatus: ws.status,
@@ -161,6 +163,7 @@ function toTask(
     sessionStatus,
     engineOk,
     filesChanged: stat.files,
+    goalLoopActive,
   });
 
   return {
@@ -178,6 +181,7 @@ function toTask(
     additions: stat.additions,
     deletions: stat.deletions,
     filesChanged: stat.files,
+    goalLoopActive,
     cost: meta?.cost,
     agent: meta?.agent,
     providerID: meta?.providerID,
@@ -237,6 +241,7 @@ export async function listTasks(): Promise<{
     ),
   ]);
   const statByDir = new Map(dirs.map((d, i) => [d, stats[i]]));
+  const activeGoalLoopIds = listActiveGoalLoopWorkspaceIds();
 
   const tasks = workspaces.map((ws) => {
     const binding = bindings.get(ws.id);
@@ -247,6 +252,7 @@ export async function listTasks(): Promise<{
       binding ? statuses[binding.opencode_session_id] : undefined,
       engineOk,
       binding ? metas[binding.opencode_session_id] : undefined,
+      activeGoalLoopIds.has(ws.id),
     );
   });
 
@@ -277,6 +283,7 @@ export async function listArchivedTasks(): Promise<TaskSummary[]> {
       undefined,
       true,
       undefined,
+      false,
     );
   });
 
@@ -302,7 +309,8 @@ export async function getTask(id: string): Promise<TaskSummary | null> {
   ]);
   const status = binding ? statuses[binding.opencode_session_id] : undefined;
   const meta = binding ? metas[binding.opencode_session_id] : undefined;
-  return toTask(ws, binding, stat, status, engineOk, meta);
+  const goalLoopActive = listActiveGoalLoopWorkspaceIds().has(ws.id);
+  return toTask(ws, binding, stat, status, engineOk, meta, goalLoopActive);
 }
 
 /** Fetch only the authoritative cumulative cost for a task session. */
