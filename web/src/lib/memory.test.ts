@@ -705,6 +705,43 @@ describe("memory CRUD + injection", () => {
     releaseMemoryInjectionClaim("ws-fts", "ses-fts");
   });
 
+  it("claimMemoryInjectionForSession ranks Japanese memories by query", () => {
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO projects (id, name, root_path, created_at)
+         VALUES ('memory-jp-rank-project', 'JP rank test', '/jp-rank', ?)`,
+      )
+      .run(new Date().toISOString());
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO workspaces
+          (id, project_id, display_name, absolute_path, isolation, status, created_at)
+         VALUES ('ws-jp-rank', 'memory-jp-rank-project', 'JP rank test', '/jp-rank', 'standard', 'active', ?)`,
+      )
+      .run(new Date().toISOString());
+    createMemory({
+      workspaceId: "ws-jp-rank",
+      kind: "fact",
+      content: "メモリ機能はプロジェクトの知識を保持する",
+      provenance: "manual",
+      approved: true,
+    });
+    createMemory({
+      workspaceId: "ws-jp-rank",
+      kind: "preference",
+      content: "デプロイは毎週金曜日に行う",
+      provenance: "manual",
+      approved: true,
+    });
+
+    releaseMemoryInjectionClaim("ws-jp-rank", "ses-jp-rank");
+    const claim = claimMemoryInjectionForSession("ws-jp-rank", "ses-jp-rank", "メモリ機能を直して");
+    expect(claim).not.toBeNull();
+    expect(claim!.block).toContain("メモリ機能はプロジェクトの知識を保持する");
+    expect(claim!.block).not.toContain("デプロイは毎週金曜日に行う");
+    releaseMemoryInjectionClaim("ws-jp-rank", "ses-jp-rank");
+  });
+
   it("builds a bounded OR query from a long prompt", () => {
     const query = toFtsAnyQuery(
       "Please update src/auth.ts and run tests before committing this change",
@@ -712,6 +749,18 @@ describe("memory CRUD + injection", () => {
     expect(query).toContain('"src/auth.ts"');
     expect(query).toContain(" OR ");
     expect(query.length).toBeLessThan(300);
+  });
+
+  it("splits a Japanese query into 3-char trigram OR terms", () => {
+    const query = toFtsAnyQuery("メモリ機能にフォーカスして問題点を洗い出し");
+    expect(query).toContain('"メモリ"');
+    expect(query).toContain('"モリ機"');
+    expect(query).toContain('"機能に"');
+    expect(query).toContain(" OR ");
+    expect(query.length).toBeLessThan(400);
+    // A run shorter than 3 chars cannot form trigram terms; it falls back to
+    // an escaped single phrase (still safe).
+    expect(toFtsAnyQuery("あい")).toBe('"あい"');
   });
 
   it("claimMemoryInjectionForSession falls back to use_count order when FTS has no hits", () => {

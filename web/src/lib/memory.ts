@@ -669,18 +669,43 @@ export function toFtsPhrase(query: string): string {
   return `"${sanitized.replaceAll('"', '""')}"`;
 }
 
+/** Latin/identifier tokens kept from a prompt (the pre-existing bound). */
+export const MEMORY_FTS_MAX_LATIN_TERMS = 12;
+/** CJK 3-char trigram tokens kept from a prompt (a bounded OR). */
+export const MEMORY_FTS_MAX_CJK_TERMS = 10;
+
 /**
  * Build a safe OR query from a long user prompt. Matching the entire prompt
  * as one FTS phrase almost never finds a memory, so use a bounded set of
- * identifier/word tokens instead. Non-Latin text without whitespace falls
- * back to a short phrase and still remains escaped by `toFtsPhrase`.
+ * identifier/word tokens instead. Latin tokens keep the pre-existing
+ * behaviour; CJK runs are split into 3-char substrings so the query matches
+ * the trigram FTS tokenizer (a full-run phrase would never match — the same
+ * CJK run appears verbatim in a memory only by coincidence).
  */
 export function toFtsAnyQuery(query: string): string {
   const sanitized = query.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
   if (!sanitized) return '""';
-  const terms = sanitized.match(/[A-Za-z0-9_./-]{2,}/g)?.slice(0, 12) ?? [];
-  if (terms.length === 0) return toFtsPhrase(sanitized.slice(0, 200));
-  return terms.map(toFtsPhrase).join(" OR ");
+  const phrases: string[] = [];
+  const latin = sanitized.match(/[A-Za-z0-9_./-]{2,}/g) ?? [];
+  for (const term of latin.slice(0, MEMORY_FTS_MAX_LATIN_TERMS)) {
+    phrases.push(toFtsPhrase(term));
+  }
+  // Hiragana / katakana / Han runs (punctuation and whitespace split runs, so
+  // a matching memory is not required to repeat the user's exact punctuation).
+  const cjkRuns = sanitized.match(/[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]+/g) ?? [];
+  let cjkTerms = 0;
+  for (const run of cjkRuns) {
+    for (
+      let i = 0;
+      i + 3 <= run.length && cjkTerms < MEMORY_FTS_MAX_CJK_TERMS;
+      i += 1, cjkTerms += 1
+    ) {
+      phrases.push(toFtsPhrase(run.slice(i, i + 3)));
+    }
+    if (cjkTerms >= MEMORY_FTS_MAX_CJK_TERMS) break;
+  }
+  if (phrases.length === 0) return toFtsPhrase(sanitized.slice(0, 200));
+  return phrases.join(" OR ");
 }
 
 /**
