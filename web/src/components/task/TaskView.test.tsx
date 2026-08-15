@@ -3022,7 +3022,9 @@ describe("TaskView", () => {
     async function selectAuto() {
       fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
       fireEvent.click(
-        await screen.findByRole("option", { name: "Auto" }),
+        // The Auto option may carry an image-capability badge, so match the
+        // prefix instead of the exact label.
+        await screen.findByRole("option", { name: /^Auto/ }),
       );
     }
 

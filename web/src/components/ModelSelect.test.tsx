@@ -184,7 +184,7 @@ describe("ModelSelect", () => {
     expect(autoOption.className).not.toContain("text-danger");
   });
 
-  it("marks text-only models with an eye when image pre-analysis is available", () => {
+  it("marks models without direct image support with an eye when image pre-analysis is available", () => {
     render(
       <ModelSelect
         value="anthropic::claude"
@@ -194,9 +194,50 @@ describe("ModelSelect", () => {
       />,
     );
 
+    // Auto carries no image capability by default, so it gets the eye too.
     expect(screen.getByLabelText("画像事前解析を使用")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
-    expect(screen.getAllByLabelText("画像事前解析を使用")).toHaveLength(3);
+    // Trigger eye + Auto / GPT-5.5 / Claude rows.
+    expect(screen.getAllByLabelText("画像事前解析を使用")).toHaveLength(4);
+  });
+
+  it("marks the Auto entry as image-capable when the pool supports images", () => {
+    render(
+      <ModelSelect
+        value="auto"
+        options={options}
+        onChange={vi.fn()}
+        autoImageSupported
+        imageAnalysisAvailable
+      />,
+    );
+
+    expect(screen.getByLabelText("画像入力対応")).not.toBeNull();
+    expect(screen.queryByLabelText("画像事前解析を使用")).toBeNull();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
+    // Accessible name becomes "Auto画像入力対応" with the badge attached.
+    const autoOption = screen.getByRole("option", { name: /^Auto/ });
+    expect(
+      autoOption.querySelector('[aria-label="画像入力対応"]'),
+    ).not.toBeNull();
+    expect(
+      autoOption.querySelector('[aria-label="画像事前解析を使用"]'),
+    ).toBeNull();
+  });
+
+  it("marks the Auto entry with an eye when the pool has no image-capable model", () => {
+    render(
+      <ModelSelect
+        value="auto"
+        options={options}
+        onChange={vi.fn()}
+        imageAnalysisAvailable
+      />,
+    );
+
+    expect(screen.getByLabelText("画像事前解析を使用")).not.toBeNull();
+    expect(screen.queryByLabelText("画像入力対応")).toBeNull();
   });
 });

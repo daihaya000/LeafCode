@@ -738,7 +738,8 @@ test("follow-up composer shows optimize selector for Auto and sends resolved mod
   await expect(modelMenu.getByRole("option").first()).toHaveText(
     "Auto",
   );
-  await modelMenu.getByRole("option", { name: "Auto" }).click();
+  // The Auto entry may carry an image-capability badge, so match a prefix.
+  await modelMenu.getByRole("option", { name: /Auto/ }).click();
 
   // Auto owns the effort, so the manual intelligence selector disappears and
   // the optimize selector takes its place.

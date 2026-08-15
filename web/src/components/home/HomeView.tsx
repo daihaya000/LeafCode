@@ -1308,6 +1308,18 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     [codexBarUsage],
   );
 
+  // Auto は自身のキャパシティを持たない。ドロップダウンの Auto 行に
+  // 画像対応マークを出すため、接続モデルに 1 つでも画像対応がいるかを
+  // 送信時の判定と同じ式で計算して ModelSelect へ渡す。
+  const autoImageSupported = useMemo(
+    () =>
+      Object.values(modelCapabilities).some(
+        (capability) =>
+          capability.image === true || capability.attachment === true,
+      ),
+    [modelCapabilities],
+  );
+
   useEffect(() => {
     if (!intelligence) return;
     if (!intelligenceVariants.some((v) => v === intelligence)) {
@@ -1591,6 +1603,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     title={selectedModel?.label ?? "モデル"}
                     limitedProviders={modelLimitedProviders}
                     imageAnalysisAvailable={qwenNativeAvailable}
+                    autoImageSupported={autoImageSupported}
                   />
                 )}
                 {model !== AUTO_MODEL_VALUE && intelligenceVariants.length > 0 && (

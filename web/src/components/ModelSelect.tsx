@@ -59,6 +59,7 @@ export function ModelSelect({
   emptyLabel = "モデル",
   limitedProviders,
   imageAnalysisAvailable = false,
+  autoImageSupported = false,
 }: {
   value: string;
   options: ModelOption[];
@@ -76,6 +77,13 @@ export function ModelSelect({
   limitedProviders?: ReadonlySet<string>;
   /** Shows an eye badge on text-only models that can use image pre-analysis. */
   imageAnalysisAvailable?: boolean;
+  /**
+   * Whether the Auto candidate pool contains at least one image-capable
+   * model. Auto has no capabilities of its own, so its entry in the dropdown
+   * is marked from the connected pool (the same check the composer uses
+   * before sending an image under Auto).
+   */
+  autoImageSupported?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -224,8 +232,9 @@ export function ModelSelect({
             const optionProviderID = providerIDFromValue(option.value);
             const optionLimited =
               option.value !== "auto" && limitedSet.has(optionProviderID);
-            const usesImageAnalysis =
-              imageAnalysisAvailable && option.value !== "auto" && !option.image;
+            const optionImage =
+              option.image || (option.value === "auto" && autoImageSupported);
+            const usesImageAnalysis = imageAnalysisAvailable && !optionImage;
             return (
             <button
               key={option.value}
@@ -245,7 +254,7 @@ export function ModelSelect({
             >
               <ModelProviderIcon value={option.value} />
               <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              {option.image && (
+              {optionImage && (
                 <ImageIcon
                   aria-label="画像入力対応"
                   className="h-3.5 w-3.5 shrink-0 text-primary"
@@ -336,18 +345,19 @@ export function ModelSelect({
       >
         <ModelProviderIcon value={value} />
         <span className="min-w-0 truncate">{selected?.label ?? emptyLabel}</span>
-        {selected?.image && (
+        {(selected?.image || (value === "auto" && autoImageSupported)) && (
           <ImageIcon
             aria-label="画像入力対応"
             className="h-3.5 w-3.5 shrink-0 text-primary"
           />
         )}
-        {imageAnalysisAvailable && value !== "auto" && !selected?.image && (
-          <Eye
-            aria-label="画像事前解析を使用"
-            className="h-3.5 w-3.5 shrink-0 text-working"
-          />
-        )}
+        {imageAnalysisAvailable &&
+          !(selected?.image || (value === "auto" && autoImageSupported)) && (
+            <Eye
+              aria-label="画像事前解析を使用"
+              className="h-3.5 w-3.5 shrink-0 text-working"
+            />
+          )}
         <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-faint" />
       </button>
 

@@ -541,7 +541,7 @@ describe("HomeView image attachments", () => {
       );
     });
     fireEvent.click(await screen.findByLabelText("モデル"));
-    fireEvent.click(await screen.findByRole("option", { name: "Auto" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Auto/ }));
     await waitFor(() => {
       expect((screen.getByLabelText("モデル") as HTMLButtonElement).value).toBe(
         "auto",
@@ -2234,7 +2234,9 @@ describe("HomeView auto model", () => {
     const trigger = await screen.findByLabelText("モデル");
     fireEvent.click(trigger);
     fireEvent.click(
-      await screen.findByRole("option", { name: "Auto" }),
+      // The Auto option may carry an image-capability badge, so match the
+      // prefix instead of the exact label.
+      await screen.findByRole("option", { name: /^Auto/ }),
     );
     await waitFor(() =>
       expect((trigger as HTMLButtonElement).value).toBe("auto"),
@@ -2362,6 +2364,10 @@ describe("HomeView auto model", () => {
     render(<HomeView />);
     await selectAuto();
 
+    // The Auto entry is marked image-capable from the connected pool.
+    expect(screen.getByLabelText("画像入力対応")).not.toBeNull();
+    expect(screen.queryByLabelText("画像事前解析を使用")).toBeNull();
+
     const attach = await screen.findByRole("button", { name: "画像を添付" });
     expect((attach as HTMLButtonElement).disabled).toBe(false);
 
@@ -2380,6 +2386,10 @@ describe("HomeView auto model", () => {
     mockProvider(false);
     render(<HomeView />);
     await selectAuto();
+
+    // No image-capable pool member and no pre-analysis: no badge at all.
+    expect(screen.queryByLabelText("画像入力対応")).toBeNull();
+    expect(screen.queryByLabelText("画像事前解析を使用")).toBeNull();
 
     const attach = await screen.findByRole("button", { name: "画像を添付" });
     expect((attach as HTMLButtonElement).disabled).toBe(true);
