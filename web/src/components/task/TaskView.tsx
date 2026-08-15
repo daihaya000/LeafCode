@@ -11,15 +11,16 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowDown,
   ArrowUp,
   Bot,
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronsDown,
+  ChevronsUp,
+  ChevronUp,
   CircleAlert,
   Copy,
-  CornerDownRight,
-  CornerUpLeft,
   FolderTree,
   GitBranch,
   GitGraph,
@@ -610,14 +611,14 @@ export function TaskView({
     setDiffKey,
     focusFile,
     setFocusFile,
-    showScrollButton,
-    setShowScrollButton,
-    showScrollTopButton,
-    setShowScrollTopButton,
+    showFirstMessageButton,
+    setShowFirstMessageButton,
     showPrevMessageButton,
     setShowPrevMessageButton,
     showNextMessageButton,
     setShowNextMessageButton,
+    showLastMessageButton,
+    setShowLastMessageButton,
     filteredFilesCount,
     setFilteredFilesCount,
   } = useTaskPanels();
@@ -821,11 +822,12 @@ export function TaskView({
   // Rendered timeline message wrappers, keyed by message id (see the
   // data-message-id ref callback below).
   const messageElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  // Index into `timeline` of the message currently at the viewport top line.
+  // Index into `userMessageIdsRef` of the user message currently at the
+  // viewport top line. Navigation jumps only between user-sent messages.
   const currentMessageIdxRef = useRef(0);
-  // Message ids in timeline order, mirrored for use inside useCallback whose
-  // deps cannot reference the later-declared `timeline` (TDZ).
-  const timelineIdsRef = useRef<string[]>([]);
+  // User message ids in timeline order, mirrored for use inside useCallback
+  // whose deps cannot reference the later-declared `timeline` (TDZ).
+  const userMessageIdsRef = useRef<string[]>([]);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const autoReplyIdsRef = useRef<Set<string>>(new Set());
@@ -2530,20 +2532,9 @@ export function TaskView({
     return el.scrollTop + el.clientHeight >= el.scrollHeight - 80;
   }, []);
 
-  const isAtTop = useCallback((el: HTMLElement) => {
-    return el.scrollTop <= 80;
-  }, []);
-
   const scrollToBottom = useCallback(
     (el: HTMLElement, behavior: ScrollBehavior = "auto") => {
       el.scrollTo({ top: el.scrollHeight, behavior });
-    },
-    [],
-  );
-
-  const scrollToTop = useCallback(
-    (el: HTMLElement, behavior: ScrollBehavior = "auto") => {
-      el.scrollTo({ top: 0, behavior });
     },
     [],
   );
@@ -2562,34 +2553,36 @@ export function TaskView({
     // bails out once stickRef is false.
     if (atBottom) stickRef.current = true;
     else if (el.scrollTop < prevTop - 4) stickRef.current = false;
-    setShowScrollButton(!atBottom && !stickRef.current);
-    setShowScrollTopButton(!isAtTop(el));
-    // Track which message sits at the viewport top line so the previous-message
-    // button knows whether an earlier message exists. The "current" message is
-    // the first one whose top is at or below the top line (the message the user
-    // sees at the top); scanning incrementally from the last known index keeps
-    // this O(1)-ish per scroll event.
+    // Track which user message sits at the viewport top line so the jump
+    // buttons know whether an earlier/later user message exists. The "current"
+    // message is the first one whose top is at or below the top line (the
+    // message the user sees at the top); scanning incrementally from the last
+    // known index keeps this O(1)-ish per scroll event.
     const els = messageElsRef.current;
     if (els.size === 0) {
+      setShowFirstMessageButton(false);
       setShowPrevMessageButton(false);
       setShowNextMessageButton(false);
+      setShowLastMessageButton(false);
       return;
     }
     let idx = currentMessageIdxRef.current;
     const line = el.scrollTop + 4;
-    const elAt = (i: number) => els.get(timelineIdsRef.current[i]);
-    while (idx < timelineIdsRef.current.length && (elAt(idx)?.offsetTop ?? Infinity) <= line) {
+    const elAt = (i: number) => els.get(userMessageIdsRef.current[i]);
+    while (idx < userMessageIdsRef.current.length && (elAt(idx)?.offsetTop ?? Infinity) <= line) {
       idx += 1;
     }
     while (idx > 0 && (elAt(idx - 1)?.offsetTop ?? -Infinity) > line) {
       idx -= 1;
     }
-    if (idx >= timelineIdsRef.current.length) idx = timelineIdsRef.current.length - 1;
+    if (idx >= userMessageIdsRef.current.length) idx = userMessageIdsRef.current.length - 1;
     if (idx < 0) idx = 0;
     currentMessageIdxRef.current = idx;
+    setShowFirstMessageButton(idx > 0);
     setShowPrevMessageButton(idx > 0);
-    setShowNextMessageButton(idx < timelineIdsRef.current.length - 1);
-  }, [isAtBottom, isAtTop, setShowScrollButton, setShowScrollTopButton, setShowPrevMessageButton, setShowNextMessageButton]);
+    setShowNextMessageButton(idx < userMessageIdsRef.current.length - 1);
+    setShowLastMessageButton(idx < userMessageIdsRef.current.length - 1);
+  }, [isAtBottom, setShowFirstMessageButton, setShowPrevMessageButton, setShowNextMessageButton, setShowLastMessageButton]);
 
   // Auto-stick scroll to bottom. We intentionally avoid rAF timeouts because
   // mobile Safari can ignore scrollTo during inertial scrolling; re-running
@@ -4130,7 +4123,9 @@ export function TaskView({
       ),
     [stream.visibleMessages],
   );
-  timelineIdsRef.current = timeline.map((m) => m.info.id);
+  userMessageIdsRef.current = timeline
+    .filter((m) => m.info.role === "user")
+    .map((m) => m.info.id);
   /**
    * 現在のターンが中断／無言終了で終わっているときだけ再開情報を持つ。`timeline`
    * ではなく `visibleMessages` から求めるのは、描画対象パートを持たない
@@ -5143,25 +5138,53 @@ export function TaskView({
                 )}
               </div>
             </div>
-            {(showScrollTopButton ||
-              showScrollButton ||
+            {(showFirstMessageButton ||
               showPrevMessageButton ||
-              showNextMessageButton) &&
-              stream.messages.length > 0 && (
+              showNextMessageButton ||
+              showLastMessageButton) &&
+              userMessageIdsRef.current.length > 0 && (
               <div className="absolute right-4 bottom-4 z-50 flex flex-col gap-2">
+                {showFirstMessageButton && (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    aria-label="最初のユーザーメッセージへ"
+                    title="最初のユーザーメッセージへ"
+                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                    onClick={() => {
+                      const el = scrollRef.current;
+                      if (!el) return;
+                      const targetEl = messageElsRef.current.get(userMessageIdsRef.current[0]);
+                      if (!targetEl) return;
+                      const line = el.scrollTop + 4;
+                      el.scrollTo({
+                        top: el.scrollTop + targetEl.offsetTop - line,
+                        behavior: "smooth",
+                      });
+                      currentMessageIdxRef.current = 0;
+                      stickRef.current = false;
+                      setShowFirstMessageButton(false);
+                      setShowPrevMessageButton(false);
+                      setShowNextMessageButton(userMessageIdsRef.current.length > 1);
+                      setShowLastMessageButton(userMessageIdsRef.current.length > 1);
+                    }}
+                  >
+                    <ChevronsUp className="h-4.5 w-4.5" />
+                  </Button>
+                )}
                 {showPrevMessageButton && (
                   <Button
                     variant="secondary"
                     size="icon"
-                    aria-label="一つ前のメッセージへ"
-                    title="一つ前のメッセージへ"
+                    aria-label="一つ前のユーザーメッセージへ"
+                    title="一つ前のユーザーメッセージへ"
                     className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
                     onClick={() => {
                       const el = scrollRef.current;
                       if (!el) return;
                       const target = currentMessageIdxRef.current - 1;
                       if (target < 0) return;
-                      const targetEl = messageElsRef.current.get(timeline[target]?.info.id);
+                      const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
                       if (!targetEl) return;
                       const line = el.scrollTop + 4;
                       el.scrollTo({
@@ -5170,68 +5193,28 @@ export function TaskView({
                       });
                       currentMessageIdxRef.current = target;
                       stickRef.current = false;
-                      setShowScrollButton(false);
+                      setShowFirstMessageButton(target > 0);
                       setShowPrevMessageButton(target > 0);
-                      setShowNextMessageButton(target < timeline.length - 1);
+                      setShowNextMessageButton(true);
+                      setShowLastMessageButton(true);
                     }}
                   >
-                    <CornerUpLeft className="h-4 w-4" />
-                  </Button>
-                )}
-                {showScrollTopButton && (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    aria-label="最初のメッセージへ"
-                    title="最初のメッセージへ"
-                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                    onClick={() => {
-                      const el = scrollRef.current;
-                      if (!el) return;
-                      scrollToTop(el, "smooth");
-                      currentMessageIdxRef.current = 0;
-                      stickRef.current = false;
-                      setShowScrollTopButton(false);
-                      setShowPrevMessageButton(false);
-                      setShowNextMessageButton(timeline.length > 1);
-                    }}
-                  >
-                    <ArrowUp className="h-4 w-4" />
-                  </Button>
-                )}
-                {showScrollButton && (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    aria-label="最新のメッセージへ"
-                    title="最新のメッセージへ"
-                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                    onClick={() => {
-                      const el = scrollRef.current;
-                      if (!el) return;
-                      scrollToBottom(el, "smooth");
-                      currentMessageIdxRef.current = timeline.length - 1;
-                      stickRef.current = true;
-                      setShowScrollButton(false);
-                      setShowNextMessageButton(false);
-                    }}
-                  >
-                    <ArrowDown className="h-4 w-4" />
+                    <ChevronUp className="h-4.5 w-4.5" />
                   </Button>
                 )}
                 {showNextMessageButton && (
                   <Button
                     variant="secondary"
                     size="icon"
-                    aria-label="一つ後のメッセージへ"
-                    title="一つ後のメッセージへ"
+                    aria-label="一つ後のユーザーメッセージへ"
+                    title="一つ後のユーザーメッセージへ"
                     className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
                     onClick={() => {
                       const el = scrollRef.current;
                       if (!el) return;
                       const target = currentMessageIdxRef.current + 1;
-                      if (target >= timeline.length) return;
-                      const targetEl = messageElsRef.current.get(timeline[target]?.info.id);
+                      if (target >= userMessageIdsRef.current.length) return;
+                      const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
                       if (!targetEl) return;
                       const line = el.scrollTop + 4;
                       el.scrollTo({
@@ -5240,12 +5223,42 @@ export function TaskView({
                       });
                       currentMessageIdxRef.current = target;
                       stickRef.current = false;
-                      setShowScrollButton(false);
+                      setShowFirstMessageButton(true);
                       setShowPrevMessageButton(true);
-                      setShowNextMessageButton(target < timeline.length - 1);
+                      setShowNextMessageButton(target < userMessageIdsRef.current.length - 1);
+                      setShowLastMessageButton(target < userMessageIdsRef.current.length - 1);
                     }}
                   >
-                    <CornerDownRight className="h-4 w-4" />
+                    <ChevronDown className="h-4.5 w-4.5" />
+                  </Button>
+                )}
+                {showLastMessageButton && (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    aria-label="最後のユーザーメッセージへ"
+                    title="最後のユーザーメッセージへ"
+                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                    onClick={() => {
+                      const el = scrollRef.current;
+                      if (!el) return;
+                      const target = userMessageIdsRef.current.length - 1;
+                      const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
+                      if (!targetEl) return;
+                      const line = el.scrollTop + 4;
+                      el.scrollTo({
+                        top: el.scrollTop + targetEl.offsetTop - line,
+                        behavior: "smooth",
+                      });
+                      currentMessageIdxRef.current = target;
+                      stickRef.current = false;
+                      setShowFirstMessageButton(userMessageIdsRef.current.length > 1);
+                      setShowPrevMessageButton(userMessageIdsRef.current.length > 1);
+                      setShowNextMessageButton(false);
+                      setShowLastMessageButton(false);
+                    }}
+                  >
+                    <ChevronsDown className="h-4.5 w-4.5" />
                   </Button>
                 )}
               </div>

@@ -25,10 +25,10 @@ export function useTaskPanels() {
   });
   const [diffKey, setDiffKey] = useState(0);
   const [focusFile, setFocusFile] = useState<string | null>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const [showScrollTopButton, setShowScrollTopButton] = useState(false);
+  const [showFirstMessageButton, setShowFirstMessageButton] = useState(false);
   const [showPrevMessageButton, setShowPrevMessageButton] = useState(false);
   const [showNextMessageButton, setShowNextMessageButton] = useState(false);
+  const [showLastMessageButton, setShowLastMessageButton] = useState(false);
   const [filteredFilesCount, setFilteredFilesCount] = useState<number | null>(null);
 
   return {
@@ -54,14 +54,14 @@ export function useTaskPanels() {
     setDiffKey,
     focusFile,
     setFocusFile,
-    showScrollButton,
-    setShowScrollButton,
-    showScrollTopButton,
-    setShowScrollTopButton,
+    showFirstMessageButton,
+    setShowFirstMessageButton,
     showPrevMessageButton,
     setShowPrevMessageButton,
     showNextMessageButton,
     setShowNextMessageButton,
+    showLastMessageButton,
+    setShowLastMessageButton,
     filteredFilesCount,
     setFilteredFilesCount,
   };

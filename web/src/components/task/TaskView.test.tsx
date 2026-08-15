@@ -4192,21 +4192,16 @@ describe("TaskView voice input", () => {
     expect(screen.queryByLabelText("次の指示を提案")).toBeNull();
   });
 
-  it("shows a scroll-to-bottom button when scrolled up and scrolls to bottom on click", async () => {
+  it("jumps to the last user message when scrolled up and hides the button at the last message", async () => {
+    const mkUser = (id: string) => ({
+      info: { id, role: "user", time: { created: Date.now() } },
+      parts: [{ id: `p-${id}`, messageID: id, type: "text", text: id }],
+    });
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
       loaded: true,
-      messages: [
-        {
-          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
-        },
-        {
-          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
-        },
-      ],
-      visibleMessages: [],
+      messages: [mkUser("m1"), mkUser("m2"), mkUser("m3")],
+      visibleMessages: [mkUser("m1"), mkUser("m2"), mkUser("m3")],
       status: { type: "idle" },
       permissions: [],
       questions: [],
@@ -4216,17 +4211,23 @@ describe("TaskView voice input", () => {
 
     const scroller = screen.getByTestId("message-scroller") as HTMLDivElement;
 
-    // At bottom: no button
     Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1000 });
     Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 500 });
-    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 520 });
-    fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 520, writable: true });
 
-    // Scrolled up: button appears
+    const wrappers = Array.from(scroller.querySelectorAll("[data-message-id]"));
+    wrappers.forEach((el, i) => {
+      Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
+    });
+
+    // At the last user message: no jump button at all.
+    fireEvent.scroll(scroller);
+    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
+
+    // Scrolled up to the first message: the last-message button appears.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 100, writable: true });
     fireEvent.scroll(scroller);
-    const button = screen.getByLabelText("最新のメッセージへ");
+    const button = screen.getByLabelText("最後のユーザーメッセージへ");
     expect(button).not.toBeNull();
 
     // The button must live outside the scroller. An absolutely positioned child
@@ -4237,34 +4238,30 @@ describe("TaskView voice input", () => {
     expect(anchor.className).toContain("relative");
     expect(anchor.contains(scroller)).toBe(true);
 
-    // Click scrolls to bottom
+    // Click scrolls to the last user message (m3, offsetTop 224).
     fireEvent.click(button);
     expect(scroller.scrollTo).toHaveBeenLastCalledWith({
-      top: 1000,
+      top: 100 + 224 - 104,
       behavior: "smooth",
     });
 
-    // After scroll to bottom, button is hidden
-    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 520 });
-    fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+    // At the last message, forward jumps disappear while backward ones remain.
+    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("一つ後のユーザーメッセージへ")).toBeNull();
+    expect(screen.getByLabelText("一つ前のユーザーメッセージへ")).not.toBeNull();
+    expect(screen.getByLabelText("最初のユーザーメッセージへ")).not.toBeNull();
   });
 
   it("keeps following the latest message when growing content pushes the bottom away", async () => {
+    const mkUser = (id: string) => ({
+      info: { id, role: "user", time: { created: Date.now() } },
+      parts: [{ id: `p-${id}`, messageID: id, type: "text", text: id }],
+    });
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
       loaded: true,
-      messages: [
-        {
-          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
-        },
-        {
-          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
-        },
-      ],
-      visibleMessages: [],
+      messages: [mkUser("m1"), mkUser("m2"), mkUser("m3"), mkUser("m4")],
+      visibleMessages: [mkUser("m1"), mkUser("m2"), mkUser("m3"), mkUser("m4")],
       status: { type: "idle" },
       permissions: [],
       questions: [],
@@ -4288,38 +4285,38 @@ describe("TaskView voice input", () => {
       });
     };
 
+    const wrappers = Array.from(scroller.querySelectorAll("[data-message-id]"));
+    wrappers.forEach((el, i) => {
+      Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
+    });
+
     setMetrics(1000, 500);
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
 
     // An error detail auto-expands: the content grows and the browser's scroll
     // anchoring nudges scrollTop, so the viewport is no longer at the bottom
     // even though the user never scrolled up. Follow mode must survive.
     setMetrics(2000, 600);
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
 
     // A genuine upward scroll still stops following.
     setMetrics(2000, 200);
     fireEvent.scroll(scroller);
-    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
+    expect(screen.getByLabelText("最後のユーザーメッセージへ")).not.toBeNull();
   });
 
-  it("shows a scroll-to-first-message button when scrolled down and scrolls to top on click", async () => {
+  it("jumps to the first user message when scrolled down and hides the button at the first message", async () => {
+    const mkUser = (id: string) => ({
+      info: { id, role: "user", time: { created: Date.now() } },
+      parts: [{ id: `p-${id}`, messageID: id, type: "text", text: id }],
+    });
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
       loaded: true,
-      messages: [
-        {
-          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
-        },
-        {
-          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
-        },
-      ],
-      visibleMessages: [],
+      messages: [mkUser("m1"), mkUser("m2"), mkUser("m3")],
+      visibleMessages: [mkUser("m1"), mkUser("m2"), mkUser("m3")],
       status: { type: "idle" },
       permissions: [],
       questions: [],
@@ -4332,56 +4329,47 @@ describe("TaskView voice input", () => {
     Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1000 });
     Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 500 });
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 0, writable: true });
-    fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最初のメッセージへ")).toBeNull();
 
+    const wrappers = Array.from(scroller.querySelectorAll("[data-message-id]"));
+    wrappers.forEach((el, i) => {
+      Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
+    });
+
+    // At the first message, there is no earlier message to jump to.
+    fireEvent.scroll(scroller);
+    expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
+
+    // Scrolled to the last message: the first-message button appears.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 200, writable: true });
     fireEvent.scroll(scroller);
-    const button = screen.getByLabelText("最初のメッセージへ");
+    const button = screen.getByLabelText("最初のユーザーメッセージへ");
     expect(button).not.toBeNull();
     expect(scroller.contains(button)).toBe(false);
 
     fireEvent.click(button);
     expect(scroller.scrollTo).toHaveBeenLastCalledWith({
-      top: 0,
+      top: 200 + 24 - 204,
       behavior: "smooth",
     });
 
-    expect(screen.queryByLabelText("最初のメッセージへ")).toBeNull();
+    // At the first message, backward jumps disappear while forward ones remain.
+    expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
+    expect(screen.getByLabelText("一つ後のユーザーメッセージへ")).not.toBeNull();
+    expect(screen.getByLabelText("最後のユーザーメッセージへ")).not.toBeNull();
   });
 
-  it("shows a previous-message button when scrolled past the first message and scrolls to the previous message on click", async () => {
+  it("jumps to the previous user message and skips assistant-only messages", async () => {
+    const mk = (id: string, role: "user" | "assistant") => ({
+      info: { id, role, time: { created: Date.now() } },
+      parts: [{ id: `p-${id}`, messageID: id, type: "text", text: id }],
+    });
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
       loaded: true,
-      messages: [
-        {
-          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
-        },
-        {
-          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
-        },
-        {
-          info: { id: "m3", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p3", messageID: "m3", type: "text", text: "bye" }],
-        },
-      ],
-      visibleMessages: [
-        {
-          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
-        },
-        {
-          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
-        },
-        {
-          info: { id: "m3", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p3", messageID: "m3", type: "text", text: "bye" }],
-        },
-      ],
+      // m2 is an assistant turn; navigation must jump from m3 straight to m1.
+      messages: [mk("m1", "user"), mk("m2", "assistant"), mk("m3", "user")],
+      visibleMessages: [mk("m1", "user"), mk("m2", "assistant"), mk("m3", "user")],
       status: { type: "idle" },
       permissions: [],
       questions: [],
@@ -4397,69 +4385,50 @@ describe("TaskView voice input", () => {
 
     // PartView is mocked to null in this suite, so the rendered wrappers carry
     // the message positions. Stub offsetTop so the onScroll scan can tell
-    // which message is at the viewport top line.
+    // which user message is at the viewport top line.
     const wrappers = Array.from(scroller.querySelectorAll("[data-message-id]"));
     expect(wrappers.map((el) => el.getAttribute("data-message-id"))).toEqual(["m1", "m2", "m3"]);
     wrappers.forEach((el, i) => {
       Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
     });
 
-    // At the top, there is no previous message.
+    // At the first user message, there is no previous one.
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("一つ前のメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
 
     // Scrolled so that m3 is at the top line (scrollTop 200 => line 204,
-    // m3 top 224 is below, m2 top 124 is above): previous message = m2.
+    // m3 top 224 is below, m2 top 124 is above): previous user message = m1.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 200, writable: true });
     fireEvent.scroll(scroller);
-    const button = screen.getByLabelText("一つ前のメッセージへ");
+    const button = screen.getByLabelText("一つ前のユーザーメッセージへ");
     expect(button).not.toBeNull();
     expect(scroller.contains(button)).toBe(false);
 
     fireEvent.click(button);
     expect(scroller.scrollTo).toHaveBeenLastCalledWith({
-      top: 120,
+      top: 200 + 24 - 204,
       behavior: "smooth",
     });
 
-    // Jumping to m2 (offsetTop 124) leaves a previous message (m1), so the
-    // button stays available.
-    expect(screen.queryByLabelText("一つ前のメッセージへ")).not.toBeNull();
-    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+    // Jumping to m1 (offsetTop 24) lands on the first user message: backward
+    // jumps disappear while forward ones remain.
+    expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
+    expect(screen.getByLabelText("一つ後のユーザーメッセージへ")).not.toBeNull();
+    expect(screen.getByLabelText("最後のユーザーメッセージへ")).not.toBeNull();
   });
 
-  it("shows a next-message button when the current message has a following one and scrolls to the next message on click", async () => {
+  it("jumps to the next user message and hides forward jumps at the last user message", async () => {
+    const mk = (id: string, role: "user" | "assistant") => ({
+      info: { id, role, time: { created: Date.now() } },
+      parts: [{ id: `p-${id}`, messageID: id, type: "text", text: id }],
+    });
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
       loaded: true,
-      messages: [
-        {
-          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
-        },
-        {
-          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
-        },
-        {
-          info: { id: "m3", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p3", messageID: "m3", type: "text", text: "bye" }],
-        },
-      ],
-      visibleMessages: [
-        {
-          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
-        },
-        {
-          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
-        },
-        {
-          info: { id: "m3", role: "assistant", time: { created: Date.now() } },
-          parts: [{ id: "p3", messageID: "m3", type: "text", text: "bye" }],
-        },
-      ],
+      // m2 is an assistant turn; navigation must jump from m1 straight to m3.
+      messages: [mk("m1", "user"), mk("m2", "assistant"), mk("m3", "user")],
+      visibleMessages: [mk("m1", "user"), mk("m2", "assistant"), mk("m3", "user")],
       status: { type: "idle" },
       permissions: [],
       questions: [],
@@ -4478,25 +4447,27 @@ describe("TaskView voice input", () => {
       Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
     });
 
-    // At the top, m1 is the current message: the next message exists, the
+    // At the top, m1 is the current message: the next user message exists, the
     // previous one does not.
     fireEvent.scroll(scroller);
-    const button = screen.getByLabelText("一つ後のメッセージへ");
+    const button = screen.getByLabelText("一つ後のユーザーメッセージへ");
     expect(button).not.toBeNull();
     expect(scroller.contains(button)).toBe(false);
-    expect(screen.queryByLabelText("一つ前のメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
 
-    // Click jumps to m2 (offsetTop 124 => top 120).
+    // Click jumps to m3 (offsetTop 224 => top 220), skipping m2.
     fireEvent.click(button);
     expect(scroller.scrollTo).toHaveBeenLastCalledWith({
-      top: 120,
+      top: 224 - 4,
       behavior: "smooth",
     });
 
-    // Scrolled past the last message: no following message anymore.
+    // Scrolled past the last user message: no following message anymore.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 300, writable: true });
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("一つ後のメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("一つ後のユーザーメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
   });
 
   it("surfaces session restore failures inline and prevents duplicate restores", async () => {
