@@ -425,14 +425,28 @@ export async function runMemoryExtraction(input: {
     );
   } finally {
     // Extraction sessions are implementation details; never leave them in the
-    // user's session list after a successful run, error, or timeout.
-    try {
-      await ocServer(directory, sessionPath(sessionID), {
-        method: "DELETE",
-        timeoutMs: 10_000,
-      });
-    } catch {
-      // Cleanup must not replace the extraction result.
-    }
+    // user's session list after a successful run, error, or timeout. A session
+    // that was never created has nothing to clean up — deleting
+    // "/session/null" would be a wasted request.
+    await cleanupExtractionSession(directory, sessionID);
+  }
+}
+
+/**
+ * Delete the throwaway extraction session if one was created. Never throws:
+ * cleanup must not replace the extraction result.
+ */
+export async function cleanupExtractionSession(
+  directory: string,
+  sessionID: string | null,
+): Promise<void> {
+  if (!sessionID) return;
+  try {
+    await ocServer(directory, sessionPath(sessionID), {
+      method: "DELETE",
+      timeoutMs: 10_000,
+    });
+  } catch {
+    // Cleanup must not replace the extraction result.
   }
 }

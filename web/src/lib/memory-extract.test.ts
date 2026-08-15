@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MEMORY_EXTRACT_MAX_ITEMS_PER_RUN,
   buildExtractionSessionBody,
   buildExtractionPrompt,
+  cleanupExtractionSession,
   extractTranscriptTail,
   lastJsonBlock,
   lastMessageId,
@@ -11,6 +12,13 @@ import {
   parseExtractionJson,
 } from "@/lib/memory-extract";
 import type { MessageWithParts } from "@/lib/types";
+
+vi.mock("@/lib/oc-server", () => ({
+  OcError: class extends Error {},
+  ocServer: vi.fn(async () => ({})),
+}));
+
+const { ocServer } = await import("@/lib/oc-server");
 
 function part(role: "user" | "assistant", texts: string[], id: string = role): MessageWithParts {
   return {
@@ -170,5 +178,30 @@ describe("buildExtractionSessionBody", () => {
 
   it("lets OpenCode choose the default model when no model is resolved", () => {
     expect(buildExtractionSessionBody(null)).toEqual({ title: "memory-extract" });
+  });
+});
+
+describe("cleanupExtractionSession", () => {
+  beforeEach(() => {
+    vi.mocked(ocServer).mockClear();
+  });
+
+  it("deletes a created extraction session", async () => {
+    await cleanupExtractionSession("/dir", "ses-created");
+    expect(vi.mocked(ocServer)).toHaveBeenCalledWith(
+      "/dir",
+      "/session/ses-created",
+      { method: "DELETE", timeoutMs: 10_000 },
+    );
+  });
+
+  it("skips the DELETE when no session was created (never hits /session/null)", async () => {
+    await cleanupExtractionSession("/dir", null);
+    expect(vi.mocked(ocServer)).not.toHaveBeenCalled();
+  });
+
+  it("never throws when the DELETE fails", async () => {
+    vi.mocked(ocServer).mockRejectedValueOnce(new Error("boom"));
+    await expect(cleanupExtractionSession("/dir", "ses-gone")).resolves.toBeUndefined();
   });
 });
