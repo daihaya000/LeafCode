@@ -85,3 +85,4 @@
 - ターミナル（PtyPanel、375px）：空状態（「稼働中の PTY はありません」）と起動後（xterm 351px 幅）の両方でオーバーフローなし。タブ（Terminal nH）・セッション閉じるボタン・input すべて正常動作。
 - セレクタのドロップダウン（375px）：モデル（259px 幅・23 アイテム・オーバーフローなし）、プロジェクト（135px・3 アイテム）ともビューポート内に収まり正常。
 - ワークフロー系（コード確認・ワークフロータスク不在のため実表示は未実施）：WorkflowPanel.tsx:154-166 は `overflow-auto` + `max-w-4xl` + `md:grid-cols-3`（モバイル1列）+ `flex-wrap` でモバイル対応。WorkflowGraphPanel.tsx:120-121 は `overflow-auto` + `w-full min-w-0`、WorkflowGraphCanvas.tsx:140 は `h-full w-full overflow-hidden` で対応。
+- タスク状態バッジ（375px）：タスク画面ヘッダーに「クリーン」等の状態バッジ（x=60〜129、69px）が正常表示。サイドバーのタスク行には状態バッジはなく、Attention バッジ（要対応セッション）のみが行単位で付く。
