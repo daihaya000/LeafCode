@@ -5365,7 +5365,7 @@ export function TaskView({
                         imageAnalysisAvailable={qwenNativeAvailable}
                       />
                     )}
-                    {intelligenceVariants.length > 0 && (
+                    {effectiveModelKey !== AUTO_MODEL_VALUE && intelligenceVariants.length > 0 && (
                       <IntelligenceSelect
                         variants={intelligenceVariants}
                         value={intelligence}
@@ -5375,12 +5375,12 @@ export function TaskView({
                         disabled={!task.sessionId}
                       />
                     )}
-                    {/* Shares the effort slot with IntelligenceSelect: Auto
-                        decides the effort itself. The variant list is empty
-                        for Auto unless an agent pins its own model, in which
-                        case Auto is bypassed and the effort selector wins. */}
+                    {/* Auto の effort は AutoOptimizeSelect で制御。
+                        エージェントがモデルを固定した場合は実モデルに解決される
+                        ため IntelligenceSelect が表示される。Auto のまま
+                        （エージェントなし）の場合のみ AutoOptimizeSelect を出す。 */}
                     {model === AUTO_MODEL_VALUE &&
-                      intelligenceVariants.length === 0 && (
+                      effectiveModelKey === AUTO_MODEL_VALUE && (
                         <AutoOptimizeSelect
                           value={autoOptimize}
                           onChange={changeAutoOptimize}
