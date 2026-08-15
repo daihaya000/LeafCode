@@ -445,3 +445,30 @@ docs の pause-abort 記述の自己矛盾。修正時は恒久テストとし�
 (1) **BR-22**: `goal-scheduler.ts` の queued / verifying_completed 分岐で `transcriptIdleFor(messages, TURN_QUIET_MS)` の early return を撤廃。`processLoop` 冒頭の engine-status チェック（busy なら return）が「in-flight ターンの防御」の実体であり、エンジンが idle を報告した時点で transcript の未完（abort された自プロンプト・途中切れ assistant）は中断の残骸でしかない。これにより abort → resume 後も次ターンが送信される（恒久テスト 2 本）。(2) **BR-23 / BR-24**: `goal-db.ts` の resume で `deliveredGoalResultAfterUnknownPrompt` による結果復元を `unknown_delivery` に加えて `user` / `manual_send` pause にも適用。応答着弾〜適用前の 2.5s ウィンドウで pause されても resume 時に適用され、検証応答は二重送信されず `completed` へ到達する（恒久テスト 2 本）。(3) **BR-26**: `pauseGoalLoopForManualSend` と `createGoalLoop` のループ置換で、in-flight ターン（running / verifying_completed）に対して `/abort` を送信（恒久テスト 2 本）。手動送信の SessionBusy（409）連続失敗と旧ループ作業の無駄継続を解消。(4) **BR-25 / BR-27 / BR-28**: `GoalLoopPanel.tsx` で `unreadable_result` / `turn_timeout` のヒントを「再開すると次のターンを送信します。」に統一、queued ラベルを「送信待ち」に変更、一時停止ボタンに title「進行中のターンを中断して一時停止します」を追加。`docs/specs/goal-loop.md` の軽微な是正節の「pause は abort しない」を「abort する（遷移 18b / 是正 A.1 のとおり）」に書き換えて自己矛盾を解消。(5) **BR-29**: `useSessionStream.ts` に `goalLoopTurnReplyIdsForMessages` を追加し、TaskView は「マーカー付きループプロンプトの直後の assistant 群」のみ `stripGoalLoopJson` を有効化。ループセッション内の手動送信応答・ループ前履歴の JSON ブロックは表示に残る（恒久テスト 2 本）。(6) **BR-30**: `goal-scheduler.ts` の catch-all で UPDATE 前に現行行の revision を読み直してから CAS。claim（revision +1）後の想定外例外でも `paused` + `scheduler_error` が確実に記録される（恒久テスト 1 本・`touchSessionActivity` を SQLITE_BUSY で throw）。status 述語により他書き手の pause/stop は上書きしない。
 **仕様書の追記（修正後に実施・コミット 550e28a4 / 808fa85a / 05fa8df4 / 2b31e52d）**: `docs/specs/goal-loop.md` を実装と一致させた — 遷移 1 / 19 の副作用列に abort を追記（BR-26）、遷移 20 の契機を user / manual_send pause に拡張 + 遷移 22 の説明に復元検査優先の注記（BR-23/24）、遷移 3 / 5 の送信条件を「履歴 idle」から「エンジン idle（busy でない）」に変更 + 中断ターンの残骸待ちによる永久停止の明文化（BR-22）、catch-all の現行 revision 再読込を明文化（BR-30）。`PartView.tsx` の `stripGoalLoopJson` コメントもメッセージ単位の限定に更新（BR-29）。
 
+---
+
+# 2026-08-15 メモリ機能フォーカス調査（BR-32〜43・修正済み/報告）
+
+> 検証環境: git HEAD 811946c3 以降、Windows / OneDrive
+> スコープ: web/src/lib/memory*.ts / memory-auto-extract.ts / memory-idle.ts / goal-memory-hook.ts /
+> db-schema.ts / browser-bridge/mcp/memory-server.mjs / scripts/lib/memory-key.mjs
+> 検証方法: 実DB（読み取り専用）プローブ + 全メモリ系テスト + tsc
+
+| ID | 優先度 | 状態 | 対象 |
+|----|--------|------|------|
+| BR-32 | 高 | ✅ 修正済み | memory.enabled='0' でも goal-completed / idle トリガーの自動抽出が走る（自動抽出ゲートを memory-write-gate.ts に一元化） |
+| BR-33 | 高 | ✅ 修正済み | 日本語メモリの FTS 検索・関連度注入が機能しない（unicode61 は CJK を1トークン化・実測0件 → trigram 化 + クエリの3文字OR分解） |
+| BR-34 | 中 | ✅ 修正済み | 抽出セッション未作成時に finally が /session/null へ DELETE を送る |
+| BR-35 | 中 | ✅ 修正済み | 16k文字を超える差分の先頭が二度と抽出されない（カーソルを16k境界に留める） |
+| BR-36 | 中 | ✅ 修正済み | consolidateDuplicateMemories が無制限 O(n²)（スキャン上限3,000） |
+| BR-37 | 中 | ✅ 修正済み | 日本語のプロンプト注入が検知されない + MCP 共有実装とのドリフト検知テストなし |
+| BR-38 | 中 | ✅ 修正済み | 極性ガードの穴: 「〜しないでください」が肯定形「〜してください」とマージされ得る |
+| BR-39 | 中 | ✅ 修正済み | memory-mcp がスキーマ未初期化 DB で不明瞭なクラッシュ（明確なエラー + ハンドル解放） |
+| BR-40 | 低 | ✅ 修正済み | /global/event が opencode-paths.ts のパスレジストリに無い（一元化） |
+| BR-41 | 低 | ✅ 修正済み | memory-mcp の workspace が install 時固定値で切り替え不能（環境変数優先に変更） |
+| BR-42 | 低 | ✅ 修正済み | 抽出失敗メッセージの英語/日本語混在（日本語に統一） |
+| BR-43 | 低 | 未修正（報告） | memory_audit_log が書き込み専用で読み出し経路なし（可視化 UI は設計判断が必要） |
+
+**修正サマリ（2026-08-15・メモリ修正ラウンド）**: 恒久テストを追加し web 140 件 + browser-bridge 92 件 PASS・tsc クリーン。
+(1) **BR-32**: `goal-memory-hook.ts` / `memory-idle.ts` の自動抽出ゲートが `memory.auto_extract` しか見ず `memory.enabled` を無視（assistant-completed 経路のみ正しかった）。実DBで memory.enabled='0' なのに idle 抽出が走り続けていた。`isAutoExtractEnabled` を `memory-write-gate.ts` に一元化し 3 経路すべてマスタースイッチを確認（コミット 870a2637）。(2) **BR-33**: 実DBプローブで `"メモリ"` フレーズ検索 0 件を確認。`unigram61` は better-sqlite3 で不可、`trigram` は利用可能（3文字以上の部分一致）。SCHEMA v2（MIGRATIONS で FTS を DROP → trigram で再作成 → 再同期）を追加し、`toFtsAnyQuery` は CJK ランを3文字スライドの OR に分解（コミット b94ad7b0 / 5a1bd146）。実DBは次回 WebUI 起動時に v2 が自動適用される。(3) **BR-34**: `sessionPath(null)` が `SAFE_OC_SESSION_ID.test(null)` で "null" にマッチし /session/null へ DELETE。クリーンアップを `cleanupExtractionSession` に切り出し null 時スキップ（8a9af212）。(4) **BR-35**: `digestCursorForTail` で16k超差分のカーソルを境界に留め、先頭側を次回抽出に残す（2d0bcad1）。(5) **BR-36**: `consolidateDuplicateMemories` に `MEMORY_DUPLICATE_SCAN_LIMIT` 上限（limit 引数で上書き可）（cef8b2fe）。(6) **BR-37**: 日本語の注入パターン（指示無視・システムプロンプト開示・全角ロールタグ）を追加し、web と MCP 共有実装の判定一致テストを追加（bbf5b8cf）。(7) **BR-38**: `JP_NEGATIVE_TAIL_RE` に「しないでください/下さい」を追加（ee62371f）。(8) **BR-39**: memories テーブル未存在を起動時に検出し明確なエラー + DB ハンドル解放（cd1b3b99）。(9) **BR-40**: `OC_PATH_TEMPLATES` に globalEvent を追加し memory-auto-extract が参照（96e8741b）。(10) **BR-41**: `resolveWorkspace` を環境変数優先に変更（同一設定でタスク切替可能、install 時固定値はフォールバック）（dddf3e19）。(11) **BR-42**: 抽出失敗メッセージ4件を日本語化（82e557da）。(12) **BR-43**: 読み出し API / UI が無いことを確認（書き込みは audit テーブル + 任意の stdout 出力のみ）。仕様書 docs/specs/memory-layer.md も実装に同期（trigram・カーソル境界・consolidate 上限・日本語クエリ分解）（c4e120bd）。
+
