@@ -2,12 +2,13 @@ import os from "node:os";
 import path from "node:path";
 import { mkdtempSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { OcError } from "./oc-server";
 import type { MessageWithParts } from "./types";
 
 const { ocServer } = vi.hoisted(() => ({ ocServer: vi.fn() }));
 vi.mock("./oc-server", async () => {
   const actual = await vi.importActual<typeof import("./oc-server")>("./oc-server");
-  return { ocServer, unwrapOcData: actual.unwrapOcData };
+  return { ocServer, unwrapOcData: actual.unwrapOcData, OcError: actual.OcError };
 });
 
 const dataDir = mkdtempSync(path.join(os.tmpdir(), "opencode-hang-watchdog-"));
@@ -239,6 +240,35 @@ describe("runHangWatchdogTick", () => {
 
     expect(callsTo("/abort")).toHaveLength(0);
     expect(getHangWatch(SESSION)).toBeNull();
+  });
+
+  it("drops the watch when the session no longer exists (transcript 404)", async () => {
+    // Regression: a deleted/pruned session left the watch armed forever, and
+    // every tick logged "could not confirm a completed response" against a
+    // 404 from the engine.
+    arm();
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (requestPath.endsWith("/message")) throw new OcError("Session not found", 404);
+      return {};
+    });
+
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(0);
+    expect(getHangWatch(SESSION)).toBeNull();
+  });
+
+  it("keeps the watch on a non-404 transcript failure (fail open)", async () => {
+    arm();
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (requestPath.endsWith("/message")) throw new OcError("engine down", 503);
+      return {};
+    });
+
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(0);
+    expect(getHangWatch(SESSION)).not.toBeNull();
   });
 
   it("does not resume a finished turn that ended with finish:stop (even without text)", async () => {

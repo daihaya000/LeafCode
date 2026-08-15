@@ -20,7 +20,7 @@ import {
   HANG_TIMEOUT_SETTING_KEY,
   clampHangTimeoutMs,
 } from "./hang-timeout";
-import { ocServer, unwrapOcData } from "./oc-server";
+import { OcError, ocServer, unwrapOcData } from "./oc-server";
 import {
   PERMISSION_LIST_PATH,
   QUESTION_LIST_PATH,
@@ -539,6 +539,15 @@ async function evaluateWatch(
       messages = unwrapOcData<MessageWithParts>(raw);
       if (messages.length === 0) return;
     } catch (error) {
+      if (error instanceof OcError && error.status === 404) {
+        // The engine no longer knows this session (deleted from the timeline
+        // or pruned while the watch was armed). There is no turn left to stop
+        // or resume, so the watch is pointless — drop it instead of retrying
+        // every tick forever.
+        disarmHangWatch(row.session_id);
+        logWatchdog("session no longer exists — dropping the watch", row, error);
+        return;
+      }
       logWatchdog("could not confirm a completed response — leaving the watch armed", row, error);
       return;
     }
@@ -568,6 +577,11 @@ async function evaluateWatch(
       });
       messages = unwrapOcData<MessageWithParts>(raw);
     } catch (error) {
+      if (error instanceof OcError && error.status === 404) {
+        disarmHangWatch(row.session_id);
+        logWatchdog("session no longer exists — dropping the watch", row, error);
+        return;
+      }
       logWatchdog("could not confirm activity — leaving the watch armed", row, error);
       return;
     }
