@@ -4,6 +4,7 @@ import {
   buildExtractionSessionBody,
   buildExtractionPrompt,
   cleanupExtractionSession,
+  digestCursorForTail,
   extractTranscriptTail,
   lastJsonBlock,
   lastMessageId,
@@ -178,6 +179,35 @@ describe("buildExtractionSessionBody", () => {
 
   it("lets OpenCode choose the default model when no model is resolved", () => {
     expect(buildExtractionSessionBody(null)).toEqual({ title: "memory-extract" });
+  });
+});
+
+describe("digestCursorForTail", () => {
+  const big = (id: string, n: number): MessageWithParts => part("assistant", [id.repeat(n)], id);
+
+  it("returns the newest message id when the whole delta fits the budget", () => {
+    const msgs = [big("m1", 100), big("m2", 100), big("m3", 100)];
+    expect(digestCursorForTail(msgs, 1000)).toBe("m3");
+  });
+
+  it("stops before the messages that exceed the tail budget", () => {
+    const msgs = [big("m1", 6000), big("m2", 6000), big("m3", 6000)];
+    // m3+m2 = 12001 fits, m1 pushes it over: the cursor stays before m2.
+    expect(digestCursorForTail(msgs, 16000)).toBe("m1");
+  });
+
+  it("returns undefined when even the first message exceeds the budget", () => {
+    const msgs = [big("m1", 20000), big("m2", 100)];
+    expect(digestCursorForTail(msgs, 16000)).toBeUndefined();
+  });
+
+  it("ignores messages with no text parts", () => {
+    const empty = {
+      info: { id: "m-empty", role: "user" },
+      parts: [{ type: "tool", tool: "x" }],
+    } as unknown as MessageWithParts;
+    const msgs = [big("m1", 100), empty, big("m2", 100)];
+    expect(digestCursorForTail(msgs, 500)).toBe("m2");
   });
 });
 

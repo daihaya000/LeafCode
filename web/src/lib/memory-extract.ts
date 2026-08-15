@@ -125,6 +125,38 @@ export function lastMessageId(messages: MessageWithParts[]): string | null {
   return null;
 }
 
+/**
+ * Cursor for the tail of a delta. The extraction digests only the last
+ * `maxChars` characters of the joined delta text, so an oversized delta used
+ * to advance the cursor to the newest message and silently dropped its
+ * leading messages. This returns where the cursor should stop instead:
+ *
+ * - `string`  — the id of the message just before the digested tail. The next
+ *   run re-reads the skipped prefix, so no message is lost.
+ * - `null`    — the whole delta fits within the budget (caller advances to
+ *   the newest message).
+ * - `undefined` — even the first message exceeds the budget; the tail
+ *   extraction still covers its last 16k chars, and the cursor must not
+ *   advance, or the leading part of that message would never be read.
+ */
+export function digestCursorForTail(
+  messages: MessageWithParts[],
+  maxChars: number = MEMORY_EXTRACT_TRANSCRIPT_MAX_CHARS,
+): string | null | undefined {
+  let total = 0;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const text = messageText(messages[i]);
+    if (!text) continue;
+    const add = text.length + (total > 0 ? 1 : 0);
+    if (total + add > maxChars) {
+      if (i === 0) return undefined;
+      return messages[i - 1]?.info?.id ?? null;
+    }
+    total += add;
+  }
+  return lastMessageId(messages);
+}
+
 /** Pull the last fenced ```json ... ``` block out of a reply. */
 export function lastJsonBlock(text: string): string | null {
   const matches = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
@@ -400,11 +432,19 @@ export async function runMemoryExtraction(input: {
     ),
   });
   // Advance the cursor only on a completed run, so a failure re-reads the same
-  // delta on the next attempt instead of dropping it.
+  // delta on the next attempt instead of dropping it. An oversized delta stops
+  // before its leading messages so the next run picks them up (the tail
+  // extraction covers only the last 16k chars; a full advance would strand
+  // the prefix forever).
+  const digest = digestCursorForTail(pending);
+  const nextCursor =
+    digest === undefined
+      ? (state?.lastMessageId ?? null)
+      : digest ?? newestMessageId;
   setSessionExtractState({
     workspaceId: input.workspaceId,
     sessionId: input.sessionId,
-    lastMessageId: newestMessageId,
+    lastMessageId: nextCursor,
   });
   completeMemoryExtractionRun(historyRunId, {
     created: result.created,
