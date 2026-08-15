@@ -592,7 +592,7 @@ export function AutoRouteOverridesEditor({
                   className={cx(
                     "rounded-md px-2.5 py-1 text-xs",
                     selected
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-primary text-primary-fg"
                       : "bg-surface-2 text-muted hover:bg-surface-3 hover:text-text",
                   )}
                 >
