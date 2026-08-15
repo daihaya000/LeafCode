@@ -4479,13 +4479,15 @@ describe("TaskView voice input", () => {
       behavior: "smooth",
     });
 
-    // Scrolled past the last user message: 一つ後 is a no-op but the buttons
-    // stay visible for consecutive presses.
+    // Scrolled past the last user message: 一つ後 falls back to the latest
+    // message (timeline bottom) and restores follow mode.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 300, writable: true });
     fireEvent.scroll(scroller);
-    (scroller.scrollTo as unknown as ReturnType<typeof vi.fn>).mockClear();
     fireEvent.click(screen.getByLabelText("一つ後のユーザーメッセージへ"));
-    expect(scroller.scrollTo).not.toHaveBeenCalled();
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({
+      top: 1000,
+      behavior: "smooth",
+    });
     expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
     expect(screen.getByLabelText("一つ前のユーザーメッセージへ")).not.toBeNull();
     expect(screen.getByLabelText("最初のユーザーメッセージへ")).not.toBeNull();

@@ -5190,7 +5190,14 @@ export function TaskView({
                     const el = scrollRef.current;
                     if (!el) return;
                     const target = currentMessageIdxRef.current + 1;
-                    if (target >= userMessageIdsRef.current.length) return;
+                    if (target >= userMessageIdsRef.current.length) {
+                      // 次のユーザーメッセージが無ければ最新（タイムライン
+                      // 最下部）へフォールバックし、フォローモードを復帰する。
+                      scrollToBottom(el, "smooth");
+                      currentMessageIdxRef.current = userMessageIdsRef.current.length - 1;
+                      stickRef.current = true;
+                      return;
+                    }
                     const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
                     if (!targetEl) return;
                     const line = el.scrollTop + 4;
