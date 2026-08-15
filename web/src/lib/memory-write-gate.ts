@@ -1,5 +1,6 @@
 import { getSetting } from "./db";
 import {
+  MEMORY_AUTO_EXTRACT_SETTING_KEY,
   MEMORY_ENABLED_SETTING_KEY,
   MEMORY_WRITE_APPROVAL_SETTING_KEY,
 } from "./memory-settings";
@@ -25,6 +26,21 @@ export function isMemoryWriteApprovalEnabled(): boolean {
 export function isMemoryEnabled(): boolean {
   try {
     return getSetting(MEMORY_ENABLED_SETTING_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Shared gate for automatic extraction (assistant-completed / goal-completed /
+ * idle triggers). The master switch wins: with memory off, a background
+ * extraction would burn model tokens for rows that can never be written or
+ * injected. Only `memory.auto_extract = "0"` additionally disables it.
+ */
+export function isAutoExtractEnabled(): boolean {
+  if (!isMemoryEnabled()) return false;
+  try {
+    return getSetting(MEMORY_AUTO_EXTRACT_SETTING_KEY) !== "0";
   } catch {
     return true;
   }

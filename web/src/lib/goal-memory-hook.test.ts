@@ -15,6 +15,7 @@ vi.mock("@/lib/memory-extract", () => ({
 }));
 
 const { runMemoryExtraction } = await import("@/lib/memory-extract");
+const { MEMORY_ENABLED_SETTING_KEY } = await import("@/lib/memory-settings");
 const {
   isAutoExtractEnabled,
   scheduleAutoExtractAfterGoalCompleted,
@@ -68,6 +69,14 @@ describe("goal-memory-hook", () => {
     scheduleAutoExtractAfterGoalCompleted(loop);
     expect(vi.mocked(runMemoryExtraction)).not.toHaveBeenCalled();
     setSetting(AUTO_EXTRACT_SETTING_KEY, "1");
+  });
+
+  it("does nothing when the memory master switch is off", () => {
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "0");
+    expect(isAutoExtractEnabled()).toBe(false);
+    scheduleAutoExtractAfterGoalCompleted(loop);
+    expect(vi.mocked(runMemoryExtraction)).not.toHaveBeenCalled();
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "1");
   });
 
   it("skips when the loop has no session binding", () => {

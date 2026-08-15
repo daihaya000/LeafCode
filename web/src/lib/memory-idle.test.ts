@@ -16,6 +16,7 @@ vi.mock("@/lib/memory-extract", () => ({
 
 const { runMemoryExtraction } = await import("@/lib/memory-extract");
 const { AUTO_EXTRACT_SETTING_KEY } = await import("@/lib/goal-memory-hook");
+const { MEMORY_ENABLED_SETTING_KEY } = await import("@/lib/memory-settings");
 const { idleSessionsSince, sweepIdleExtractions, sessionBindingUpdatedAt, IDLE_THRESHOLD_MS } =
   await import("@/lib/memory-idle");
 
@@ -119,6 +120,16 @@ describe("memory-idle extraction", () => {
     seedBinding("ws-4", "ses-1", iso(now - 2 * IDLE_THRESHOLD_MS));
     expect(sweepIdleExtractions(now, IDLE_THRESHOLD_MS)).toBe(0);
     expect(vi.mocked(runMemoryExtraction)).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the memory master switch is off", () => {
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "0");
+    const now = 2_000_000_000_000;
+    seedWorkspace("ws-4b");
+    seedBinding("ws-4b", "ses-1", iso(now - 2 * IDLE_THRESHOLD_MS));
+    expect(sweepIdleExtractions(now, IDLE_THRESHOLD_MS)).toBe(0);
+    expect(vi.mocked(runMemoryExtraction)).not.toHaveBeenCalled();
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "1");
   });
 
   it("sessionBindingUpdatedAt returns ms or null", () => {

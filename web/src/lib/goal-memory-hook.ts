@@ -7,9 +7,9 @@
  * Gated by the `memory.auto_extract` setting (default on).
  */
 
-import { getSetting } from "./db";
 import { scheduleAssistantMemoryExtraction } from "./memory-auto-extract";
 import { runMemoryExtraction } from "./memory-extract";
+import { isAutoExtractEnabled } from "./memory-write-gate";
 import {
   MEMORY_AUTO_EXTRACT_SETTING_KEY,
   MEMORY_WRITE_APPROVAL_SETTING_KEY,
@@ -18,7 +18,11 @@ import type { GoalLoopDto } from "./goal-loop";
 
 export { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "./memory-settings";
 export { MEMORY_AUTO_EXTRACT_SETTING_KEY } from "./memory-settings";
-export { isMemoryWriteApprovalEnabled } from "./memory-write-gate";
+export {
+  isAutoExtractEnabled,
+  isMemoryEnabled,
+  isMemoryWriteApprovalEnabled,
+} from "./memory-write-gate";
 
 export const AUTO_EXTRACT_SETTING_KEY = MEMORY_AUTO_EXTRACT_SETTING_KEY;
 
@@ -30,15 +34,6 @@ export const AUTO_EXTRACT_SETTING_KEY = MEMORY_AUTO_EXTRACT_SETTING_KEY;
  * time so toggling it takes effect on the next extraction without a restart.
  */
 export const WRITE_APPROVAL_SETTING_KEY = MEMORY_WRITE_APPROVAL_SETTING_KEY;
-
-export function isAutoExtractEnabled(): boolean {
-  try {
-    return getSetting(AUTO_EXTRACT_SETTING_KEY) !== "0";
-  } catch {
-    // No usable settings layer (e.g. db mocked out in tests): default enabled.
-    return true;
-  }
-}
 
 /**
  * Kick off extraction for `loop` when it just finished. Returns immediately;
