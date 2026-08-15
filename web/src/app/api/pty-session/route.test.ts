@@ -18,6 +18,7 @@ afterEach(() => {
 
 vi.mock("@/lib/opencode", () => ({
   OPENCODE_BASE_URL: "http://127.0.0.1:4096",
+  resolveOpencodeBaseUrl: async () => "http://127.0.0.1:4096",
 }));
 
 import { DELETE, GET, POST } from "./route";

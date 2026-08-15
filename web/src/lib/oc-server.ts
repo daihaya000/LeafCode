@@ -1,4 +1,7 @@
-import { OPENCODE_BASE_URL, isBlockedOpencodeWrite } from "./opencode";
+import {
+  isBlockedOpencodeWrite,
+  resolveOpencodeBaseUrl,
+} from "./opencode";
 import { resolvedOpenCodePathname } from "./opencode-id";
 import { directoryHeaders, withDirectoryQuery } from "./directory-header";
 
@@ -35,9 +38,10 @@ export async function ocServer<T>(
   path: string,
   init?: { method?: string; body?: unknown; timeoutMs?: number },
 ): Promise<T> {
+  const baseUrl = await resolveOpencodeBaseUrl();
   let resolved: string;
   try {
-    resolved = resolvedOpenCodePathname(path, OPENCODE_BASE_URL);
+    resolved = resolvedOpenCodePathname(path, baseUrl);
   } catch (err) {
     throw new OcError(
       err instanceof Error ? err.message : "invalid OpenCode path",
@@ -62,10 +66,7 @@ export async function ocServer<T>(
 
   let res: Response;
   try {
-    const url = withDirectoryQuery(
-      new URL(path, OPENCODE_BASE_URL),
-      directory,
-    );
+    const url = withDirectoryQuery(new URL(path, baseUrl), directory);
     res = await fetch(url, {
       method,
       headers,

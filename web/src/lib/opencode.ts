@@ -1,6 +1,83 @@
 export const OPENCODE_BASE_URL =
   process.env.OPENCODE_BASE_URL ?? "http://127.0.0.1:4096";
 
+/** Default engine port when OPENCODE_PORT is unset (mirrors host/src/index.js). */
+const DEFAULT_ENGINE_PORT = 4096;
+/** How many consecutive ports to scan after the primary port. */
+const ENGINE_PORT_SCAN_RANGE = 16;
+/** Per-port health probe timeout. */
+const ENGINE_HEALTH_TIMEOUT_MS = 1500;
+
+/**
+ * Probe whether an engine is live at `url`. A health check is only "the
+ * engine" when it answers ok with a JSON `{healthy: true, version}` body, so
+ * an unrelated app squatting on a fallback port is never mistaken for one.
+ */
+export async function engineHealthyAt(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${url}/global/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(ENGINE_HEALTH_TIMEOUT_MS),
+    });
+    if (!res.ok) return false;
+    const body = (await res.json().catch(() => null)) as
+      | { healthy?: unknown; version?: unknown }
+      | null;
+    return body?.healthy === true && typeof body.version === "string";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find the live engine URL. The host launches the WebUI with the resolved
+ * OPENCODE_BASE_URL, so the primary URL only fails when the engine moved to a
+ * fallback port before the host restarted the WebUI (ghost sockets bump it
+ * 4096 → 4097 → …). In that case scan the host's fallback range starting at
+ * OPENCODE_PORT (default 4096) and return the first live engine. Falls back
+ * to the primary URL when nothing answers, so callers surface the connection
+ * error instead of silently pointing at an unrelated app.
+ */
+export async function discoverEngineUrl(): Promise<string> {
+  if (await engineHealthyAt(OPENCODE_BASE_URL)) {
+    return OPENCODE_BASE_URL;
+  }
+  const startPort =
+    Number.parseInt(process.env.OPENCODE_PORT ?? "", 10) || DEFAULT_ENGINE_PORT;
+  for (let port = startPort; port < startPort + ENGINE_PORT_SCAN_RANGE; port++) {
+    const url = `http://127.0.0.1:${port}`;
+    if (url === OPENCODE_BASE_URL) continue;
+    if (await engineHealthyAt(url)) {
+      return url;
+    }
+  }
+  return OPENCODE_BASE_URL;
+}
+
+let resolvedEngineUrl: string | null = null;
+let engineUrlPromise: Promise<string> | null = null;
+
+/**
+ * Resolve the engine base URL, scanning fallback ports when the configured
+ * OPENCODE_BASE_URL is unreachable. Resolved once per process and shared
+ * between concurrent callers; tests always get the configured URL so they
+ * never probe the network.
+ */
+export function resolveOpencodeBaseUrl(): Promise<string> {
+  if (process.env.NODE_ENV === "test") {
+    return Promise.resolve(OPENCODE_BASE_URL);
+  }
+  if (resolvedEngineUrl) return Promise.resolve(resolvedEngineUrl);
+  if (!engineUrlPromise) {
+    engineUrlPromise = discoverEngineUrl().then((url) => {
+      resolvedEngineUrl = url;
+      engineUrlPromise = null;
+      return url;
+    });
+  }
+  return engineUrlPromise;
+}
+
 /** Paths/methods the WebUI must never forward (config writes). */
 export function isBlockedOpencodeWrite(method: string, pathname: string): boolean {
   const m = method.toUpperCase();

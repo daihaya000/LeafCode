@@ -45,9 +45,9 @@ import {
   rewriteNativeRequest,
 } from "@/lib/qwen-native-vision";
 import {
-  OPENCODE_BASE_URL,
   isBlockedOpencodeWrite,
   maskSecrets,
+  resolveOpencodeBaseUrl,
 } from "@/lib/opencode";
 import {
   resolvedOpenCodePathname,
@@ -118,9 +118,10 @@ export async function proxy(
   const { path: segments } = await context.params;
   const pathname = "/" + (segments?.join("/") ?? "");
 
+  const baseUrl = await resolveOpencodeBaseUrl();
   let resolvedPathname: string;
   try {
-    resolvedPathname = resolvedOpenCodePathname(pathname, OPENCODE_BASE_URL);
+    resolvedPathname = resolvedOpenCodePathname(pathname, baseUrl);
   } catch {
     return NextResponse.json({ error: "invalid path" }, { status: 400 });
   }
@@ -188,7 +189,7 @@ export async function proxy(
     directory = check.path;
   }
 
-  const target = new URL(pathname + incoming.search, OPENCODE_BASE_URL);
+  const target = new URL(pathname + incoming.search, baseUrl);
   // Defense in depth: always set the validated `?directory=` on the upstream
   // URL so a mismatched header/query pair cannot smuggle an unvalidated path
   // through to OpenCode. The query is safe for non-Latin-1 paths

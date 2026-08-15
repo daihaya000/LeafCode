@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ocServer, OcError } from "@/lib/oc-server";
-import { OPENCODE_BASE_URL } from "@/lib/opencode";
+import { resolveOpencodeBaseUrl } from "@/lib/opencode";
 import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
@@ -69,7 +69,10 @@ export async function POST(req: Request) {
     }
 
     const upstream = await fetch(
-      new URL("/provider/openai/oauth/authorize", OPENCODE_BASE_URL),
+      new URL(
+        "/provider/openai/oauth/authorize",
+        await resolveOpencodeBaseUrl(),
+      ),
       {
         method: "POST",
         headers: { "content-type": "application/json" },

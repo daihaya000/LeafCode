@@ -22,7 +22,10 @@ vi.mock("@/lib/github-remote", () => ({ resolveRemoteHead: resolveRemoteHeadMock
 const readUpdateRecordMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/install-state", () => ({ readUpdateRecord: readUpdateRecordMock }));
 
-vi.mock("@/lib/opencode", () => ({ OPENCODE_BASE_URL: "http://127.0.0.1:4096" }));
+vi.mock("@/lib/opencode", () => ({
+  OPENCODE_BASE_URL: "http://127.0.0.1:4096",
+  resolveOpencodeBaseUrl: async () => "http://127.0.0.1:4096",
+}));
 
 import { GET } from "./route";
 

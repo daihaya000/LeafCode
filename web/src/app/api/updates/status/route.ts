@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
-import { OPENCODE_BASE_URL } from "@/lib/opencode";
+import { resolveOpencodeBaseUrl } from "@/lib/opencode";
 import { GITHUB_REPO, GITHUB_REPO_URL, installationRoot, isGitInstall } from "@/lib/install-root";
 import { resolveRemoteHead } from "@/lib/github-remote";
 import { readUpdateRecord } from "@/lib/install-state";
@@ -143,8 +143,9 @@ function compareVersions(current: string, latest: string): number {
 
 async function checkOpenCode(): Promise<UpdateStatus> {
   try {
+    const baseUrl = await resolveOpencodeBaseUrl();
     const [healthResponse, registryResponse] = await Promise.all([
-      fetch(`${OPENCODE_BASE_URL}/global/health`, { cache: "no-store", signal: AbortSignal.timeout(3000) }),
+      fetch(`${baseUrl}/global/health`, { cache: "no-store", signal: AbortSignal.timeout(3000) }),
       fetch(`https://registry.npmjs.org/${OPENCODE_PACKAGE}/latest`, {
         headers: { Accept: "application/json", "User-Agent": "LeafCode" },
         cache: "no-store",

@@ -12,7 +12,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { OPENCODE_BASE_URL } from "./opencode";
+import { resolveOpencodeBaseUrl } from "./opencode";
 import { directoryHeaders, withDirectoryQuery } from "./directory-header";
 
 /** Engine `Pty` schema (opencode-schema.d.ts components["schemas"]["Pty"]). */
@@ -96,9 +96,12 @@ export function resolveScopedCwd(
 }
 
 /** Build the Engine URL for a PTY path, attaching the directory context. */
-function engineUrl(ptyPath: string, directory: string | null): URL {
+async function engineUrl(
+  ptyPath: string,
+  directory: string | null,
+): Promise<URL> {
   return withDirectoryQuery(
-    new URL(ptyPath, OPENCODE_BASE_URL),
+    new URL(ptyPath, await resolveOpencodeBaseUrl()),
     directory,
   );
 }
@@ -114,7 +117,7 @@ async function engineFetch<T>(
     headers?: Record<string, string>;
   },
 ): Promise<T> {
-  const url = engineUrl(ptyPath, init.directory);
+  const url = await engineUrl(ptyPath, init.directory);
   const headers: Record<string, string> = {
     ...directoryHeaders(init.directory),
     ...init.headers,
@@ -331,13 +334,13 @@ export function createConnectToken(
  * lets it replay output produced during the disconnect gap instead of
  * starting from "now".
  */
-export function engineWsUrl(
+export async function engineWsUrl(
   ptyId: string,
   directory: string,
   ticket: string,
   cursor?: number,
-): string {
-  const base = new URL(OPENCODE_BASE_URL);
+): Promise<string> {
+  const base = new URL(await resolveOpencodeBaseUrl());
   // http(s) -> ws(s)
   const wsProto = base.protocol === "https:" ? "wss:" : "ws:";
   const ws = new URL(
@@ -364,8 +367,10 @@ export function connectPty(
   ptyId: string,
   cursor?: number,
 ): Promise<WebSocket> {
-  return createConnectToken(directory, ptyId).then((token) => {
-    const ws = new WebSocket(engineWsUrl(ptyId, directory, token.ticket, cursor));
+  return createConnectToken(directory, ptyId).then(async (token) => {
+    const ws = new WebSocket(
+      await engineWsUrl(ptyId, directory, token.ticket, cursor),
+    );
     // The Engine streams PTY output as binary frames (plus `0x00`-prefixed
     // meta frames). Without this the runtime hands us Blobs, which the relay
     // cannot read synchronously.

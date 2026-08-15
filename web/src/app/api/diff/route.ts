@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { directoryHeaders } from "@/lib/directory-header";
 import { gitDiff, gitStatus } from "@/lib/git";
-import { OPENCODE_BASE_URL } from "@/lib/opencode";
+import { resolveOpencodeBaseUrl } from "@/lib/opencode";
 import { sessionDiffPath } from "@/lib/opencode-paths";
 import { requireAuthorized } from "@/lib/api-guard";
 
@@ -39,7 +39,10 @@ export async function GET(req: NextRequest) {
   let sessionDiffError: string | null = null;
   if (sessionId) {
     try {
-      const url = new URL(sessionDiffPath(sessionId), OPENCODE_BASE_URL);
+      const url = new URL(
+        sessionDiffPath(sessionId),
+        await resolveOpencodeBaseUrl(),
+      );
       url.searchParams.set("directory", check.path);
       const res = await fetch(url, {
         headers: directoryHeaders(check.path),

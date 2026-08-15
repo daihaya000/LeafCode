@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { OPENCODE_BASE_URL } from "@/lib/opencode";
+import { resolveOpencodeBaseUrl } from "@/lib/opencode";
 import { isWorkflowModeEnabled } from "@/lib/workflow-feature";
 import { withReadCache } from "@/lib/http-cache";
 
@@ -10,8 +10,9 @@ export async function GET() {
   let opencode: { ok: boolean; version?: string; error?: string } = {
     ok: false,
   };
+  const opencodeBaseUrl = await resolveOpencodeBaseUrl();
   try {
-    const res = await fetch(`${OPENCODE_BASE_URL}/global/health`, {
+    const res = await fetch(`${opencodeBaseUrl}/global/health`, {
       cache: "no-store",
       signal: AbortSignal.timeout(1500),
     });
@@ -32,7 +33,7 @@ export async function GET() {
     NextResponse.json({
       webui: { ok: true },
       opencode,
-      opencodeBaseUrl: OPENCODE_BASE_URL,
+      opencodeBaseUrl,
       workflowModeEnabled: isWorkflowModeEnabled(),
     }),
     { maxAge: 10, staleWhileRevalidate: 60 },

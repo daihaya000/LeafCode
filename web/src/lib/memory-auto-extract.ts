@@ -23,7 +23,7 @@ import { getSetting } from "./db";
 import { runMemoryExtraction } from "./memory-extract";
 import { MEMORY_AUTO_EXTRACT_SETTING_KEY } from "./memory-settings";
 import { isMemoryEnabled } from "./memory-write-gate";
-import { OPENCODE_BASE_URL } from "./opencode";
+import { resolveOpencodeBaseUrl } from "./opencode";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const INITIAL_RECONNECT_DELAY_MS = 1_000;
@@ -283,11 +283,14 @@ async function runMemoryEventMonitor(signal: AbortSignal): Promise<void> {
   let reconnectMs = INITIAL_RECONNECT_DELAY_MS;
   while (!signal.aborted) {
     try {
-      const response = await fetch(new URL("/global/event", OPENCODE_BASE_URL), {
-        headers: { accept: "text/event-stream" },
-        cache: "no-store",
-        signal,
-      });
+      const response = await fetch(
+        new URL("/global/event", await resolveOpencodeBaseUrl()),
+        {
+          headers: { accept: "text/event-stream" },
+          cache: "no-store",
+          signal,
+        },
+      );
       if (!response.ok || !response.body) {
         throw new Error(`global event stream failed: ${response.status}`);
       }

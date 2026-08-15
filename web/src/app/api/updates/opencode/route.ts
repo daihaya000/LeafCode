@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { OPENCODE_BASE_URL } from "@/lib/opencode";
+import { resolveOpencodeBaseUrl } from "@/lib/opencode";
 import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
@@ -10,13 +10,16 @@ export async function POST(req: Request) {
   if (denied) return denied;
 
   try {
-    const upstream = await fetch(new URL("/global/upgrade", OPENCODE_BASE_URL), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
-      cache: "no-store",
-      signal: AbortSignal.timeout(120_000),
-    });
+    const upstream = await fetch(
+      new URL("/global/upgrade", await resolveOpencodeBaseUrl()),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+        cache: "no-store",
+        signal: AbortSignal.timeout(120_000),
+      },
+    );
     const data = (await upstream.json().catch(() => ({}))) as Record<string, unknown>;
     if (!upstream.ok || data.success === false) {
       return NextResponse.json(

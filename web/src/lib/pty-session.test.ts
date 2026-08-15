@@ -6,6 +6,7 @@ vi.stubGlobal("fetch", fetchMock);
 
 vi.mock("@/lib/opencode", () => ({
   OPENCODE_BASE_URL: "http://127.0.0.1:4096",
+  resolveOpencodeBaseUrl: async () => "http://127.0.0.1:4096",
 }));
 
 import {
@@ -147,8 +148,8 @@ describe("engineWsUrl", () => {
   // so the v2 handler answered the upgrade with 404 and the browser only saw
   // an opaque 1006 close — the terminal stayed blank and looked like it kept
   // disconnecting.
-  it("stays on the v1 surface used by create/token/remove", () => {
-    const url = new URL(engineWsUrl("pty_1", "C:/proj", "tk-123"));
+  it("stays on the v1 surface used by create/token/remove", async () => {
+    const url = new URL(await engineWsUrl("pty_1", "C:/proj", "tk-123"));
     expect(url.pathname).toBe("/pty/pty_1/connect");
     expect(url.pathname.startsWith("/api/")).toBe(false);
     expect(url.searchParams.get("ticket")).toBe("tk-123");
@@ -156,22 +157,22 @@ describe("engineWsUrl", () => {
     expect(url.searchParams.get("location[directory]")).toBeNull();
   });
 
-  it("upgrades the scheme to ws", () => {
-    expect(engineWsUrl("pty_1", "C:/proj", "t").startsWith("ws://")).toBe(true);
+  it("upgrades the scheme to ws", async () => {
+    expect((await engineWsUrl("pty_1", "C:/proj", "t")).startsWith("ws://")).toBe(true);
   });
 
-  it("encodes the pty id into the path", () => {
-    const url = new URL(engineWsUrl("pty_a/b", "C:/proj", "t"));
+  it("encodes the pty id into the path", async () => {
+    const url = new URL(await engineWsUrl("pty_a/b", "C:/proj", "t"));
     expect(url.pathname).toBe("/pty/pty_a%2Fb/connect");
   });
 
-  it("appends the cursor when provided", () => {
-    const url = new URL(engineWsUrl("pty_1", "C:/proj", "t", 42));
+  it("appends the cursor when provided", async () => {
+    const url = new URL(await engineWsUrl("pty_1", "C:/proj", "t", 42));
     expect(url.searchParams.get("cursor")).toBe("42");
   });
 
-  it("omits the cursor when undefined", () => {
-    const url = new URL(engineWsUrl("pty_1", "C:/proj", "t"));
+  it("omits the cursor when undefined", async () => {
+    const url = new URL(await engineWsUrl("pty_1", "C:/proj", "t"));
     expect(url.searchParams.get("cursor")).toBeNull();
   });
 });
