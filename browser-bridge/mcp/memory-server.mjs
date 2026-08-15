@@ -127,6 +127,18 @@ function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
     throw new Error('memory-mcp requires a workspace (--workspace=<id> or LEAFCODE_MEMORY_WORKSPACE)');
   }
 
+  // The memories tables are owned by the WebUI schema (web/src/lib/db-schema.ts).
+  // Refusing to invent a partial copy here keeps the two sides from drifting;
+  // a freshly provisioned data dir must be opened by the WebUI once first.
+  const memoriesTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memories'")
+    .get();
+  if (!memoriesTable) {
+    throw new Error(
+      'memory schema is not initialized: start the WebUI once so it creates the memories tables before launching memory-mcp',
+    );
+  }
+
   // Keep MCP writes auditable even when it starts before the WebUI has opened
   // an existing database and applied its schema initialization.
   db.exec(`
@@ -380,10 +392,17 @@ function buildTools(server, store) {
 
 export function createMemoryMcpServer({ dbPath: dbPathValue, workspaceId, writeApproval = false }) {
   const db = openMemoryDb(dbPathValue);
-  const store = createMemoryStore(db, workspaceId, { writeApproval });
-  const server = new McpServer({ name: 'leafcode-memory', version: '0.1.0' });
-  buildTools(server, store);
-  return { server, db };
+  try {
+    const store = createMemoryStore(db, workspaceId, { writeApproval });
+    const server = new McpServer({ name: 'leafcode-memory', version: '0.1.0' });
+    buildTools(server, store);
+    return { server, db };
+  } catch (error) {
+    // A startup failure (e.g. missing schema) must not leak the open handle,
+    // or Windows keeps the DB file locked and the caller cannot clean up.
+    db.close();
+    throw error;
+  }
 }
 
 export async function runStdio({ env = process.env, argv = process.argv.slice(2), stdin = process.stdin, stdout = process.stdout } = {}) {

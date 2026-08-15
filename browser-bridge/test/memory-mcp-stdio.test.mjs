@@ -437,3 +437,16 @@ test('memory MCP requires a workspace; CLI --workspace wins over env', async () 
   );
   assert.equal(resolveWorkspace({ argv: [], env: {} }), null);
 });
+
+test('memory MCP fails with a clear error when the schema is not initialized', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'leafcode-memory-mcp-'));
+  const db = new Database(path.join(dir, 'webui.db'));
+  db.pragma('journal_mode = WAL');
+  db.close();
+  const { createMemoryMcpServer } = await import('../mcp/memory-server.mjs');
+  assert.throws(
+    () => createMemoryMcpServer({ dbPath: path.join(dir, 'webui.db'), workspaceId: 'ws-x' }),
+    /memory schema is not initialized/,
+  );
+  rmSync(dir, { recursive: true, force: true });
+});
