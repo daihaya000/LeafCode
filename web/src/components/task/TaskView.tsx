@@ -611,14 +611,6 @@ export function TaskView({
     setDiffKey,
     focusFile,
     setFocusFile,
-    showFirstMessageButton,
-    setShowFirstMessageButton,
-    showPrevMessageButton,
-    setShowPrevMessageButton,
-    showNextMessageButton,
-    setShowNextMessageButton,
-    showLastMessageButton,
-    setShowLastMessageButton,
     filteredFilesCount,
     setFilteredFilesCount,
   } = useTaskPanels();
@@ -2553,21 +2545,13 @@ export function TaskView({
     // bails out once stickRef is false.
     if (atBottom) stickRef.current = true;
     else if (el.scrollTop < prevTop - 4) stickRef.current = false;
-    // The last-message button returns to the timeline bottom (past the
-    // trailing assistant reply), so its visibility is position-based.
-    setShowLastMessageButton(!atBottom && !stickRef.current);
     // Track which user message sits at the viewport top line so the jump
-    // buttons know whether an earlier/later user message exists. The "current"
-    // message is the first one whose top is at or below the top line (the
-    // message the user sees at the top); scanning incrementally from the last
-    // known index keeps this O(1)-ish per scroll event.
+    // buttons know where to step from. The "current" message is the first one
+    // whose top is at or below the top line (the message the user sees at the
+    // top); scanning incrementally from the last known index keeps this
+    // O(1)-ish per scroll event.
     const els = messageElsRef.current;
-    if (els.size === 0) {
-      setShowFirstMessageButton(false);
-      setShowPrevMessageButton(false);
-      setShowNextMessageButton(false);
-      return;
-    }
+    if (els.size === 0) return;
     let idx = currentMessageIdxRef.current;
     const line = el.scrollTop + 4;
     const elAt = (i: number) => els.get(userMessageIdsRef.current[i]);
@@ -2580,10 +2564,7 @@ export function TaskView({
     if (idx >= userMessageIdsRef.current.length) idx = userMessageIdsRef.current.length - 1;
     if (idx < 0) idx = 0;
     currentMessageIdxRef.current = idx;
-    setShowFirstMessageButton(idx > 0);
-    setShowPrevMessageButton(idx > 0);
-    setShowNextMessageButton(idx < userMessageIdsRef.current.length - 1);
-  }, [isAtBottom, setShowFirstMessageButton, setShowPrevMessageButton, setShowNextMessageButton, setShowLastMessageButton]);
+  }, [isAtBottom]);
 
   // Auto-stick scroll to bottom. We intentionally avoid rAF timeouts because
   // mobile Safari can ignore scrollTo during inertial scrolling; re-running
@@ -2632,12 +2613,6 @@ export function TaskView({
     const id = setInterval(pinned, 200);
     return () => clearInterval(id);
   }, [isAtBottom, scrollToBottom, task?.id]);
-
-  // Initialize the jump-button enabled states before the first scroll event,
-  // so short conversations that never scroll still get usable buttons.
-  useEffect(() => {
-    onScroll();
-  }, [onScroll, stream.loaded]);
 
   const currentTool = useMemo(() => {
     for (let i = stream.messages.length - 1; i >= 0; i--) {
@@ -5165,7 +5140,6 @@ export function TaskView({
                   aria-label="最初のユーザーメッセージへ"
                   title="最初のユーザーメッセージへ"
                   className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                  disabled={!showFirstMessageButton}
                   onClick={() => {
                     const el = scrollRef.current;
                     if (!el) return;
@@ -5178,10 +5152,6 @@ export function TaskView({
                     });
                     currentMessageIdxRef.current = 0;
                     stickRef.current = false;
-                    setShowFirstMessageButton(false);
-                    setShowPrevMessageButton(false);
-                    setShowNextMessageButton(userMessageIdsRef.current.length > 1);
-                    setShowLastMessageButton(userMessageIdsRef.current.length > 1);
                   }}
                 >
                   <ChevronsUp className="h-4.5 w-4.5" />
@@ -5192,7 +5162,6 @@ export function TaskView({
                   aria-label="一つ前のユーザーメッセージへ"
                   title="一つ前のユーザーメッセージへ"
                   className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                  disabled={!showPrevMessageButton}
                   onClick={() => {
                     const el = scrollRef.current;
                     if (!el) return;
@@ -5207,10 +5176,6 @@ export function TaskView({
                     });
                     currentMessageIdxRef.current = target;
                     stickRef.current = false;
-                    setShowFirstMessageButton(target > 0);
-                    setShowPrevMessageButton(target > 0);
-                    setShowNextMessageButton(true);
-                    setShowLastMessageButton(true);
                   }}
                 >
                   <ChevronUp className="h-4.5 w-4.5" />
@@ -5221,7 +5186,6 @@ export function TaskView({
                   aria-label="一つ後のユーザーメッセージへ"
                   title="一つ後のユーザーメッセージへ"
                   className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                  disabled={!showNextMessageButton}
                   onClick={() => {
                     const el = scrollRef.current;
                     if (!el) return;
@@ -5236,10 +5200,6 @@ export function TaskView({
                     });
                     currentMessageIdxRef.current = target;
                     stickRef.current = false;
-                    setShowFirstMessageButton(true);
-                    setShowPrevMessageButton(true);
-                    setShowNextMessageButton(target < userMessageIdsRef.current.length - 1);
-                    setShowLastMessageButton(!isAtBottom(el));
                   }}
                 >
                   <ChevronDown className="h-4.5 w-4.5" />
@@ -5250,7 +5210,6 @@ export function TaskView({
                   aria-label="最新のメッセージへ"
                   title="最新のメッセージへ"
                   className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                  disabled={!showLastMessageButton}
                   onClick={() => {
                     const el = scrollRef.current;
                     if (!el) return;
@@ -5258,10 +5217,6 @@ export function TaskView({
                     currentMessageIdxRef.current = userMessageIdsRef.current.length - 1;
                     // Back at the live bottom: restore follow mode.
                     stickRef.current = true;
-                    setShowFirstMessageButton(userMessageIdsRef.current.length > 1);
-                    setShowPrevMessageButton(userMessageIdsRef.current.length > 1);
-                    setShowNextMessageButton(false);
-                    setShowLastMessageButton(false);
                   }}
                 >
                   <ChevronsDown className="h-4.5 w-4.5" />
