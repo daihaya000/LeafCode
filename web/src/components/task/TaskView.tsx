@@ -2633,6 +2633,12 @@ export function TaskView({
     return () => clearInterval(id);
   }, [isAtBottom, scrollToBottom, task?.id]);
 
+  // Initialize the jump-button enabled states before the first scroll event,
+  // so short conversations that never scroll still get usable buttons.
+  useEffect(() => {
+    onScroll();
+  }, [onScroll, stream.loaded]);
+
   const currentTool = useMemo(() => {
     for (let i = stream.messages.length - 1; i >= 0; i--) {
       const parts = stream.messages[i]?.parts ?? [];
@@ -5139,123 +5145,115 @@ export function TaskView({
                 )}
               </div>
             </div>
-            {(showFirstMessageButton ||
-              showPrevMessageButton ||
-              showNextMessageButton ||
-              showLastMessageButton) &&
-              userMessageIdsRef.current.length > 0 && (
+            {userMessageIdsRef.current.length > 0 && (
               <div className="absolute right-4 bottom-4 z-50 flex flex-col gap-2">
-                {showFirstMessageButton && (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    aria-label="最初のユーザーメッセージへ"
-                    title="最初のユーザーメッセージへ"
-                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                    onClick={() => {
-                      const el = scrollRef.current;
-                      if (!el) return;
-                      const targetEl = messageElsRef.current.get(userMessageIdsRef.current[0]);
-                      if (!targetEl) return;
-                      const line = el.scrollTop + 4;
-                      el.scrollTo({
-                        top: el.scrollTop + targetEl.offsetTop - line,
-                        behavior: "smooth",
-                      });
-                      currentMessageIdxRef.current = 0;
-                      stickRef.current = false;
-                      setShowFirstMessageButton(false);
-                      setShowPrevMessageButton(false);
-                      setShowNextMessageButton(userMessageIdsRef.current.length > 1);
-                      setShowLastMessageButton(userMessageIdsRef.current.length > 1);
-                    }}
-                  >
-                    <ChevronsUp className="h-4.5 w-4.5" />
-                  </Button>
-                )}
-                {showPrevMessageButton && (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    aria-label="一つ前のユーザーメッセージへ"
-                    title="一つ前のユーザーメッセージへ"
-                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                    onClick={() => {
-                      const el = scrollRef.current;
-                      if (!el) return;
-                      const target = currentMessageIdxRef.current - 1;
-                      if (target < 0) return;
-                      const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
-                      if (!targetEl) return;
-                      const line = el.scrollTop + 4;
-                      el.scrollTo({
-                        top: el.scrollTop + targetEl.offsetTop - line,
-                        behavior: "smooth",
-                      });
-                      currentMessageIdxRef.current = target;
-                      stickRef.current = false;
-                      setShowFirstMessageButton(target > 0);
-                      setShowPrevMessageButton(target > 0);
-                      setShowNextMessageButton(true);
-                      setShowLastMessageButton(true);
-                    }}
-                  >
-                    <ChevronUp className="h-4.5 w-4.5" />
-                  </Button>
-                )}
-                {showNextMessageButton && (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    aria-label="一つ後のユーザーメッセージへ"
-                    title="一つ後のユーザーメッセージへ"
-                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                    onClick={() => {
-                      const el = scrollRef.current;
-                      if (!el) return;
-                      const target = currentMessageIdxRef.current + 1;
-                      if (target >= userMessageIdsRef.current.length) return;
-                      const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
-                      if (!targetEl) return;
-                      const line = el.scrollTop + 4;
-                      el.scrollTo({
-                        top: el.scrollTop + targetEl.offsetTop - line,
-                        behavior: "smooth",
-                      });
-                      currentMessageIdxRef.current = target;
-                      stickRef.current = false;
-                      setShowFirstMessageButton(true);
-                      setShowPrevMessageButton(true);
-                      setShowNextMessageButton(target < userMessageIdsRef.current.length - 1);
-                      setShowLastMessageButton(!isAtBottom(el));
-                    }}
-                  >
-                    <ChevronDown className="h-4.5 w-4.5" />
-                  </Button>
-                )}
-                {showLastMessageButton && (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    aria-label="最新のメッセージへ"
-                    title="最新のメッセージへ"
-                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                    onClick={() => {
-                      const el = scrollRef.current;
-                      if (!el) return;
-                      scrollToBottom(el, "smooth");
-                      currentMessageIdxRef.current = userMessageIdsRef.current.length - 1;
-                      // Back at the live bottom: restore follow mode.
-                      stickRef.current = true;
-                      setShowFirstMessageButton(userMessageIdsRef.current.length > 1);
-                      setShowPrevMessageButton(userMessageIdsRef.current.length > 1);
-                      setShowNextMessageButton(false);
-                      setShowLastMessageButton(false);
-                    }}
-                  >
-                    <ChevronsDown className="h-4.5 w-4.5" />
-                  </Button>
-                )}
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="最初のユーザーメッセージへ"
+                  title="最初のユーザーメッセージへ"
+                  className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                  disabled={!showFirstMessageButton}
+                  onClick={() => {
+                    const el = scrollRef.current;
+                    if (!el) return;
+                    const targetEl = messageElsRef.current.get(userMessageIdsRef.current[0]);
+                    if (!targetEl) return;
+                    const line = el.scrollTop + 4;
+                    el.scrollTo({
+                      top: el.scrollTop + targetEl.offsetTop - line,
+                      behavior: "smooth",
+                    });
+                    currentMessageIdxRef.current = 0;
+                    stickRef.current = false;
+                    setShowFirstMessageButton(false);
+                    setShowPrevMessageButton(false);
+                    setShowNextMessageButton(userMessageIdsRef.current.length > 1);
+                    setShowLastMessageButton(userMessageIdsRef.current.length > 1);
+                  }}
+                >
+                  <ChevronsUp className="h-4.5 w-4.5" />
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="一つ前のユーザーメッセージへ"
+                  title="一つ前のユーザーメッセージへ"
+                  className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                  disabled={!showPrevMessageButton}
+                  onClick={() => {
+                    const el = scrollRef.current;
+                    if (!el) return;
+                    const target = currentMessageIdxRef.current - 1;
+                    if (target < 0) return;
+                    const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
+                    if (!targetEl) return;
+                    const line = el.scrollTop + 4;
+                    el.scrollTo({
+                      top: el.scrollTop + targetEl.offsetTop - line,
+                      behavior: "smooth",
+                    });
+                    currentMessageIdxRef.current = target;
+                    stickRef.current = false;
+                    setShowFirstMessageButton(target > 0);
+                    setShowPrevMessageButton(target > 0);
+                    setShowNextMessageButton(true);
+                    setShowLastMessageButton(true);
+                  }}
+                >
+                  <ChevronUp className="h-4.5 w-4.5" />
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="一つ後のユーザーメッセージへ"
+                  title="一つ後のユーザーメッセージへ"
+                  className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                  disabled={!showNextMessageButton}
+                  onClick={() => {
+                    const el = scrollRef.current;
+                    if (!el) return;
+                    const target = currentMessageIdxRef.current + 1;
+                    if (target >= userMessageIdsRef.current.length) return;
+                    const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
+                    if (!targetEl) return;
+                    const line = el.scrollTop + 4;
+                    el.scrollTo({
+                      top: el.scrollTop + targetEl.offsetTop - line,
+                      behavior: "smooth",
+                    });
+                    currentMessageIdxRef.current = target;
+                    stickRef.current = false;
+                    setShowFirstMessageButton(true);
+                    setShowPrevMessageButton(true);
+                    setShowNextMessageButton(target < userMessageIdsRef.current.length - 1);
+                    setShowLastMessageButton(!isAtBottom(el));
+                  }}
+                >
+                  <ChevronDown className="h-4.5 w-4.5" />
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="最新のメッセージへ"
+                  title="最新のメッセージへ"
+                  className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                  disabled={!showLastMessageButton}
+                  onClick={() => {
+                    const el = scrollRef.current;
+                    if (!el) return;
+                    scrollToBottom(el, "smooth");
+                    currentMessageIdxRef.current = userMessageIdsRef.current.length - 1;
+                    // Back at the live bottom: restore follow mode.
+                    stickRef.current = true;
+                    setShowFirstMessageButton(userMessageIdsRef.current.length > 1);
+                    setShowPrevMessageButton(userMessageIdsRef.current.length > 1);
+                    setShowNextMessageButton(false);
+                    setShowLastMessageButton(false);
+                  }}
+                >
+                  <ChevronsDown className="h-4.5 w-4.5" />
+                </Button>
               </div>
             )}
             </div>

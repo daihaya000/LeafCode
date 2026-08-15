@@ -4220,19 +4220,24 @@ describe("TaskView voice input", () => {
       Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
     });
 
-    // At the bottom: no jump button.
+    // All four buttons stay visible wherever the user is; the boundary states
+    // are expressed via `disabled`. At the bottom: forward jumps disabled.
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+    expect((screen.getByLabelText("最新のメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("一つ後のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("一つ前のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText("最初のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(false);
 
-    // Scrolled up: the latest-message button appears.
+    // Scrolled up: the latest-message button becomes usable.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 100, writable: true });
     fireEvent.scroll(scroller);
     const button = screen.getByLabelText("最新のメッセージへ");
-    expect(button).not.toBeNull();
+    expect((button as HTMLButtonElement).disabled).toBe(false);
 
-    // The button must live outside the scroller. An absolutely positioned child
-    // of an overflow container is laid out against the scrolled content box, so
-    // it would drift with the content instead of staying pinned to the viewport.
+    // The buttons must live outside the scroller. An absolutely positioned
+    // child of an overflow container is laid out against the scrolled content
+    // box, so it would drift with the content instead of staying pinned to the
+    // viewport.
     expect(scroller.contains(button)).toBe(false);
     const anchor = button.parentElement?.parentElement as HTMLElement;
     expect(anchor.className).toContain("relative");
@@ -4246,11 +4251,12 @@ describe("TaskView voice input", () => {
       behavior: "smooth",
     });
 
-    // Back at the latest: forward jumps disappear while backward ones remain.
-    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
-    expect(screen.queryByLabelText("一つ後のユーザーメッセージへ")).toBeNull();
-    expect(screen.getByLabelText("一つ前のユーザーメッセージへ")).not.toBeNull();
-    expect(screen.getByLabelText("最初のユーザーメッセージへ")).not.toBeNull();
+    // Back at the latest: forward jumps disabled, backward ones usable. All
+    // buttons remain visible for consecutive presses.
+    expect((screen.getByLabelText("最新のメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("一つ後のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("一つ前のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText("最初のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("keeps following the latest message when growing content pushes the bottom away", async () => {
@@ -4293,22 +4299,22 @@ describe("TaskView voice input", () => {
 
     setMetrics(1000, 500);
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+    expect((screen.getByLabelText("最新のメッセージへ") as HTMLButtonElement).disabled).toBe(true);
 
     // An error detail auto-expands: the content grows and the browser's scroll
     // anchoring nudges scrollTop, so the viewport is no longer at the bottom
     // even though the user never scrolled up. Follow mode must survive.
     setMetrics(2000, 600);
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+    expect((screen.getByLabelText("最新のメッセージへ") as HTMLButtonElement).disabled).toBe(true);
 
     // A genuine upward scroll still stops following.
     setMetrics(2000, 200);
     fireEvent.scroll(scroller);
-    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
+    expect((screen.getByLabelText("最新のメッセージへ") as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("jumps to the first user message when scrolled down and hides the button at the first message", async () => {
+  it("jumps to the first user message and disables backward jumps at the first message", async () => {
     const mkUser = (id: string) => ({
       info: { id, role: "user", time: { created: Date.now() } },
       parts: [{ id: `p-${id}`, messageID: id, type: "text", text: id }],
@@ -4336,15 +4342,17 @@ describe("TaskView voice input", () => {
       Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
     });
 
-    // At the first message, there is no earlier message to jump to.
+    // At the first message, backward jumps are disabled but still visible.
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
+    expect((screen.getByLabelText("最初のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("一つ前のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("一つ後のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(false);
 
-    // Scrolled to the last message: the first-message button appears.
+    // Scrolled to the last message: the first-message button becomes usable.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 200, writable: true });
     fireEvent.scroll(scroller);
     const button = screen.getByLabelText("最初のユーザーメッセージへ");
-    expect(button).not.toBeNull();
+    expect((button as HTMLButtonElement).disabled).toBe(false);
     expect(scroller.contains(button)).toBe(false);
 
     fireEvent.click(button);
@@ -4353,11 +4361,12 @@ describe("TaskView voice input", () => {
       behavior: "smooth",
     });
 
-    // At the first message, backward jumps disappear while forward ones remain.
-    expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
-    expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
-    expect(screen.getByLabelText("一つ後のユーザーメッセージへ")).not.toBeNull();
-    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
+    // Back at the first message: backward jumps disabled, forward ones usable.
+    // All buttons remain visible for consecutive presses.
+    expect((screen.getByLabelText("最初のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("一つ前のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("一つ後のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText("最新のメッセージへ") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("jumps to the previous user message and skips assistant-only messages", async () => {
@@ -4393,16 +4402,16 @@ describe("TaskView voice input", () => {
       Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
     });
 
-    // At the first user message, there is no previous one.
+    // At the first user message, the previous-message jump is disabled.
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
+    expect((screen.getByLabelText("一つ前のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
 
     // Scrolled so that m3 is at the top line (scrollTop 200 => line 204,
     // m3 top 224 is below, m2 top 124 is above): previous user message = m1.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 200, writable: true });
     fireEvent.scroll(scroller);
     const button = screen.getByLabelText("一つ前のユーザーメッセージへ");
-    expect(button).not.toBeNull();
+    expect((button as HTMLButtonElement).disabled).toBe(false);
     expect(scroller.contains(button)).toBe(false);
 
     fireEvent.click(button);
@@ -4412,11 +4421,11 @@ describe("TaskView voice input", () => {
     });
 
     // Jumping to m1 (offsetTop 24) lands on the first user message: backward
-    // jumps disappear while forward ones remain.
-    expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
-    expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
-    expect(screen.getByLabelText("一つ後のユーザーメッセージへ")).not.toBeNull();
-    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
+    // jumps disabled, forward ones usable. All buttons remain visible.
+    expect((screen.getByLabelText("一つ前のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("最初のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("一つ後のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText("最新のメッセージへ") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("jumps to the next user message and keeps the latest-message button available", async () => {
@@ -4452,10 +4461,10 @@ describe("TaskView voice input", () => {
     // previous one does not.
     fireEvent.scroll(scroller);
     const button = screen.getByLabelText("一つ後のユーザーメッセージへ");
-    expect(button).not.toBeNull();
+    expect((button as HTMLButtonElement).disabled).toBe(false);
     expect(scroller.contains(button)).toBe(false);
-    expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
-    expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
+    expect((screen.getByLabelText("一つ前のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("最初のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
 
     // Click jumps to m3 (offsetTop 224 => top 220), skipping m2.
     fireEvent.click(button);
@@ -4464,12 +4473,12 @@ describe("TaskView voice input", () => {
       behavior: "smooth",
     });
 
-    // Scrolled past the last user message: no following message anymore, but
-    // the latest-message button stays available to return to the bottom.
+    // Scrolled past the last user message: the next-message jump is disabled,
+    // but the latest-message button stays usable to return to the bottom.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 300, writable: true });
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("一つ後のユーザーメッセージへ")).toBeNull();
-    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
+    expect((screen.getByLabelText("一つ後のユーザーメッセージへ") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("最新のメッセージへ") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("surfaces session restore failures inline and prevents duplicate restores", async () => {
