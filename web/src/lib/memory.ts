@@ -472,17 +472,25 @@ export function consolidateDuplicateMemories(input: {
   workspaceId: string;
   dryRun?: boolean;
   now?: number;
+  /** Scan cap (oldest rows first). Defaults to {@link MEMORY_DUPLICATE_SCAN_LIMIT}. */
+  limit?: number;
 }): MemoryConsolidationResult {
   const dryRun = input.dryRun !== false;
   const now = input.now ?? Date.now();
+  const limit = Math.max(1, Math.floor(input.limit ?? MEMORY_DUPLICATE_SCAN_LIMIT));
   const scope = resolveMemoryScope(input.workspaceId);
+  // Clustering is O(clusters × rows), so an unbounded scope would stall the
+  // UI once it grows past a few thousand rows. Cap it at the same scan limit
+  // as the insert-time duplicate probe (docs/specs/memory-layer.md
+  // 「重複判定」); older rows beyond the cap are left for a later run.
   const rows = getDb()
     .prepare(
       `SELECT * FROM memories
        WHERE (scope_key = ? OR workspace_id = ?)
-       ORDER BY created_at ASC, id ASC`,
+       ORDER BY created_at ASC, id ASC
+       LIMIT ?`,
     )
-    .all(scope.key, input.workspaceId) as MemoryRow[];
+    .all(scope.key, input.workspaceId, limit) as MemoryRow[];
 
   // Cluster in creation order so the earliest row is the natural survivor.
   const clusters: Array<{ keep: MemoryRow; drops: MemoryRow[] }> = [];

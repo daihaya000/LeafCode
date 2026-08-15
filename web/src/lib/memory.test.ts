@@ -418,6 +418,17 @@ describe("memory CRUD + injection", () => {
     // A dry run must not touch the table.
     expect(listMemories({ workspaceId: "ws-consolidate" })).toHaveLength(4);
 
+    // A bounded scan stops after the oldest `limit` rows and only reports on
+    // those (rows beyond the cap are left for a later run). The two oldest
+    // rows restate the same rule, so the capped run still merges them.
+    const capped = consolidateDuplicateMemories({
+      workspaceId: "ws-consolidate",
+      limit: 2,
+    });
+    expect(capped.scanned).toBe(2);
+    expect(capped.remaining).toBe(1);
+    expect(capped.removed).toBe(1);
+
     const applied = consolidateDuplicateMemories({
       workspaceId: "ws-consolidate",
       dryRun: false,
