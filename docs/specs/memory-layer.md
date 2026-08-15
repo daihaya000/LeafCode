@@ -79,7 +79,10 @@ CREATE TABLE memories (
 CREATE INDEX idx_memories_ws ON memories(workspace_id, approved);
 CREATE INDEX idx_memories_scope ON memories(scope_key, approved);
 CREATE INDEX idx_memories_norm ON memories(scope_key, norm_key);
-CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content);
+-- trigram: 3文字以上の部分一致検索(日本語を含む)。unicode61 はCJK連続文字列を
+-- 1トークンにするため、日本語のフレーズ検索が一切機能しなかった(実測0件)。
+-- 既存インストールは MIGRATIONS v2 でこの形に再構築される(FTSは派生データ)。
+CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content, tokenize='trigram');
 
 CREATE TABLE memory_session_injections (
   workspace_id TEXT NOT NULL,
@@ -202,6 +205,8 @@ v1は完了済みassistantメッセージごとに抽出し、毎回「トラン
 - **差分のみ抽出**: `memory_session_extract_state.last_message_id` 以降のメッセージだけを
   入力にする。差分が空なら抽出実行そのものを作らない(`memory_extraction_runs` にも
   記録しない)。カーソルは**成功時のみ**前進させる(失敗した回は同じ差分を再読する)。
+  差分が末尾16k文字を超える場合、カーソルは16k境界までしか進めない
+  (`digestCursorForTail`)。先頭側のメッセージは次回の抽出で読まれ、情報が失われない。
 - **セッション単位のクールダウン**: `assistant-completed` トリガーは
   `MEMORY_EXTRACT_COOLDOWN_MS`(10分)以内に同一セッションを再抽出しない。
   `manual` / `goal-completed` / `idle` はクールダウンを無視する(明示操作・終端イベント)。
@@ -250,6 +255,8 @@ v1は完全一致(`content` の厳密比較)のみで、実測では**一件も*
    分離される。
 4. **文字trigramのJaccard類似度**で最終判定する。長さが極端に違う候補は先に落とす。
 5. 走査は同一スコープの最大 `MEMORY_DUPLICATE_SCAN_LIMIT`(3,000)件まで。
+   `consolidateDuplicateMemories` も同じ上限で打ち切る(クラスタリングは O(行数×クラスタ数) のため。
+   `limit` 引数で上書き可能)。上限を超えた行は次回の実行に残る。
 
 実データ(1セッション634件)での検証では 634 → 363 件(271件マージ)となり、
 目視サンプルで誤マージは0件だった。
@@ -320,6 +327,9 @@ OpenCode の `message` API はシステム文脈の上書きを許さないた�
 
 選択は `memoryInjectionFor(workspaceId, query?)`。`query` があるときはFTSの関連度順で選び、
 足りない分を最近更新順で埋める。`query` がないときのみ `use_count` 降順にフォールバックする。
+クエリは英数トークンとCJK 3文字トリグラムのORに分解される(`toFtsAnyQuery`)。FTSが
+trigramトークナイザー(`tokenize='trigram'`)なので、日本語プロンプトの部分文字列を含む
+メモリがヒットする(unicode61ではCJKが1トークンになり、日本語クエリが空振りしていた)。
 
 `use_count` 降順のみで選ぶv1の方式は、一度注入された行が使用回数を増やし続けて
 上位8枠を占有する rich-get-richer になっていた(実測: 2,356件中2,271件が `use_count = 0`)。
