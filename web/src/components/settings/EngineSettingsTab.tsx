@@ -453,7 +453,7 @@ export function EngineSettingsTab({
           <div className="grid gap-3 p-4 md:grid-cols-2">
             <div className="space-y-3 rounded-lg border border-border bg-bg/40 p-3">
               <div>
-                <h3 className="text-xs font-semibold text-muted">API 世代</h3>
+                <h3 className="text-xs font-semibold text-muted">OpenCode API 世代</h3>
                 <p className="mt-1 text-xs text-faint">
                   LeafCode が OpenCode エンジンを呼ぶ際に使う API 世代です。エンジンが v1 と v2
                   （beta）を併存公開している間は切り替えて比較できます。切り替えはブラウザに

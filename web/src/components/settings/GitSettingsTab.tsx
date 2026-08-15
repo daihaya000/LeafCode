@@ -66,7 +66,7 @@ export function GitSettingsTab() {
 
   return (
     <section>
-      <h2 className="mb-3 text-sm font-semibold text-muted">コミット作者</h2>
+      <h2 className="mb-3 text-sm font-semibold text-muted">Git コミット作者</h2>
       <div className="rounded-xl border border-border bg-surface px-4 py-3">
         <p className="text-[11px] text-faint">
           未設定の場合は実行エージェント名（例:

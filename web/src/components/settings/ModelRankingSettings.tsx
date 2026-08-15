@@ -37,7 +37,7 @@ export function ModelRankingSettings() {
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h2 id="model-ranking-heading" className="text-sm font-semibold text-muted">
-            プロバイダー/モデルのコスパランキング
+            コスパランキング
           </h2>
           <p className="mt-1 text-xs text-faint">
             セッション履歴の出力・推論トークン ÷ OpenCode の報告費用または設定価格で比較します。

@@ -125,7 +125,7 @@ export function ConnectivitySettingsTab() {
     <>
       <section>
         <h2 className="mb-3 text-sm font-semibold text-muted">
-          スマホ / VPN アクセス
+          アクセス URL（スマホ / VPN）
         </h2>
         <p className="mb-3 text-xs text-faint">
           {access?.hint ??
@@ -245,12 +245,21 @@ export function ConnectivitySettingsTab() {
         </p>
       </section>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-muted">Remote Workspace</h2>
-        <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
-          未実装（501）。VPN + ローカルパスで代替してください。
-        </p>
-      </section>
     </>
+  );
+}
+
+/**
+ * 「接続」タブの末尾に置く未実装通知。ネットワークアクセスと Git 設定より
+ * 優先度が低いため、独立コンポーネントにして描画順を SettingsView で決める。
+ */
+export function RemoteWorkspaceNotice() {
+  return (
+    <section>
+      <h2 className="mb-3 text-sm font-semibold text-muted">Remote Workspace</h2>
+      <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+        未実装（501）。VPN + ローカルパスで代替してください。
+      </p>
+    </section>
   );
 }

@@ -141,7 +141,7 @@ describe("ProviderModelsSettings", () => {
     render(<ProviderModelsSettings />);
 
     expect(
-      await screen.findByRole("heading", { name: "プロバイダー/モデル" }),
+      await screen.findByRole("heading", { name: "プロバイダー / モデル一覧" }),
     ).toBeTruthy();
 
     // OpenAI is enabled
@@ -1178,18 +1178,21 @@ describe("ProviderModelsSettings", () => {
     await waitFor(() => expect(screen.queryByText("並び順を保存中…")).toBeNull());
   });
 
-  it("renders the image pre-analysis model section after the generation model", async () => {
+  it("orders the model sections: default → Auto → generation → image pre-analysis", async () => {
     render(<ProviderModelsSettings />);
 
     const section = await screen.findByRole("region", {
       name: "画像事前解析モデル",
     });
+    const defaultHeading = screen.getByRole("heading", { name: "デフォルトモデル" });
+    const autoHeading = screen.getByRole("heading", { name: "Autoモード" });
     const generationHeading = screen.getByRole("heading", {
       name: "タイトル / NextAction 生成モデル",
     });
-    const autoHeading = screen.getByRole("heading", { name: "Autoモード" });
+    // DOCUMENT_POSITION_FOLLOWING === 4（第2引数が第1引数より後ろ）
+    expect(defaultHeading.compareDocumentPosition(autoHeading)).toBe(4);
+    expect(autoHeading.compareDocumentPosition(generationHeading)).toBe(4);
     expect(generationHeading.compareDocumentPosition(section)).toBe(4);
-    expect(section.compareDocumentPosition(autoHeading)).toBe(4);
   });
 
   it("loads the saved image pre-analysis model into the selector", async () => {

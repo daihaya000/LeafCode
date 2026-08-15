@@ -1323,6 +1323,79 @@ export function ProviderModelsSettings() {
         </div>
       </section>
 
+      <section aria-labelledby="auto-settings-heading">
+        <h2
+          id="auto-settings-heading"
+          className="mb-3 text-sm font-semibold text-muted"
+        >
+          Autoモード
+        </h2>
+        <p className="mb-3 text-xs text-faint">
+          Autoがタスクに合ったモデルを選ぶときの動作を設定します。
+        </p>
+        <div className="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div>
+              <p className="text-sm font-medium text-muted">最適化モード</p>
+              <p className="mt-1 text-xs text-faint">
+                コスト、バランス、知能のどれを優先するかを選びます。
+              </p>
+            </div>
+            <AutoOptimizeSelect
+              value={autoOptimize}
+              disabled={false}
+              onChange={(mode) => {
+                autoSettingsTouched.current.mode = true;
+                setAutoOptimize(mode);
+                writeAutoOptimizeMode(mode);
+                void writeAutoSettingToServer(AUTO_OPTIMIZE_SETTING_KEY, mode);
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3 py-3">
+            <div>
+              <p className="text-sm font-medium text-muted">
+                Autoが選んだモデル名を表示
+              </p>
+              <p className="mt-1 text-xs text-faint">
+                タスク画面で実際に選ばれたモデル名を表示します。
+              </p>
+            </div>
+            <ExtensionSwitch
+              name="Autoが選んだモデル名を表示"
+              enabled={autoShowModel}
+              busy={false}
+              onToggle={() => {
+                const next = !autoShowModel;
+                autoSettingsTouched.current.showModel = true;
+                setAutoShowModel(next);
+                writeAutoShowModel(next);
+                void writeAutoSettingToServer(
+                  AUTO_SHOW_MODEL_SETTING_KEY,
+                  next ? "1" : "",
+                );
+              }}
+            />
+          </div>
+          <div className="py-3">
+            <AutoRouteOverridesEditor
+              mode={autoOptimize}
+              config={routeConfig}
+              providers={providers}
+              onChange={(next) => {
+                autoSettingsTouched.current.routeConfig = true;
+                setRouteConfig(next);
+                writeAutoRouteConfig(next);
+                void writeAutoSettingToServer(
+                  AUTO_ROUTE_OVERRIDES_SETTING_KEY,
+                  isAutoRouteConfigEmpty(next) ? "" : JSON.stringify(next),
+                );
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
       <section aria-labelledby="generation-model-heading">
         <h2 id="generation-model-heading" className="mb-3 text-sm font-semibold text-muted">
           タイトル / NextAction 生成モデル
@@ -1444,85 +1517,12 @@ export function ProviderModelsSettings() {
         </div>
       </section>
 
-      <section aria-labelledby="auto-settings-heading">
-        <h2
-          id="auto-settings-heading"
-          className="mb-3 text-sm font-semibold text-muted"
-        >
-          Autoモード
-        </h2>
-        <p className="mb-3 text-xs text-faint">
-          Autoがタスクに合ったモデルを選ぶときの動作を設定します。
-        </p>
-        <div className="divide-y divide-border rounded-xl border border-border bg-surface px-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 py-3">
-            <div>
-              <p className="text-sm font-medium text-muted">最適化モード</p>
-              <p className="mt-1 text-xs text-faint">
-                コスト、バランス、知能のどれを優先するかを選びます。
-              </p>
-            </div>
-            <AutoOptimizeSelect
-              value={autoOptimize}
-              disabled={false}
-              onChange={(mode) => {
-                autoSettingsTouched.current.mode = true;
-                setAutoOptimize(mode);
-                writeAutoOptimizeMode(mode);
-                void writeAutoSettingToServer(AUTO_OPTIMIZE_SETTING_KEY, mode);
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3 py-3">
-            <div>
-              <p className="text-sm font-medium text-muted">
-                Autoが選んだモデル名を表示
-              </p>
-              <p className="mt-1 text-xs text-faint">
-                タスク画面で実際に選ばれたモデル名を表示します。
-              </p>
-            </div>
-            <ExtensionSwitch
-              name="Autoが選んだモデル名を表示"
-              enabled={autoShowModel}
-              busy={false}
-              onToggle={() => {
-                const next = !autoShowModel;
-                autoSettingsTouched.current.showModel = true;
-                setAutoShowModel(next);
-                writeAutoShowModel(next);
-                void writeAutoSettingToServer(
-                  AUTO_SHOW_MODEL_SETTING_KEY,
-                  next ? "1" : "",
-                );
-              }}
-            />
-          </div>
-          <div className="py-3">
-            <AutoRouteOverridesEditor
-              mode={autoOptimize}
-              config={routeConfig}
-              providers={providers}
-              onChange={(next) => {
-                autoSettingsTouched.current.routeConfig = true;
-                setRouteConfig(next);
-                writeAutoRouteConfig(next);
-                void writeAutoSettingToServer(
-                  AUTO_ROUTE_OVERRIDES_SETTING_KEY,
-                  isAutoRouteConfigEmpty(next) ? "" : JSON.stringify(next),
-                );
-              }}
-            />
-          </div>
-        </div>
-      </section>
-
       <section aria-labelledby="provider-models-heading">
         <h2
           id="provider-models-heading"
           className="mb-3 text-sm font-semibold text-muted"
         >
-          プロバイダー/モデル
+          プロバイダー / モデル一覧
         </h2>
         <p className="mb-3 text-xs text-faint">
           利用可能な AI プロバイダーとモデルの表示を切り替えます。OpenCode

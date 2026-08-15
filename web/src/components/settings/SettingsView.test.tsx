@@ -394,6 +394,24 @@ describe("SettingsView", () => {
     expect(setTheme).toHaveBeenCalledWith("light");
   });
 
+  it("orders the 全般 tab: 外観 → コスト表示 → 起動 → タスク実行 → 許可ルート → ホストログ", async () => {
+    render(<SettingsView />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "全般" }));
+    const order = [
+      await screen.findByRole("heading", { name: "外観" }),
+      screen.getByRole("heading", { name: "コスト表示" }),
+      screen.getByRole("heading", { name: "起動" }),
+      screen.getByRole("heading", { name: "タスク実行" }),
+      screen.getByRole("heading", { name: "許可ルート（allowlist）" }),
+      screen.getByTestId("host-log-panel"),
+    ];
+    for (let i = 0; i < order.length - 1; i += 1) {
+      // DOCUMENT_POSITION_FOLLOWING === 4
+      expect(order[i]!.compareDocumentPosition(order[i + 1]!)).toBe(4);
+    }
+  });
+
   it("exposes token-saving mode and threshold settings", async () => {
     render(<SettingsView />);
 
@@ -843,9 +861,21 @@ describe("SettingsView", () => {
     await screen.findByText("エンジン");
 
     fireEvent.click(screen.getByRole("tab", { name: "接続" }));
-    await screen.findByText("スマホ / VPN アクセス");
+    await screen.findByText("アクセス URL（スマホ / VPN）");
     expect(screen.queryByRole("heading", { name: "MCP サーバー" })).toBeNull();
     expect(screen.queryByRole("button", { name: "MCPタブを開く" })).toBeNull();
+  });
+
+  it("orders the connectivity tab: アクセス URL → Git → Remote Workspace", async () => {
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+
+    fireEvent.click(screen.getByRole("tab", { name: "接続" }));
+    const access = await screen.findByText("アクセス URL（スマホ / VPN）");
+    const git = screen.getByRole("heading", { name: "Git コミット作者" });
+    const remote = screen.getByRole("heading", { name: "Remote Workspace" });
+    expect(access.compareDocumentPosition(git)).toBe(4);
+    expect(git.compareDocumentPosition(remote)).toBe(4);
   });
 
   it("shows Caddy, direct URLs, and trust certificate downloads", async () => {

@@ -16,7 +16,11 @@ import { ProfilesSettings } from "@/components/settings/ProfilesSettings";
 import { ProfileSyncSettings } from "@/components/settings/ProfileSyncSettings";
 import { ProfileAgentsSyncSettings } from "@/components/settings/ProfileAgentsSyncSettings";
 import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSettings";
-import { ConnectivitySettingsTab } from "./ConnectivitySettingsTab";
+import {
+  ConnectivitySettingsTab,
+  RemoteWorkspaceNotice,
+} from "./ConnectivitySettingsTab";
+import { HostLogPanel } from "@/components/settings/HostLogPanel";
 import { EngineSettingsTab } from "./EngineSettingsTab";
 import { GitSettingsTab } from "./GitSettingsTab";
 import { GeneralSettingsTab } from "./GeneralSettingsTab";
@@ -401,6 +405,7 @@ const [error, setError] = useState<string | null>(null);
               guard={guard}
               setError={setError}
             />
+            <HostLogPanel />
           </>
         )}
 
@@ -423,6 +428,7 @@ const [error, setError] = useState<string | null>(null);
           <>
             <ConnectivitySettingsTab />
             <GitSettingsTab />
+            <RemoteWorkspaceNotice />
           </>
         )}
 
@@ -484,47 +490,6 @@ const [error, setError] = useState<string | null>(null);
             </p>
 
             <div className="mb-4 rounded-xl border border-border bg-surface p-4">
-              <h3 className="mb-3 text-sm font-semibold text-text">ユーザーを追加 / パスワード変更</h3>
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <input
-                  type="text"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                  placeholder="ユーザー名"
-                  aria-label="新規ユーザー名"
-                  autoComplete="username"
-                  className="h-10 flex-1 rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
-                />
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="パスワード（4 文字以上）"
-                  aria-label="新規パスワード"
-                  autoComplete="new-password"
-                  className="h-10 flex-1 rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
-                />
-                <Button
-                  busy={authBusy}
-                  disabled={authBusy || !newUsername.trim() || newPassword.length < 4}
-                  onClick={() => void addUser()}
-                >
-                  保存
-                </Button>
-              </div>
-              {authError && (
-                <p className="mt-2 text-xs text-danger" role="alert">
-                  {authError}
-                </p>
-              )}
-              {authSuccess && (
-                <p className="mt-2 text-xs text-success" role="status">
-                  {authSuccess}
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-border bg-surface p-4">
               <h3 className="mb-3 text-sm font-semibold text-text">登録済みユーザー</h3>
               {authBusy && authUsers.length === 0 ? (
                 <div className="flex justify-center py-6">
@@ -567,6 +532,47 @@ const [error, setError] = useState<string | null>(null);
                     </li>
                   )}
                 </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <h3 className="mb-3 text-sm font-semibold text-text">ユーザーを追加 / パスワード変更</h3>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="text"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  placeholder="ユーザー名"
+                  aria-label="新規ユーザー名"
+                  autoComplete="username"
+                  className="h-10 flex-1 rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="パスワード（4 文字以上）"
+                  aria-label="新規パスワード"
+                  autoComplete="new-password"
+                  className="h-10 flex-1 rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
+                />
+                <Button
+                  busy={authBusy}
+                  disabled={authBusy || !newUsername.trim() || newPassword.length < 4}
+                  onClick={() => void addUser()}
+                >
+                  保存
+                </Button>
+              </div>
+              {authError && (
+                <p className="mt-2 text-xs text-danger" role="alert">
+                  {authError}
+                </p>
+              )}
+              {authSuccess && (
+                <p className="mt-2 text-xs text-success" role="status">
+                  {authSuccess}
+                </p>
               )}
             </div>
           </section>
