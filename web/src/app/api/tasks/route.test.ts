@@ -737,7 +737,10 @@ describe("POST /api/tasks image attachments", () => {
     ).toBeDefined();
   });
 
-  it("rejects image submission when the selected agent model lacks image capability", async () => {
+  it("starts with the explicit image-capable model even when the agent pins a text-only model", async () => {
+    // The engine serves the explicit request model when both an agent and a
+    // model are present (verified live), so the image-capable manual model
+    // wins over the agent's pinned text-only model.
     const ocServer = await mockOpenCodeProvider(
       {
         all: [
@@ -765,6 +768,45 @@ describe("POST /api/tasks image attachments", () => {
       prompt: "describe this",
       isolation: "current_folder",
       model: { providerID: "openai", modelID: "vision" },
+      agent: "text-agent",
+      files: [image],
+    });
+
+    expect(res.status).toBe(200);
+    expect(
+      ocServer.mock.calls.find((c) => String(c[1]).includes("/prompt_async")),
+    ).toBeDefined();
+  });
+
+  it("rejects image submission when the agent pins a text-only model and no model is supplied", async () => {
+    // Without an explicit request model the agent's configured model decides
+    // image capability; a text-only agent model rejects the image task.
+    const ocServer = await mockOpenCodeProvider(
+      {
+        all: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              vision: { capabilities: { input: { image: true } } },
+              "text-agent": { capabilities: { input: { image: false } } },
+            },
+          },
+        ],
+        connected: ["openai"],
+      },
+      [
+        {
+          name: "text-agent",
+          model: { providerID: "openai", modelID: "text-agent" },
+        },
+      ],
+    );
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "describe this",
+      isolation: "current_folder",
       agent: "text-agent",
       files: [image],
     });

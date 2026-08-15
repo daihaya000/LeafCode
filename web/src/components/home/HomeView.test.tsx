@@ -405,7 +405,9 @@ describe("HomeView image attachments", () => {
     );
   });
 
-  it("blocks image submission when the selected agent model lacks image capability", async () => {
+  it("allows image submission when a manual image-capable model is selected alongside an agent with a text-only pinned model", async () => {
+    // The engine serves the explicit request model when both an agent and a
+    // model are present, so the manual image-capable model enables the send.
     timedFetch.mockImplementation((path: string) => {
       if (path === "/api/extensions/provider-models") {
         return Promise.resolve({
@@ -456,6 +458,93 @@ describe("HomeView image attachments", () => {
       );
       expect((screen.getByLabelText("モデル") as HTMLSelectElement).value).toBe(
         "openai::vision",
+      );
+    });
+    const attach = screen.getByRole("button", { name: "画像を添付" });
+    expect((attach as HTMLButtonElement).disabled).toBe(false);
+
+    const input = screen.getByLabelText("画像ファイルを選択");
+    fireEvent.change(input, {
+      target: { files: [new File(["image"], "agent-text.png", { type: "image/png" })] },
+    });
+    expect(await screen.findByRole("img", { name: "agent-text.png" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/tasks",
+        expect.objectContaining({
+          model: { providerID: "openai", modelID: "vision" },
+          agent: "text-agent",
+          files: [expect.objectContaining({ name: "agent-text.png", mime: "image/png" })],
+        }),
+        undefined,
+        { timeoutMs: IMAGE_ANALYSIS_SEND_TIMEOUT_MS },
+      ),
+    );
+  });
+
+  it("blocks image submission when an agent pins a text-only model and no manual model is selected", async () => {
+    // With Auto + a pinned agent model no explicit model is sent, so the
+    // agent's text-only model decides image capability and blocks the send.
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            providers: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                enabled: true,
+                models: [
+                  {
+                    id: "vision",
+                    name: "Vision",
+                    enabled: true,
+                    capabilities: { input: { image: true } },
+                  },
+                  {
+                    id: "text-agent",
+                    name: "Text Agent",
+                    enabled: true,
+                    capabilities: { input: { image: false } },
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+      }
+      if (path === "/api/opencode/agent") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [
+            {
+              name: "text-agent",
+              model: { providerID: "openai", modelID: "text-agent" },
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+    render(<HomeView />);
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("エージェント") as HTMLSelectElement).value).toBe(
+        "text-agent",
+      );
+      expect((screen.getByLabelText("モデル") as HTMLSelectElement).value).toBe(
+        "openai::vision",
+      );
+    });
+    fireEvent.click(await screen.findByLabelText("モデル"));
+    fireEvent.click(await screen.findByRole("option", { name: "Auto" }));
+    await waitFor(() => {
+      expect((screen.getByLabelText("モデル") as HTMLButtonElement).value).toBe(
+        "auto",
       );
     });
     const attach = screen.getByRole("button", { name: "画像を添付" });

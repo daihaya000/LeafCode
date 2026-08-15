@@ -2774,11 +2774,12 @@ export function TaskView({
       if (sendingScopeRef.current === sendScopeKey) sendingScopeRef.current = null;
       return;
     }
-    // Block sending images to a model that cannot accept them. The effective
-    // model (agent's configured model when an agent is selected, otherwise the
-    // manual selector) is the one that actually serves the prompt, so check
-    // image support against it — not the manual selector that may be ignored.
+    // Block sending images to a model that cannot accept them. The engine
+    // serves the explicit model selection when one is present, so image
+    // support is checked against it; an agent's pinned model only applies
+    // when no manual model is selected (same precedence as the BFF checks).
     const sendingModelKey = (() => {
+      if (model && model !== AUTO_MODEL_VALUE) return model;
       const am = agent ? agentModels[agent] : undefined;
       if (am) return `${am.providerID}::${am.modelID}`;
       return model || ``;
@@ -3148,9 +3149,11 @@ export function TaskView({
     [input, cursor, setInput],
   );
 
-  // Resolve the model that will actually serve the prompt: the selected
-  // agent's configured model takes priority over the manual model selector.
+  // Resolve the model that will actually serve the prompt: the explicit
+  // manual selection wins, and an agent's configured model applies only when
+  // no manual model is chosen (engine serves the explicit request model).
   const effectiveModelKey = (() => {
+    if (model && model !== AUTO_MODEL_VALUE) return model;
     const am = agent ? agentModels[agent] : undefined;
     if (am) return `${am.providerID}::${am.modelID}`;
     return model || ``;

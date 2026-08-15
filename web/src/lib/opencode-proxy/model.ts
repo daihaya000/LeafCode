@@ -81,14 +81,13 @@ export async function supportsImageInput(
   const request = body as Record<string, unknown>;
   let model = modelFromRequest(request);
   const agent = request.agent;
-  if (typeof agent === "string" && agent.trim()) {
+  // The engine serves the explicit request model when one is present; the
+  // agent's pinned model only applies when the request carries none (verified
+  // live: agent "build" + model both sent → assistant ran on the model).
+  if (!model && typeof agent === "string" && agent.trim()) {
     const agents = await resolveAgents(directory);
     const configuredAgent = agents?.find(({ name }) => name === agent.trim());
     const agentModel = configuredAgent?.model;
-    // Prefer the agent's own model when it is configured; otherwise fall back
-    // to the model explicitly selected in the request. This lets an
-    // image-capable model chosen at request time apply to agents that have no
-    // per-agent model, instead of fail-closing on the missing agent model.
     if (agentModel?.providerID && agentModel.modelID) {
       model = {
         providerID: agentModel.providerID,

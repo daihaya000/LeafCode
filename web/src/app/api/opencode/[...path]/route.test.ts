@@ -651,7 +651,10 @@ describe("POST session image capability validation", () => {
     fetchMock.mockRestore();
   });
 
-  it("uses the cached agent model instead of a manually supplied image model", async () => {
+  it("uses the manually supplied model over the agent's pinned text-only model", async () => {
+    // The engine serves the explicit request model when both an agent and a
+    // model are present (verified live), so an image-capable manual model
+    // must win over the agent's pinned text-only model.
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const pathname = new URL(String(input)).pathname;
       if (pathname === "/provider") {
@@ -691,6 +694,54 @@ describe("POST session image capability validation", () => {
       arguments: "",
       agent: "text-agent",
       model: "agent-provider/vision",
+      parts: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AA==" }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
+  it("fails closed when the agent's pinned model is text-only and no model is supplied", async () => {
+    // Without an explicit request model the agent's configured model decides
+    // image capability; a text-only agent model rejects the image write.
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname === "/provider") {
+        return Promise.resolve(
+          jsonResponse({
+            all: [{
+              id: "agent-provider",
+              models: {
+                vision: { capabilities: { input: { image: true } } },
+                text: { capabilities: { input: { image: false } } },
+              },
+            }],
+            connected: ["agent-provider"],
+          }),
+        );
+      }
+      return Promise.resolve(
+        jsonResponse([
+          {
+            name: "text-agent",
+            model: { providerID: "agent-provider", modelID: "text" },
+          },
+        ]),
+      );
+    });
+    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo", { headers: { host: "127.0.0.1:3000" } }) as never, {
+      params: Promise.resolve({ path: ["provider"] }),
+    });
+    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo", { headers: { host: "127.0.0.1:3000" } }) as never, {
+      params: Promise.resolve({ path: ["agent"] }),
+    });
+    fetchMock.mockClear();
+
+    const response = await sessionPost("command", {
+      command: "review",
+      arguments: "",
+      agent: "text-agent",
       parts: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AA==" }],
     });
 

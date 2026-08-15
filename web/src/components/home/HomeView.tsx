@@ -941,13 +941,17 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         return;
       }
     }
-    // Match OpenCode's agent precedence: configured agent model overrides the
-    // manual selector; when the agent has no model, fall back to the request
-    // model (same as TaskView / BFF image capability checks).
+    // Match the engine's model precedence: the explicit manual selection
+    // serves when present; the agent's pinned model applies only when no
+    // manual model is selected (same as TaskView / BFF image capability
+    // checks).
     const agentModel = agent ? agentModels[agent] : undefined;
-    const sendingModelKey = agentModel
-      ? `${agentModel.providerID}::${agentModel.modelID}`
-      : model || "";
+    const sendingModelKey =
+      model && model !== AUTO_MODEL_VALUE
+        ? model
+        : agentModel
+          ? `${agentModel.providerID}::${agentModel.modelID}`
+          : model || "";
     const sendingImageSupported =
       sendingModelKey === AUTO_MODEL_VALUE
         ? // Auto has no capabilities of its own: pass when at least one
@@ -1181,10 +1185,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     writeSkillPermission(mode);
   }, []);
 
-  // Calculate intelligence variants based on the effective model (agent's model
-  // if agent is selected, otherwise manual model). This ensures the variants
-  // match the actual model being used, not the manual selection (R24).
+  // Calculate intelligence variants based on the effective model (manual
+  // selection wins; the agent's model applies only when no manual model is
+  // chosen). The engine serves the explicit request model when both are sent.
   const effectiveModelKey = useMemo(() => {
+    if (model && model !== AUTO_MODEL_VALUE) return model;
     if (agent) {
       const agentModel = agentModels[agent];
       if (agentModel) return `${agentModel.providerID}::${agentModel.modelID}`;
