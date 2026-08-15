@@ -4192,7 +4192,7 @@ describe("TaskView voice input", () => {
     expect(screen.queryByLabelText("次の指示を提案")).toBeNull();
   });
 
-  it("jumps to the last user message when scrolled up and hides the button at the last message", async () => {
+  it("returns to the timeline bottom from an earlier message", async () => {
     const mkUser = (id: string) => ({
       info: { id, role: "user", time: { created: Date.now() } },
       parts: [{ id: `p-${id}`, messageID: id, type: "text", text: id }],
@@ -4220,14 +4220,14 @@ describe("TaskView voice input", () => {
       Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
     });
 
-    // At the last user message: no jump button at all.
+    // At the bottom: no jump button.
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
 
-    // Scrolled up to the first message: the last-message button appears.
+    // Scrolled up: the latest-message button appears.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 100, writable: true });
     fireEvent.scroll(scroller);
-    const button = screen.getByLabelText("最後のユーザーメッセージへ");
+    const button = screen.getByLabelText("最新のメッセージへ");
     expect(button).not.toBeNull();
 
     // The button must live outside the scroller. An absolutely positioned child
@@ -4238,15 +4238,16 @@ describe("TaskView voice input", () => {
     expect(anchor.className).toContain("relative");
     expect(anchor.contains(scroller)).toBe(true);
 
-    // Click scrolls to the last user message (m3, offsetTop 224).
+    // Click scrolls to the timeline bottom (past the last user message) and
+    // restores follow mode.
     fireEvent.click(button);
     expect(scroller.scrollTo).toHaveBeenLastCalledWith({
-      top: 100 + 224 - 104,
+      top: 1000,
       behavior: "smooth",
     });
 
-    // At the last message, forward jumps disappear while backward ones remain.
-    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
+    // Back at the latest: forward jumps disappear while backward ones remain.
+    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
     expect(screen.queryByLabelText("一つ後のユーザーメッセージへ")).toBeNull();
     expect(screen.getByLabelText("一つ前のユーザーメッセージへ")).not.toBeNull();
     expect(screen.getByLabelText("最初のユーザーメッセージへ")).not.toBeNull();
@@ -4292,19 +4293,19 @@ describe("TaskView voice input", () => {
 
     setMetrics(1000, 500);
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
 
     // An error detail auto-expands: the content grows and the browser's scroll
     // anchoring nudges scrollTop, so the viewport is no longer at the bottom
     // even though the user never scrolled up. Follow mode must survive.
     setMetrics(2000, 600);
     fireEvent.scroll(scroller);
-    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
+    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
 
     // A genuine upward scroll still stops following.
     setMetrics(2000, 200);
     fireEvent.scroll(scroller);
-    expect(screen.getByLabelText("最後のユーザーメッセージへ")).not.toBeNull();
+    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
   });
 
   it("jumps to the first user message when scrolled down and hides the button at the first message", async () => {
@@ -4356,7 +4357,7 @@ describe("TaskView voice input", () => {
     expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
     expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
     expect(screen.getByLabelText("一つ後のユーザーメッセージへ")).not.toBeNull();
-    expect(screen.getByLabelText("最後のユーザーメッセージへ")).not.toBeNull();
+    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
   });
 
   it("jumps to the previous user message and skips assistant-only messages", async () => {
@@ -4415,10 +4416,10 @@ describe("TaskView voice input", () => {
     expect(screen.queryByLabelText("一つ前のユーザーメッセージへ")).toBeNull();
     expect(screen.queryByLabelText("最初のユーザーメッセージへ")).toBeNull();
     expect(screen.getByLabelText("一つ後のユーザーメッセージへ")).not.toBeNull();
-    expect(screen.getByLabelText("最後のユーザーメッセージへ")).not.toBeNull();
+    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
   });
 
-  it("jumps to the next user message and hides forward jumps at the last user message", async () => {
+  it("jumps to the next user message and keeps the latest-message button available", async () => {
     const mk = (id: string, role: "user" | "assistant") => ({
       info: { id, role, time: { created: Date.now() } },
       parts: [{ id: `p-${id}`, messageID: id, type: "text", text: id }],
@@ -4463,11 +4464,12 @@ describe("TaskView voice input", () => {
       behavior: "smooth",
     });
 
-    // Scrolled past the last user message: no following message anymore.
+    // Scrolled past the last user message: no following message anymore, but
+    // the latest-message button stays available to return to the bottom.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 300, writable: true });
     fireEvent.scroll(scroller);
     expect(screen.queryByLabelText("一つ後のユーザーメッセージへ")).toBeNull();
-    expect(screen.queryByLabelText("最後のユーザーメッセージへ")).toBeNull();
+    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
   });
 
   it("surfaces session restore failures inline and prevents duplicate restores", async () => {

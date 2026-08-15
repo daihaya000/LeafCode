@@ -2553,6 +2553,9 @@ export function TaskView({
     // bails out once stickRef is false.
     if (atBottom) stickRef.current = true;
     else if (el.scrollTop < prevTop - 4) stickRef.current = false;
+    // The last-message button returns to the timeline bottom (past the
+    // trailing assistant reply), so its visibility is position-based.
+    setShowLastMessageButton(!atBottom && !stickRef.current);
     // Track which user message sits at the viewport top line so the jump
     // buttons know whether an earlier/later user message exists. The "current"
     // message is the first one whose top is at or below the top line (the
@@ -2563,7 +2566,6 @@ export function TaskView({
       setShowFirstMessageButton(false);
       setShowPrevMessageButton(false);
       setShowNextMessageButton(false);
-      setShowLastMessageButton(false);
       return;
     }
     let idx = currentMessageIdxRef.current;
@@ -2581,7 +2583,6 @@ export function TaskView({
     setShowFirstMessageButton(idx > 0);
     setShowPrevMessageButton(idx > 0);
     setShowNextMessageButton(idx < userMessageIdsRef.current.length - 1);
-    setShowLastMessageButton(idx < userMessageIdsRef.current.length - 1);
   }, [isAtBottom, setShowFirstMessageButton, setShowPrevMessageButton, setShowNextMessageButton, setShowLastMessageButton]);
 
   // Auto-stick scroll to bottom. We intentionally avoid rAF timeouts because
@@ -5226,7 +5227,7 @@ export function TaskView({
                       setShowFirstMessageButton(true);
                       setShowPrevMessageButton(true);
                       setShowNextMessageButton(target < userMessageIdsRef.current.length - 1);
-                      setShowLastMessageButton(target < userMessageIdsRef.current.length - 1);
+                      setShowLastMessageButton(!isAtBottom(el));
                     }}
                   >
                     <ChevronDown className="h-4.5 w-4.5" />
@@ -5236,22 +5237,16 @@ export function TaskView({
                   <Button
                     variant="secondary"
                     size="icon"
-                    aria-label="最後のユーザーメッセージへ"
-                    title="最後のユーザーメッセージへ"
+                    aria-label="最新のメッセージへ"
+                    title="最新のメッセージへ"
                     className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
                     onClick={() => {
                       const el = scrollRef.current;
                       if (!el) return;
-                      const target = userMessageIdsRef.current.length - 1;
-                      const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
-                      if (!targetEl) return;
-                      const line = el.scrollTop + 4;
-                      el.scrollTo({
-                        top: el.scrollTop + targetEl.offsetTop - line,
-                        behavior: "smooth",
-                      });
-                      currentMessageIdxRef.current = target;
-                      stickRef.current = false;
+                      scrollToBottom(el, "smooth");
+                      currentMessageIdxRef.current = userMessageIdsRef.current.length - 1;
+                      // Back at the live bottom: restore follow mode.
+                      stickRef.current = true;
                       setShowFirstMessageButton(userMessageIdsRef.current.length > 1);
                       setShowPrevMessageButton(userMessageIdsRef.current.length > 1);
                       setShowNextMessageButton(false);
