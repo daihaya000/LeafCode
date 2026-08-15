@@ -21,6 +21,7 @@ import {
 } from "./db";
 import { runMemoryExtraction } from "./memory-extract";
 import { isAutoExtractEnabled } from "./memory-write-gate";
+import { GLOBAL_EVENT_PATH } from "./opencode-paths";
 import { resolveOpencodeBaseUrl } from "./opencode";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
@@ -271,7 +272,7 @@ async function runMemoryEventMonitor(signal: AbortSignal): Promise<void> {
   while (!signal.aborted) {
     try {
       const response = await fetch(
-        new URL("/global/event", await resolveOpencodeBaseUrl()),
+        new URL(GLOBAL_EVENT_PATH, await resolveOpencodeBaseUrl()),
         {
           headers: { accept: "text/event-stream" },
           cache: "no-store",

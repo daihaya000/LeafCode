@@ -83,6 +83,7 @@ export const OC_PATH_TEMPLATES = {
 
   // --- v1: misc -----------------------------------------------------------
   event: "/event",
+  globalEvent: "/global/event",
 
   // --- v2: session-scoped permission / question (existing) ---------------
   v2SessionPermissionList: "/api/session/{sessionID}/permission",
@@ -145,6 +146,13 @@ export const SESSION_STATUS_PATH: string = OC_PATH_TEMPLATES.sessionStatus;
 
 /** SSE stream of engine events. */
 export const EVENT_PATH: string = OC_PATH_TEMPLATES.event;
+
+/**
+ * Engine-wide SSE stream consumed by the memory auto-extraction monitor.
+ * Separate from {@link EVENT_PATH} / {@link EVENT_PATH_V2}: this endpoint
+ * predates the v2 surface and is not generation-switched.
+ */
+export const GLOBAL_EVENT_PATH: string = OC_PATH_TEMPLATES.globalEvent;
 
 /** `GET`/`PATCH`/`DELETE` a single session. */
 export function sessionPath(sessionId: string): string {
