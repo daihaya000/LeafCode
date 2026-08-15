@@ -18,6 +18,7 @@ import {
   ChevronRight,
   CircleAlert,
   Copy,
+  CornerUpLeft,
   FolderTree,
   GitBranch,
   GitGraph,
@@ -612,6 +613,8 @@ export function TaskView({
     setShowScrollButton,
     showScrollTopButton,
     setShowScrollTopButton,
+    showPrevMessageButton,
+    setShowPrevMessageButton,
     filteredFilesCount,
     setFilteredFilesCount,
   } = useTaskPanels();
@@ -812,6 +815,14 @@ export function TaskView({
   // Last observed scroller offset, used to tell a real upward user scroll from
   // a bottom drifting away because content grew.
   const lastScrollTopRef = useRef(0);
+  // Rendered timeline message wrappers, keyed by message id (see the
+  // data-message-id ref callback below).
+  const messageElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Index into `timeline` of the message currently at the viewport top line.
+  const currentMessageIdxRef = useRef(0);
+  // Message ids in timeline order, mirrored for use inside useCallback whose
+  // deps cannot reference the later-declared `timeline` (TDZ).
+  const timelineIdsRef = useRef<string[]>([]);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const autoReplyIdsRef = useRef<Set<string>>(new Set());
@@ -2550,7 +2561,30 @@ export function TaskView({
     else if (el.scrollTop < prevTop - 4) stickRef.current = false;
     setShowScrollButton(!atBottom && !stickRef.current);
     setShowScrollTopButton(!isAtTop(el));
-  }, [isAtBottom, isAtTop, setShowScrollButton, setShowScrollTopButton]);
+    // Track which message sits at the viewport top line so the previous-message
+    // button knows whether an earlier message exists. The "current" message is
+    // the first one whose top is at or below the top line (the message the user
+    // sees at the top); scanning incrementally from the last known index keeps
+    // this O(1)-ish per scroll event.
+    const els = messageElsRef.current;
+    if (els.size === 0) {
+      setShowPrevMessageButton(false);
+      return;
+    }
+    let idx = currentMessageIdxRef.current;
+    const line = el.scrollTop + 4;
+    const elAt = (i: number) => els.get(timelineIdsRef.current[i]);
+    while (idx < timelineIdsRef.current.length && (elAt(idx)?.offsetTop ?? Infinity) <= line) {
+      idx += 1;
+    }
+    while (idx > 0 && (elAt(idx - 1)?.offsetTop ?? -Infinity) > line) {
+      idx -= 1;
+    }
+    if (idx >= timelineIdsRef.current.length) idx = timelineIdsRef.current.length - 1;
+    if (idx < 0) idx = 0;
+    currentMessageIdxRef.current = idx;
+    setShowPrevMessageButton(idx > 0);
+  }, [isAtBottom, isAtTop, setShowScrollButton, setShowScrollTopButton, setShowPrevMessageButton]);
 
   // Auto-stick scroll to bottom. We intentionally avoid rAF timeouts because
   // mobile Safari can ignore scrollTo during inertial scrolling; re-running
@@ -4091,6 +4125,7 @@ export function TaskView({
       ),
     [stream.visibleMessages],
   );
+  timelineIdsRef.current = timeline.map((m) => m.info.id);
   /**
    * 現在のターンが中断／無言終了で終わっているときだけ再開情報を持つ。`timeline`
    * ではなく `visibleMessages` から求めるのは、描画対象パートを持たない
@@ -4915,7 +4950,15 @@ export function TaskView({
                   const messageTime =
                     m.info.time?.completed ?? m.info.time?.created ?? null;
                   return (
-                  <div key={m.info.id} className="flex flex-col gap-2">
+                  <div
+                    key={m.info.id}
+                    data-message-id={m.info.id}
+                    ref={(el) => {
+                      if (el) messageElsRef.current.set(m.info.id, el);
+                      else messageElsRef.current.delete(m.info.id);
+                    }}
+                    className="flex flex-col gap-2"
+                  >
                     <div
                       className={cx(
                         "flex items-center gap-1.5 text-[10px] text-faint",
@@ -5095,8 +5138,37 @@ export function TaskView({
                 )}
               </div>
             </div>
-            {(showScrollTopButton || showScrollButton) && stream.messages.length > 0 && (
+            {(showScrollTopButton || showScrollButton || showPrevMessageButton) &&
+              stream.messages.length > 0 && (
               <div className="absolute right-4 bottom-4 z-50 flex flex-col gap-2">
+                {showPrevMessageButton && (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    aria-label="一つ前のメッセージへ"
+                    title="一つ前のメッセージへ"
+                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                    onClick={() => {
+                      const el = scrollRef.current;
+                      if (!el) return;
+                      const target = currentMessageIdxRef.current - 1;
+                      if (target < 0) return;
+                      const targetEl = messageElsRef.current.get(timeline[target]?.info.id);
+                      if (!targetEl) return;
+                      const line = el.scrollTop + 4;
+                      el.scrollTo({
+                        top: el.scrollTop + targetEl.offsetTop - line,
+                        behavior: "smooth",
+                      });
+                      currentMessageIdxRef.current = target;
+                      stickRef.current = false;
+                      setShowScrollButton(false);
+                      setShowPrevMessageButton(target > 0);
+                    }}
+                  >
+                    <CornerUpLeft className="h-4 w-4" />
+                  </Button>
+                )}
                 {showScrollTopButton && (
                   <Button
                     variant="secondary"
@@ -5108,8 +5180,10 @@ export function TaskView({
                       const el = scrollRef.current;
                       if (!el) return;
                       scrollToTop(el, "smooth");
+                      currentMessageIdxRef.current = 0;
                       stickRef.current = false;
                       setShowScrollTopButton(false);
+                      setShowPrevMessageButton(false);
                     }}
                   >
                     <ArrowUp className="h-4 w-4" />
@@ -5126,6 +5200,7 @@ export function TaskView({
                       const el = scrollRef.current;
                       if (!el) return;
                       scrollToBottom(el, "smooth");
+                      currentMessageIdxRef.current = timeline.length - 1;
                       stickRef.current = true;
                       setShowScrollButton(false);
                     }}

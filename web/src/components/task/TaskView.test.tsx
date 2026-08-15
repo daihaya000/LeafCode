@@ -4346,6 +4346,90 @@ describe("TaskView voice input", () => {
     expect(screen.queryByLabelText("最初のメッセージへ")).toBeNull();
   });
 
+  it("shows a previous-message button when scrolled past the first message and scrolls to the previous message on click", async () => {
+    // This suite's beforeEach leaves taskSessionId unset; other suites happen
+    // to run first and leave "sess1" behind, but a filtered run starts here
+    // with undefined. getJson.mockResolvedValue evaluates task() eagerly, so
+    // both must be fixed here for the task to have a session.
+    taskSessionId = "sess1";
+    getJson.mockResolvedValue({ task: task(0.1) });
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      loaded: true,
+      messages: [
+        {
+          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+        },
+        {
+          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
+        },
+        {
+          info: { id: "m3", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p3", messageID: "m3", type: "text", text: "bye" }],
+        },
+      ],
+      visibleMessages: [
+        {
+          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+        },
+        {
+          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
+        },
+        {
+          info: { id: "m3", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p3", messageID: "m3", type: "text", text: "bye" }],
+        },
+      ],
+      status: { type: "idle" },
+      permissions: [],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const scroller = screen.getByTestId("message-scroller") as HTMLDivElement;
+
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 500 });
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 0, writable: true });
+
+    // PartView is mocked to null in this suite, so the rendered wrappers carry
+    // the message positions. Stub offsetTop so the onScroll scan can tell
+    // which message is at the viewport top line.
+    const wrappers = Array.from(scroller.querySelectorAll("[data-message-id]"));
+    expect(wrappers.map((el) => el.getAttribute("data-message-id"))).toEqual(["m1", "m2", "m3"]);
+    wrappers.forEach((el, i) => {
+      Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
+    });
+
+    // At the top, there is no previous message.
+    fireEvent.scroll(scroller);
+    expect(screen.queryByLabelText("一つ前のメッセージへ")).toBeNull();
+
+    // Scrolled so that m3 is at the top line (scrollTop 200 => line 204,
+    // m3 top 224 is below, m2 top 124 is above): previous message = m2.
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 200, writable: true });
+    fireEvent.scroll(scroller);
+    const button = screen.getByLabelText("一つ前のメッセージへ");
+    expect(button).not.toBeNull();
+    expect(scroller.contains(button)).toBe(false);
+
+    fireEvent.click(button);
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({
+      top: 120,
+      behavior: "smooth",
+    });
+
+    // Jumping to m2 (offsetTop 124) leaves a previous message (m1), so the
+    // button stays available.
+    expect(screen.queryByLabelText("一つ前のメッセージへ")).not.toBeNull();
+    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+  });
+
   it("surfaces session restore failures inline and prevents duplicate restores", async () => {
     const streamMock = useSessionStream();
     streamMock.revert = { messageId: "m1" };
