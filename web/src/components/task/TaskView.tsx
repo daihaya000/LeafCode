@@ -5365,7 +5365,7 @@ export function TaskView({
                         imageAnalysisAvailable={qwenNativeAvailable}
                       />
                     )}
-                    {effectiveModelKey !== AUTO_MODEL_VALUE && intelligenceVariants.length > 0 && (
+                    {model !== AUTO_MODEL_VALUE && intelligenceVariants.length > 0 && (
                       <IntelligenceSelect
                         variants={intelligenceVariants}
                         value={intelligence}
@@ -5375,18 +5375,17 @@ export function TaskView({
                         disabled={!task.sessionId}
                       />
                     )}
-                    {/* Auto の effort は AutoOptimizeSelect で制御。
-                        エージェントがモデルを固定した場合は実モデルに解決される
-                        ため IntelligenceSelect が表示される。Auto のまま
-                        （エージェントなし）の場合のみ AutoOptimizeSelect を出す。 */}
-                    {model === AUTO_MODEL_VALUE &&
-                      effectiveModelKey === AUTO_MODEL_VALUE && (
-                        <AutoOptimizeSelect
-                          value={autoOptimize}
-                          onChange={changeAutoOptimize}
-                          disabled={!task.sessionId}
-                        />
-                      )}
+                    {/* Auto を選んでいる間の effort は Auto 側に委ねる。
+                        エージェントがモデルを固定していても（Auto ルーティングが
+                        バイパスされる場合でも）IntelligenceSelect は出さず、
+                        AutoOptimizeSelect だけを表示する。 */}
+                    {model === AUTO_MODEL_VALUE && (
+                      <AutoOptimizeSelect
+                        value={autoOptimize}
+                        onChange={changeAutoOptimize}
+                        disabled={!task.sessionId}
+                      />
+                    )}
                     {agents.length > 0 && (
                       <GhostSelect
                         value={agent}

@@ -3330,7 +3330,7 @@ describe("TaskView", () => {
       expect(opts.agent).toBe("build");
     });
 
-    it("forwards manual Intelligence when Auto defers to an agent model", async () => {
+    it("keeps the Auto optimize selector when an agent pins a model", async () => {
       vi.stubGlobal(
         "fetch",
         vi.fn((input: RequestInfo | URL) => {
@@ -3365,15 +3365,16 @@ describe("TaskView", () => {
       fireEvent.change(await screen.findByLabelText("エージェント"), {
         target: { value: "build" },
       });
-      fireEvent.change(await screen.findByLabelText("インテリジェンス"), {
-        target: { value: "high" },
-      });
+      // Auto を選んでいる間の effort は Auto 側に委ねるため、エージェントが
+      // モデルを固定していても effort セレクタは出さない。
+      expect(await screen.findByLabelText("Auto の最適化")).toBeTruthy();
+      expect(screen.queryByLabelText("インテリジェンス")).toBeNull();
       await typeAndSend("なぜ失敗するのか");
 
       await waitFor(() => expect(streamMock.sendPrompt).toHaveBeenCalled());
       const opts = streamMock.sendPrompt.mock.calls[0][1];
       expect(opts.model).toBeUndefined();
-      expect(opts.variant).toBe("high");
+      expect(opts.variant).toBeUndefined();
       expect(opts.agent).toBe("build");
     });
 
@@ -3543,7 +3544,7 @@ describe("TaskView", () => {
       });
     });
 
-    it("forwards manual Intelligence to a fixed agent model in a goal loop", async () => {
+    it("keeps the agent model without a manual effort in a goal loop", async () => {
       sendJson.mockResolvedValue({
         loop: {
           id: "loop1",
@@ -3588,9 +3589,8 @@ describe("TaskView", () => {
       fireEvent.change(await screen.findByLabelText("エージェント"), {
         target: { value: "build" },
       });
-      fireEvent.change(await screen.findByLabelText("インテリジェンス"), {
-        target: { value: "high" },
-      });
+      expect(await screen.findByLabelText("Auto の最適化")).toBeTruthy();
+      expect(screen.queryByLabelText("インテリジェンス")).toBeNull();
       fireEvent.click(
         screen.getByRole("button", { name: "ループで継続実行" }),
       );
@@ -3604,13 +3604,14 @@ describe("TaskView", () => {
         expect(sendJson).toHaveBeenCalledWith(
           "POST",
           "/api/tasks/ws1/goal-loop",
-          expect.objectContaining({ agent: "build", variant: "high" }),
+          expect.objectContaining({ agent: "build" }),
         ),
       );
       const body = sendJson.mock.calls.find(
         (call) => call[1] === "/api/tasks/ws1/goal-loop",
       )?.[2];
       expect(body?.model).toBeUndefined();
+      expect(body?.variant).toBeUndefined();
     });
 
     describe("optimize mode", () => {
