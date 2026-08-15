@@ -786,6 +786,60 @@ export function markMemoryExtractionRunsRead(
 
 export const MEMORY_ASSISTANT_EXTRACT_CLAIM_TTL_MS = 10 * 60 * 1000;
 
+export type MemoryAuditLogDto = {
+  id: number;
+  action: string;
+  workspaceId: string | null;
+  memoryId: string | null;
+  sessionId: string | null;
+  detail: string | null;
+  createdAt: number;
+};
+
+/**
+ * Read the memory audit trail, newest first. The log is write-only at the
+ * layer boundary (every mutation is recorded via `logMemoryAudit`); this is
+ * the read side for the settings UI / audit inspection.
+ */
+export function listMemoryAuditLog(input?: {
+  workspaceId?: string;
+  limit?: number;
+}): MemoryAuditLogDto[] {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (input?.workspaceId) {
+    clauses.push("workspace_id = ?");
+    params.push(input.workspaceId);
+  }
+  const limit = Math.max(1, Math.min(200, Math.floor(input?.limit ?? 50)));
+  params.push(limit);
+  const rows = getDb()
+    .prepare(
+      `SELECT id, action, workspace_id, memory_id, session_id, detail, created_at
+       FROM memory_audit_log
+       ${clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : ""}
+       ORDER BY id DESC LIMIT ?`,
+    )
+    .all(...params) as Array<{
+    id: number;
+    action: string;
+    workspace_id: string | null;
+    memory_id: string | null;
+    session_id: string | null;
+    detail: string | null;
+    created_at: number;
+  }>;
+  return rows.map((row) => ({
+    id: row.id,
+    action: row.action,
+    workspaceId: row.workspace_id,
+    memoryId: row.memory_id,
+    sessionId: row.session_id,
+    detail: row.detail,
+    createdAt: row.created_at,
+  }));
+}
+
 export type MemoryAssistantExtractClaim = {
   workspaceId: string;
   sessionId: string;

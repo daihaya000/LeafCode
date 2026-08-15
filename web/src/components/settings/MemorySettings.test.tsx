@@ -24,6 +24,7 @@ function apiHandler({
   memoryEnabled = true,
   extractionRuns = [],
   unreadExtractionCount = 0,
+  auditEntries = [],
   consolidate = { scanned: 0, removed: 0, remaining: 0 },
 }: {
   memories: unknown[];
@@ -33,6 +34,7 @@ function apiHandler({
   memoryEnabled?: boolean;
   extractionRuns?: unknown[];
   unreadExtractionCount?: number;
+  auditEntries?: unknown[];
   consolidate?: { scanned: number; removed: number; remaining: number };
 }) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -53,6 +55,9 @@ function apiHandler({
     }
     if (url.includes("/api/workspaces")) {
       return jsonResponse({ workspaces });
+    }
+    if (url.includes("/api/memory/audit")) {
+      return jsonResponse({ entries: auditEntries });
     }
     if (url.includes("/api/memory/extractions/read")) {
       return jsonResponse({ marked: unreadExtractionCount, unreadCount: 0 });
@@ -521,5 +526,26 @@ describe("MemorySettings", () => {
     });
     expect(JSON.parse(String(readCall?.[1]?.body))).toEqual({ workspaceId: "ws-1" });
     await waitFor(() => expect(screen.queryByText("新着 1件")).toBeNull());
+  });
+
+  it("shows the audit trail for the selected workspace", async () => {
+    vi.stubGlobal(
+      "fetch",
+      apiHandler({
+        workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+        sessions: [],
+        memories: [],
+        auditEntries: [
+          { id: 2, action: "delete", workspaceId: "ws-1", memoryId: "mem-2", sessionId: null, detail: "consolidate into=mem-1", createdAt: 1700000002000 },
+          { id: 1, action: "extract", workspaceId: "ws-1", memoryId: null, sessionId: "ses-1", detail: "created=1 saved=1", createdAt: 1700000001000 },
+        ],
+      }),
+    );
+
+    render(<MemorySettings />);
+    expect(await screen.findByText("監査履歴")).toBeTruthy();
+    expect(await screen.findByText(/consolidate into=mem-1/)).toBeTruthy();
+    expect(screen.getByText("抽出")).toBeTruthy();
+    expect(screen.getByText(/created=1 saved=1/)).toBeTruthy();
   });
 });

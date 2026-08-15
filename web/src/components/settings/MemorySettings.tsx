@@ -59,11 +59,30 @@ type ExtractionRun = {
   readAt: number | null;
 };
 
+type AuditEntry = {
+  id: number;
+  action: string;
+  workspaceId: string | null;
+  memoryId: string | null;
+  sessionId: string | null;
+  detail: string | null;
+  createdAt: number;
+};
+
 const KIND_LABELS: Record<MemoryDto["kind"], string> = {
   fact: "事実",
   preference: "好み",
   lesson: "教訓",
   reference: "参照",
+};
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  create: "作成",
+  update: "更新",
+  delete: "削除",
+  approve: "承認",
+  reject: "拒否",
+  extract: "抽出",
 };
 
 const PROVENANCE_LABELS: Record<MemoryDto["provenance"], string> = {
@@ -109,6 +128,8 @@ export function MemorySettings() {
   const [unreadExtractionCount, setUnreadExtractionCount] = useState(0);
   const [extractionHistoryLoading, setExtractionHistoryLoading] = useState(false);
   const [extractionHistoryBusy, setExtractionHistoryBusy] = useState(false);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [consolidateBusy, setConsolidateBusy] = useState(false);
 
   const candidates = memories.filter((m) => !m.approved);
@@ -205,6 +226,25 @@ export function MemorySettings() {
     };
   }, [loadWorkspaces]);
 
+  const loadAudit = useCallback(async (workspaceId: string) => {
+    if (!workspaceId) {
+      setAuditEntries([]);
+      return;
+    }
+    setAuditLoading(true);
+    try {
+      const data = await getJson<{ entries: AuditEntry[] }>("/api/memory/audit", {
+        workspace_id: workspaceId,
+        limit: "20",
+      });
+      setAuditEntries(Array.isArray(data.entries) ? data.entries : []);
+    } catch {
+      // Audit inspection is best-effort; keep the previous list on failure.
+    } finally {
+      setAuditLoading(false);
+    }
+  }, []);
+
   const selectedWorkspaceChanged = async (workspaceId: string) => {
     setSelectedWorkspace(workspaceId);
     setSelectedSession("");
@@ -212,6 +252,7 @@ export function MemorySettings() {
       loadSessions(workspaceId),
       loadMemories(workspaceId),
       loadExtractionHistory(workspaceId),
+      loadAudit(workspaceId),
     ]);
   };
 
@@ -730,6 +771,52 @@ export function MemorySettings() {
                 </li>
               );
             })}
+          </ul>
+        )}
+      </div>
+
+      <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3">
+        <div className="mb-2">
+          <h3 className="text-sm font-medium text-text">監査履歴</h3>
+          <p className="mt-0.5 text-[11px] text-faint">
+            メモリの作成・更新・削除・承認・拒否・抽出の記録です。
+          </p>
+        </div>
+        {auditLoading ? (
+          <p className="text-[11px] text-faint">履歴を読み込み中…</p>
+        ) : auditEntries.length === 0 ? (
+          <p className="text-[11px] text-faint">まだ監査記録はありません。</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {auditEntries.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-bg/30 px-3 py-2"
+              >
+                <Badge tone="neutral">
+                  {AUDIT_ACTION_LABELS[entry.action] ?? entry.action}
+                </Badge>
+                <span className="text-[11px] text-faint">
+                  {new Date(entry.createdAt).toLocaleString("ja-JP")}
+                </span>
+                {entry.detail && (
+                  <span
+                    className="truncate text-[11px] text-muted"
+                    title={entry.detail}
+                  >
+                    {entry.detail}
+                  </span>
+                )}
+                {entry.memoryId && (
+                  <span
+                    className="truncate text-[11px] text-faint"
+                    title={entry.memoryId}
+                  >
+                    {entry.memoryId.slice(0, 12)}
+                  </span>
+                )}
+              </li>
+            ))}
           </ul>
         )}
       </div>

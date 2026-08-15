@@ -22,6 +22,7 @@ const {
   listMemoryExtractionRuns,
   countUnreadMemoryExtractionRuns,
   markMemoryExtractionRunsRead,
+  listMemoryAuditLog,
   claimAssistantMemoryExtraction,
   completeAssistantMemoryExtraction,
   releaseAssistantMemoryExtraction,
@@ -193,6 +194,31 @@ test("memory extraction run history stores counts and unread state", () => {
   ]);
   expect(markMemoryExtractionRunsRead("ws-1", 50_400)).toBe(2);
   expect(countUnreadMemoryExtractionRuns("ws-1")).toBe(0);
+});
+
+test("listMemoryAuditLog returns newest-first entries with optional workspace filter", () => {
+  const insert = getDb().prepare(
+    `INSERT INTO memory_audit_log (action, workspace_id, memory_id, session_id, detail, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  insert.run("create", "ws-a", "mem-1", null, null, 1_000);
+  insert.run("delete", "ws-a", "mem-2", null, "consolidate into=mem-1", 2_000);
+  insert.run("extract", "ws-b", null, "ses-1", "created=1 saved=1", 3_000);
+
+  const all = listMemoryAuditLog({ limit: 10 });
+  expect(all.map((e) => e.action)).toEqual(["extract", "delete", "create"]);
+  expect(all[0]).toMatchObject({
+    workspaceId: "ws-b",
+    detail: "created=1 saved=1",
+    createdAt: 3_000,
+  });
+
+  const scoped = listMemoryAuditLog({ workspaceId: "ws-a", limit: 10 });
+  expect(scoped.map((e) => e.action)).toEqual(["delete", "create"]);
+  expect(scoped.every((e) => e.workspaceId === "ws-a")).toBe(true);
+
+  expect(listMemoryAuditLog({ workspaceId: "ws-a", limit: 1 })).toHaveLength(1);
+  expect(listMemoryAuditLog({ workspaceId: "ws-nowhere" })).toHaveLength(0);
 });
 
 test("session compaction lock is exclusive per session", () => {

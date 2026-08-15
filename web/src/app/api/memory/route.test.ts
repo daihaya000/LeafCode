@@ -35,6 +35,7 @@ const { PATCH, DELETE } = await import("./[id]/route");
 const { POST: approvePOST } = await import("./[id]/approve/route");
 const { GET: extractionGET } = await import("./extractions/route");
 const { POST: extractionReadPOST } = await import("./extractions/read/route");
+const { GET: auditGET } = await import("./audit/route");
 
 function ensureWorkspace(id: string) {
   const project = upsertProject({ name: `proj-${id}`, rootPath: path.join(testDataDir, id) });
@@ -285,6 +286,34 @@ describe("memory API", () => {
 
       const listed = await GET(req("/api/memory?workspace_id=ws-purge-guard"));
       expect((await listed.json()).memories).toHaveLength(1);
+    });
+  });
+
+  describe("GET /api/memory/audit", () => {
+    it("returns the audit trail newest-first, filtered by workspace", async () => {
+      ensureWorkspace("ws-audit");
+      const insert = getDb().prepare(
+        `INSERT INTO memory_audit_log (action, workspace_id, memory_id, session_id, detail, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      insert.run("create", "ws-audit", "mem-1", null, null, 1_000);
+      insert.run("delete", "ws-audit", "mem-2", null, "consolidate into=mem-1", 2_000);
+
+      const res = await auditGET(req("/api/memory/audit?workspace_id=ws-audit"));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        entries: [
+          { action: "delete", workspaceId: "ws-audit", detail: "consolidate into=mem-1" },
+          { action: "create", workspaceId: "ws-audit", memoryId: "mem-1" },
+        ],
+      });
+    });
+
+    it("respects the limit and returns empty for an unknown workspace", async () => {
+      const limited = await auditGET(req("/api/memory/audit?workspace_id=ws-audit&limit=1"));
+      expect((await limited.json()).entries).toHaveLength(1);
+      const none = await auditGET(req("/api/memory/audit?workspace_id=ws-nowhere"));
+      expect((await none.json()).entries).toHaveLength(0);
     });
   });
 });
