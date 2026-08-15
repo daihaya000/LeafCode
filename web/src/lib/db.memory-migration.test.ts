@@ -234,4 +234,37 @@ describe("memories FTS trigger sync", () => {
     ).n;
     expect(before).toBe(rows);
   });
+
+  it("rebuilds a legacy unicode61 FTS into the trigram tokenizer on upgrade", () => {
+    // Simulate a pre-v2 database: replace the FTS index with the old
+    // unicode61 tokenizer (a CJK run is one opaque token).
+    getDb().exec("DROP TABLE memories_fts");
+    getDb().exec("CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content)");
+    const mig = createMemory({
+      workspaceId: "ws-mig",
+      kind: "fact",
+      content: "メモリ移行テスト",
+      provenance: "manual",
+      approved: true,
+    });
+    expect(searchMemories({ workspaceId: "ws-mig", query: "メモリ", limit: 5 })).toHaveLength(0);
+
+    // Reopen at v1 so the v2 migration rebuilds the FTS table and resyncs.
+    getDb().pragma("user_version = 1");
+    getDb().close();
+    getDb();
+    expect(searchMemories({ workspaceId: "ws-mig", query: "メモリ", limit: 5 })).toHaveLength(1);
+    expect(
+      searchMemories({ workspaceId: "ws-mig", query: "移行テスト", limit: 5 }),
+    ).toHaveLength(1);
+
+    // The resync must keep the rowcount in step with memories.
+    const ftsCount = (
+      getDb().prepare("SELECT COUNT(*) AS n FROM memories_fts").get() as { n: number }
+    ).n;
+    const memCount = (
+      getDb().prepare("SELECT COUNT(*) AS n FROM memories").get() as { n: number }
+    ).n;
+    expect(ftsCount).toBe(memCount);
+  });
 });

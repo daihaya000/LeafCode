@@ -881,4 +881,36 @@ describe("deleteAllMemories", () => {
       setSetting(MEMORY_ENABLED_SETTING_KEY, "1");
     }
   });
+
+  it("finds Japanese memories via trigram FTS", () => {
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO projects (id, name, root_path, created_at)
+         VALUES ('memory-jp-project', 'JP FTS test', '/jp-fts', ?)`,
+      )
+      .run(new Date().toISOString());
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO workspaces
+          (id, project_id, display_name, absolute_path, isolation, status, created_at)
+         VALUES ('ws-jp', 'memory-jp-project', 'JP FTS test', '/jp-fts', 'standard', 'active', ?)`,
+      )
+      .run(new Date().toISOString());
+    createMemory({
+      workspaceId: "ws-jp",
+      kind: "fact",
+      content: "メモリ機能はセッションをまたいで知識を保持する",
+      provenance: "manual",
+      approved: true,
+    });
+
+    // A 3+ character Japanese phrase now matches inside a CJK run; the old
+    // unicode61 tokenizer kept the whole run as one token and never matched.
+    expect(searchMemories({ workspaceId: "ws-jp", query: "メモリ", limit: 5 })).toHaveLength(1);
+    expect(
+      searchMemories({ workspaceId: "ws-jp", query: "セッションをまたい", limit: 5 }),
+    ).toHaveLength(1);
+    // Content not present (and shorter than the 3-char token floor) misses.
+    expect(searchMemories({ workspaceId: "ws-jp", query: "メモ", limit: 5 })).toHaveLength(0);
+  });
 });

@@ -14,7 +14,7 @@
  * version run the migration steps in getDb() before being stamped with the
  * current version (REFACTORING_PLAN P2-d/P2-e / IMPROVEMENT 3-2).
  */
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 /**
  * Ordered migration list. Each entry may add columns (applied only when the
@@ -140,6 +140,20 @@ export const MIGRATIONS: SchemaMigration[] = [
         LIMIT 1
       )
       WHERE primary_session_id IS NULL;
+    `,
+  },
+  {
+    // The unicode61 tokenizer does not split Japanese, so a phrase like
+    // "メモリ" could never match a row containing it (a CJK run was one
+    // opaque token). Rebuild the FTS index with the trigram tokenizer, which
+    // indexes every 3-character substring and makes Japanese partial matches
+    // work. FTS is derived data, so dropping and resyncing it is safe.
+    version: 2,
+    columns: [],
+    sql: `
+      DROP TABLE IF EXISTS memories_fts;
+      CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content, tokenize='trigram');
+      INSERT INTO memories_fts(id, content) SELECT id, content FROM memories;
     `,
   },
 ];
@@ -408,7 +422,15 @@ export const SCHEMA_SQL = `
       ON memory_extraction_runs(workspace_id, read_at, started_at DESC);
     -- FTS5 access path. id is carried as an UNINDEXED column (TEXT PK does not
     -- align with SQLite rowid), so the sync never relies on rowid.
-    CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id UNINDEXED, content);
+    -- trigram tokenizer: the default unicode61 keeps a CJK run as one opaque
+    -- token, so Japanese phrases never matched. trigram indexes every
+    -- 3-character substring, enabling Japanese partial matches (3+ chars).
+    -- Existing databases are rebuilt to this shape by MIGRATIONS v2.
+    CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+      id UNINDEXED,
+      content,
+      tokenize='trigram'
+    );
     DROP TRIGGER IF EXISTS memories_fts_insert;
     CREATE TRIGGER memories_fts_insert AFTER INSERT ON memories BEGIN
       INSERT INTO memories_fts(id, content) VALUES (new.id, new.content);
