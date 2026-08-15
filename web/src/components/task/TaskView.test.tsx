@@ -2054,7 +2054,7 @@ describe("TaskView", () => {
       localStorage.clear();
     });
 
-    it("defaults to graph panel active on fresh render", async () => {
+    it("starts with the right panel closed on fresh render", async () => {
       taskStatus = "idle";
       const streamMock = useSessionStream();
       useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
@@ -2063,8 +2063,8 @@ describe("TaskView", () => {
 
       const headerActions = screen.getByRole("group", { name: "タスク操作" });
       const graphBtn = within(headerActions).getByRole("button", { name: "グラフ" });
-      expect(graphBtn.className.split(/\s+/)).toContain("bg-surface-2");
-      expect(graphBtn.className.split(/\s+/)).toContain("text-text");
+      expect(graphBtn.className.split(/\s+/)).not.toContain("bg-surface-2");
+      expect(graphBtn.className.split(/\s+/)).not.toContain("text-text");
     });
 
     it("toggles files panel off on second click", async () => {

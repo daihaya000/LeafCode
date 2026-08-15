@@ -12,7 +12,8 @@ export function useTaskPanels() {
   const [tab, setTab] = useState<ChatTab>("chat");
   const [viewTab, setViewTab] = useState<"chat" | "workflow" | "diff">("chat");
   const [workflowFocusNode, setWorkflowFocusNode] = useState<string | null>(null);
-  const [showDiff, setShowDiff] = useState(true);
+  // セッションを開いたとき右ペインは閉じた状態がデフォルト。
+  const [showDiff, setShowDiff] = useState(false);
   const [sidePanel, setSidePanel] = useState<SidePanelKind>("graph");
   const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
   const [sideResizing, setSideResizing] = useState(false);

@@ -109,9 +109,6 @@ import {
   shouldAutoCompact,
 } from "@/lib/token-saving-settings";
 import {
-  readChatTab,
-  readShowDiff,
-  readSidePanel,
   writeChatTab,
   writeShowDiff,
   writeSidePanel,
@@ -753,6 +750,9 @@ export function TaskView({
     taskRef.current = cached;
     setTask(cached);
     setViewTab("chat");
+    // タスク切り替え時は右ペインを閉じた状態（chat 表示）で開始する。
+    setTab("chat");
+    setShowDiff(false);
     wasSplitActiveRef.current = false;
     setWorkflowFocusNode(null);
     setLoadError(null);
@@ -761,7 +761,7 @@ export function TaskView({
       goalLoopRefreshSequenceRef.current += 1;
       goalLoopRefreshBusyRef.current = null;
     };
-  }, [taskId, setViewTab, setWorkflowFocusNode]);
+  }, [taskId, setTab, setShowDiff, setViewTab, setWorkflowFocusNode]);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -1131,9 +1131,11 @@ export function TaskView({
     // migrated up to the DB so it survives origin/session changes.
     const localWidth = loadSideWidth();
     setSideWidth(localWidth);
-    setTab(readChatTab());
-    setShowDiff(readShowDiff());
-    setSidePanel(readSidePanel());
+    // セッションを開いたときは右ペインを閉じた状態（chat 表示）で開始する。
+    // 以前は localStorage から前回のタブ/右ペイン状態を復元していたが、
+    // デフォルトを「閉じている」にするため復元しない。
+    setTab("chat");
+    setShowDiff(false);
 
     void (async () => {
       const remote = await readSideWidthFromServer();
