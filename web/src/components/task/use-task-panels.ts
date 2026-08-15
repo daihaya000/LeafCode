@@ -28,6 +28,7 @@ export function useTaskPanels() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
   const [showPrevMessageButton, setShowPrevMessageButton] = useState(false);
+  const [showNextMessageButton, setShowNextMessageButton] = useState(false);
   const [filteredFilesCount, setFilteredFilesCount] = useState<number | null>(null);
 
   return {
@@ -59,6 +60,8 @@ export function useTaskPanels() {
     setShowScrollTopButton,
     showPrevMessageButton,
     setShowPrevMessageButton,
+    showNextMessageButton,
+    setShowNextMessageButton,
     filteredFilesCount,
     setFilteredFilesCount,
   };

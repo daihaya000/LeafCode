@@ -3911,6 +3911,10 @@ describe("TaskView voice input", () => {
 
   beforeEach(() => {
     taskStatus = "idle";
+    // getJson.mockResolvedValue evaluates task() eagerly, so the session must
+    // be set here: a filtered run that skips the outer "TaskView" suite would
+    // otherwise leave it undefined and render "セッションがありません".
+    taskSessionId = "sess1";
     taskResponseCosts = [0.1];
     slashCommands.length = 0;
     setVisible(true);
@@ -4347,12 +4351,6 @@ describe("TaskView voice input", () => {
   });
 
   it("shows a previous-message button when scrolled past the first message and scrolls to the previous message on click", async () => {
-    // This suite's beforeEach leaves taskSessionId unset; other suites happen
-    // to run first and leave "sess1" behind, but a filtered run starts here
-    // with undefined. getJson.mockResolvedValue evaluates task() eagerly, so
-    // both must be fixed here for the task to have a session.
-    taskSessionId = "sess1";
-    getJson.mockResolvedValue({ task: task(0.1) });
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
       loaded: true,
@@ -4428,6 +4426,77 @@ describe("TaskView voice input", () => {
     // button stays available.
     expect(screen.queryByLabelText("一つ前のメッセージへ")).not.toBeNull();
     expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+  });
+
+  it("shows a next-message button when the current message has a following one and scrolls to the next message on click", async () => {
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      loaded: true,
+      messages: [
+        {
+          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+        },
+        {
+          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
+        },
+        {
+          info: { id: "m3", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p3", messageID: "m3", type: "text", text: "bye" }],
+        },
+      ],
+      visibleMessages: [
+        {
+          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+        },
+        {
+          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
+        },
+        {
+          info: { id: "m3", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p3", messageID: "m3", type: "text", text: "bye" }],
+        },
+      ],
+      status: { type: "idle" },
+      permissions: [],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const scroller = screen.getByTestId("message-scroller") as HTMLDivElement;
+
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 500 });
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 0, writable: true });
+
+    const wrappers = Array.from(scroller.querySelectorAll("[data-message-id]"));
+    wrappers.forEach((el, i) => {
+      Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
+    });
+
+    // At the top, m1 is the current message: the next message exists, the
+    // previous one does not.
+    fireEvent.scroll(scroller);
+    const button = screen.getByLabelText("一つ後のメッセージへ");
+    expect(button).not.toBeNull();
+    expect(scroller.contains(button)).toBe(false);
+    expect(screen.queryByLabelText("一つ前のメッセージへ")).toBeNull();
+
+    // Click jumps to m2 (offsetTop 124 => top 120).
+    fireEvent.click(button);
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({
+      top: 120,
+      behavior: "smooth",
+    });
+
+    // Scrolled past the last message: no following message anymore.
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 300, writable: true });
+    fireEvent.scroll(scroller);
+    expect(screen.queryByLabelText("一つ後のメッセージへ")).toBeNull();
   });
 
   it("surfaces session restore failures inline and prevents duplicate restores", async () => {
@@ -4646,12 +4715,8 @@ describe("TaskView voice input", () => {
   });
 
   describe("中断・無言終了ターンの再開", () => {
-    // The voice-input suite leaves `taskSessionId` at whatever the previous
-    // test set; the resume button needs a real session to render.
-    beforeEach(() => {
-      taskSessionId = "sess1";
-    });
-
+    // The voice-input suite's beforeEach now sets taskSessionId itself; the
+    // resume button needs a real session to render.
     const userPrompt = {
       info: { id: "user-1", role: "user", time: { created: 1 } },
       parts: [{ id: "text-1", type: "text", text: "テストを直して" }],

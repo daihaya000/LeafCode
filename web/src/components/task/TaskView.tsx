@@ -18,6 +18,7 @@ import {
   ChevronRight,
   CircleAlert,
   Copy,
+  CornerDownRight,
   CornerUpLeft,
   FolderTree,
   GitBranch,
@@ -615,6 +616,8 @@ export function TaskView({
     setShowScrollTopButton,
     showPrevMessageButton,
     setShowPrevMessageButton,
+    showNextMessageButton,
+    setShowNextMessageButton,
     filteredFilesCount,
     setFilteredFilesCount,
   } = useTaskPanels();
@@ -2569,6 +2572,7 @@ export function TaskView({
     const els = messageElsRef.current;
     if (els.size === 0) {
       setShowPrevMessageButton(false);
+      setShowNextMessageButton(false);
       return;
     }
     let idx = currentMessageIdxRef.current;
@@ -2584,7 +2588,8 @@ export function TaskView({
     if (idx < 0) idx = 0;
     currentMessageIdxRef.current = idx;
     setShowPrevMessageButton(idx > 0);
-  }, [isAtBottom, isAtTop, setShowScrollButton, setShowScrollTopButton, setShowPrevMessageButton]);
+    setShowNextMessageButton(idx < timelineIdsRef.current.length - 1);
+  }, [isAtBottom, isAtTop, setShowScrollButton, setShowScrollTopButton, setShowPrevMessageButton, setShowNextMessageButton]);
 
   // Auto-stick scroll to bottom. We intentionally avoid rAF timeouts because
   // mobile Safari can ignore scrollTo during inertial scrolling; re-running
@@ -5138,7 +5143,10 @@ export function TaskView({
                 )}
               </div>
             </div>
-            {(showScrollTopButton || showScrollButton || showPrevMessageButton) &&
+            {(showScrollTopButton ||
+              showScrollButton ||
+              showPrevMessageButton ||
+              showNextMessageButton) &&
               stream.messages.length > 0 && (
               <div className="absolute right-4 bottom-4 z-50 flex flex-col gap-2">
                 {showPrevMessageButton && (
@@ -5164,6 +5172,7 @@ export function TaskView({
                       stickRef.current = false;
                       setShowScrollButton(false);
                       setShowPrevMessageButton(target > 0);
+                      setShowNextMessageButton(target < timeline.length - 1);
                     }}
                   >
                     <CornerUpLeft className="h-4 w-4" />
@@ -5184,6 +5193,7 @@ export function TaskView({
                       stickRef.current = false;
                       setShowScrollTopButton(false);
                       setShowPrevMessageButton(false);
+                      setShowNextMessageButton(timeline.length > 1);
                     }}
                   >
                     <ArrowUp className="h-4 w-4" />
@@ -5203,9 +5213,39 @@ export function TaskView({
                       currentMessageIdxRef.current = timeline.length - 1;
                       stickRef.current = true;
                       setShowScrollButton(false);
+                      setShowNextMessageButton(false);
                     }}
                   >
                     <ArrowDown className="h-4 w-4" />
+                  </Button>
+                )}
+                {showNextMessageButton && (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    aria-label="一つ後のメッセージへ"
+                    title="一つ後のメッセージへ"
+                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                    onClick={() => {
+                      const el = scrollRef.current;
+                      if (!el) return;
+                      const target = currentMessageIdxRef.current + 1;
+                      if (target >= timeline.length) return;
+                      const targetEl = messageElsRef.current.get(timeline[target]?.info.id);
+                      if (!targetEl) return;
+                      const line = el.scrollTop + 4;
+                      el.scrollTo({
+                        top: el.scrollTop + targetEl.offsetTop - line,
+                        behavior: "smooth",
+                      });
+                      currentMessageIdxRef.current = target;
+                      stickRef.current = false;
+                      setShowScrollButton(false);
+                      setShowPrevMessageButton(true);
+                      setShowNextMessageButton(target < timeline.length - 1);
+                    }}
+                  >
+                    <CornerDownRight className="h-4 w-4" />
                   </Button>
                 )}
               </div>
