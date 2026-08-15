@@ -146,9 +146,9 @@ describe("AutoRouteOverridesEditor", () => {
     fireEvent.change(screen.getAllByLabelText("候補1の種別")[0], {
       target: { value: "model" },
     });
-    const modelSelect = screen.getAllByLabelText("候補1のモデル")[0] as HTMLSelectElement;
+    const modelSelect = screen.getAllByLabelText("候補1のモデル")[0];
     expect(modelSelect).toBeTruthy();
-    expect(modelSelect.value).toBe("alpha::cheap");
+    expect(modelSelect.getAttribute("value")).toBe("alpha::cheap");
   });
 
   it("removes a candidate with the delete button", () => {

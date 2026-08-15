@@ -2,7 +2,9 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, RotateCcw, X } from "lucide-react";
+import { ModelSelect } from "@/components/ModelSelect";
 import { Button, cx } from "@/components/ui";
+import { formatModelLabel, sortModelOptions, type ModelOption } from "@/lib/model-options";
 import {
   AUTO_OPTIMIZE_MODES,
   autoOptimizeModeLabel,
@@ -109,28 +111,21 @@ export type AutoRouteProviders = readonly {
   }[];
 }[];
 
-export type AutoRouteModelOption = {
-  value: string;
-  label: string;
-  group: string;
-};
-
 /** Model dropdown options from the provider list (no Auto entry). */
-export function autoRouteModelOptions(
-  providers: AutoRouteProviders,
-): AutoRouteModelOption[] {
-  const options: AutoRouteModelOption[] = [];
-  for (const provider of providers) {
-    if (!provider.name) continue;
-    for (const model of provider.models) {
-      options.push({
-        value: `${provider.id}::${model.id}`,
-        label: `${model.name || model.id}${provider.enabled && model.enabled ? "" : "（未接続）"}`,
-        group: provider.name,
-      });
-    }
-  }
-  return options;
+export function autoRouteModelOptions(providers: AutoRouteProviders): ModelOption[] {
+  return sortModelOptions(
+    providers.flatMap((provider) =>
+      provider.name
+        ? provider.models.map((model) => ({
+            value: `${provider.id}::${model.id}`,
+            label: `${formatModelLabel(model.name, model.id)}${
+              provider.enabled && model.enabled ? "" : "（未接続）"
+            }`,
+            group: provider.name,
+          }))
+        : [],
+    ),
+  );
 }
 
 /** Variants declared by the model at `providerID::modelID`, if any. */
@@ -245,7 +240,7 @@ function CandidateRow({
   index: number;
   candidate: AutoRouteCandidate;
   providers: AutoRouteProviders;
-  modelOptions: AutoRouteModelOption[];
+  modelOptions: ModelOption[];
   onChange: (candidate: AutoRouteCandidate) => void;
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
@@ -290,26 +285,21 @@ function CandidateRow({
       </select>
 
       {candidate.kind === "model" && (
-        <select
-          aria-label={`候補${index + 1}のモデル`}
+        <ModelSelect
           value={`${candidate.providerID}::${candidate.modelID}`}
-          onChange={(event) => {
-            const [providerID, modelID] = event.target.value.split("::");
+          options={modelOptions}
+          ariaLabel={`候補${index + 1}のモデル`}
+          emptyLabel="モデルなし"
+          onChange={(value) => {
+            const [providerID, modelID] = value.split("::");
             onChange({
               ...candidate,
               providerID: providerID ?? "",
               modelID: modelID ?? "",
             });
           }}
-          className="h-7 min-w-0 flex-1 rounded border border-border bg-surface px-1.5 text-xs text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-        >
-          {modelOptions.length === 0 && <option value="">モデルなし</option>}
-          {modelOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          className="min-w-0 flex-1"
+        />
       )}
       {candidate.kind === "cost" && (
         <select
@@ -397,7 +387,7 @@ function TierEditor({
   mode: AutoOptimizeMode;
   tier: AutoTier;
   config: AutoRouteConfig;
-  modelOptions: AutoRouteModelOption[];
+  modelOptions: ModelOption[];
   providers: AutoRouteProviders;
   onChange: (config: AutoRouteConfig) => void;
 }) {
