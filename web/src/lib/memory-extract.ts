@@ -316,12 +316,13 @@ export async function runMemoryExtraction(input: {
       assistantMessageId: input.assistantMessageId,
       trigger: input.trigger ?? "manual",
     });
-    failMemoryExtractionRun(historyRunId, "source session transcript is not readable");
+    const transcriptError = "抽出元セッションのトランスクリプトを読み取れません";
+    failMemoryExtractionRun(historyRunId, transcriptError);
     return {
       created: 0,
       skipped: 0,
       errors: [],
-      error: "source session transcript is not readable",
+      error: transcriptError,
     };
   }
   const state = getSessionExtractState(input.workspaceId, input.sessionId);
@@ -387,7 +388,7 @@ export async function runMemoryExtraction(input: {
         timeoutMs: 10_000,
       });
     } catch {
-      return failed("extraction prompt could not be sent");
+      return failed("抽出プロンプトを送信できませんでした");
     }
 
   const deadline = Date.now() + MEMORY_EXTRACT_RESULT_TIMEOUT_MS;
@@ -417,7 +418,7 @@ export async function runMemoryExtraction(input: {
   }
 
   if (items === null) {
-    return failed("extraction timed out without a structured reply");
+    return failed("抽出がタイムアウトし、構造化された応答が得られませんでした");
   }
 
   const writeApproval = isMemoryWriteApprovalEnabled();
@@ -461,7 +462,7 @@ export async function runMemoryExtraction(input: {
   return result;
   } catch (err) {
     return failed(
-      `memory extraction failed: ${err instanceof Error ? err.message : "unknown error"}`,
+      `メモリ抽出に失敗しました: ${err instanceof Error ? err.message : "原因不明のエラー"}`,
     );
   } finally {
     // Extraction sessions are implementation details; never leave them in the
