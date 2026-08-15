@@ -97,6 +97,7 @@ cd LeafCode
 | `LEAFCODE_NO_BROWSER` | 未設定 | `1` で起動時のブラウザ自動起動を抑止 |
 | `LEAFCODE_NONINTERACTIVE` | 未設定 | `1` でセットアップ失敗時の待機を省略 |
 | `LEAFCODE_AUTO_UPDATE_OPENCODE` | `1` | 起動時に `opencode upgrade` を実行して CLI を自動アップデート。`0` で無効化（失敗時は既存バイナリで起動継続） |
+| `LEAFCODE_OPENCODE_UPGRADE_COOLDOWN_HOURS` | `24` | 前回のバージョン確認成功からこの時間内は `opencode upgrade` の再実行をスキップ（起動高速化） |
 | `LEAFCODE_CADDY` | 未設定 | `1` で Caddy 逆プロキシを連動起動。`0` で自動導入も行わない |
 | `LEAFCODE_CADDYFILE` | `deploy/Caddyfile` | Caddyfile のパス |
 | `LEAFCODE_BUILD_DIR` | `%LOCALAPPDATA%\leafcode\build\...` | production build のミラー先 |

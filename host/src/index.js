@@ -376,6 +376,9 @@ const opencodeUpgrader = createOpencodeUpgrader({
   error,
   recordLog,
   repoRoot: REPO_ROOT,
+  // Persisted so consecutive starts skip the `opencode upgrade` channel probe
+  // (see opencode-upgrade.js readUpgradeState / writeUpgradeState).
+  stateFile: join(DATA_DIR, 'opencode-upgrade.json'),
 });
 let quitting = false;
 let restartingServices = false;
@@ -1647,19 +1650,23 @@ async function startChildren() {
   const netstatPromise = captureNetstatAsync();
   // The CLI upgrade is unrelated to the port plan and can take up to 3 min on
   // a slow channel, so it runs concurrently with the git pull and is only
-  // awaited when a fresh `serve` is about to spawn.
+  // awaited when a fresh `serve` is about to spawn. (A start whose previous
+  // launch already confirmed the CLI current skips the probe entirely.)
   const opencodeUpgradePromise = opencodeUpgrader.upgradeOpencodeCli();
   await pullLatestWebSource();
   const plan = await resolvePortPlan(await netstatPromise);
+  // WebUI and OpenCode start independently: kicking off the WebUI spawn (which
+  // can run a full production rebuild when stale) before awaiting the upgrade
+  // means the rebuild overlaps the CLI probe / spawn instead of serializing
+  // behind it.
+  const webPromise = plan.startWeb ? spawnWeb() : Promise.resolve();
   if (plan.startOpencode) {
     await opencodeUpgradePromise;
     const opencodePath = opencodeUpgrader.findOpencode();
     log(`Starting OpenCode: ${opencodePath}`);
     spawnOpencode(opencodePath);
   }
-  if (plan.startWeb) {
-    await spawnWeb();
-  }
+  await webPromise;
   if (CADDY_ENABLED) {
     spawnCaddy();
   }
@@ -2362,12 +2369,16 @@ async function main() {
       refreshStatusMenu().catch(() => {});
     }, 5000);
     const browserUrl = startResolvingBrowserUrl();
-    const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'LeafCode', 60, {
-      proc: () => webProc,
-    });
-    await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
-      proc: () => opencodeProc,
-    });
+    // WebUI and OpenCode readiness are independent — wait for both in
+    // parallel so a slow service does not delay opening the browser.
+    const [webReady] = await Promise.all([
+      httpWaiter.waitUntilReady(WEBUI_URL, 'LeafCode', 60, {
+        proc: () => webProc,
+      }),
+      httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
+        proc: () => opencodeProc,
+      }),
+    ]);
     if (webReady && browserUrl) {
       openBrowser(await browserUrl);
     }
@@ -2388,12 +2399,16 @@ async function main() {
   }, 5000);
   await refreshStatusMenu();
   const browserUrl = startResolvingBrowserUrl();
-  const webReady = await httpWaiter.waitUntilReady(WEBUI_URL, 'LeafCode', 60, {
-    proc: () => webProc,
-  });
-  await httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
-    proc: () => opencodeProc,
-  });
+  // WebUI and OpenCode readiness are independent — wait for both in
+  // parallel so a slow service does not delay opening the browser.
+  const [webReady] = await Promise.all([
+    httpWaiter.waitUntilReady(WEBUI_URL, 'LeafCode', 60, {
+      proc: () => webProc,
+    }),
+    httpWaiter.waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
+      proc: () => opencodeProc,
+    }),
+  ]);
   if (webReady && browserUrl) {
     openBrowser(await browserUrl);
   }
