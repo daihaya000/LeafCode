@@ -276,9 +276,10 @@ describe("SettingsView", () => {
     render(<SettingsView />);
 
     await screen.findByText("接続状態");
-    // "プロジェクト" appears as a tab label regardless of the active tab;
-    // its section heading should NOT be rendered on the エンジン tab.
-    expect(screen.queryAllByText("プロジェクト")).toHaveLength(1);
+    // プロジェクトタブは廃止済み（左サイドバーへ一本化）。
+    expect(screen.queryAllByText("プロジェクト")).toHaveLength(0);
+    // 許可ルートは全般タブへ移設したので、エンジンタブには出ない。
+    expect(screen.queryByText("許可ルート（allowlist）")).toBeNull();
     expect(screen.queryByTestId("addon-settings")).toBeNull();
     expect(screen.queryByTestId("host-log-panel")).toBeNull();
   });
@@ -487,11 +488,8 @@ describe("SettingsView", () => {
         "エンジン",
         "全般",
         "プロファイル",
-        "プロジェクト",
         "接続",
-        "Git",
-        "プロバイダー/モデル",
-        "コスパランキング",
+        "モデル",
         "エージェント",
         "スキル",
         "MCP",
@@ -507,11 +505,8 @@ describe("SettingsView", () => {
           "エンジン",
           "全般",
           "プロファイル",
-          "プロジェクト",
           "接続",
-          "Git",
-          "プロバイダー/モデル",
-          "コスパランキング",
+          "モデル",
           "エージェント",
           "スキル",
           "MCP",
@@ -523,20 +518,27 @@ describe("SettingsView", () => {
       "エンジン",
       "全般",
       "プロファイル",
-      "プロジェクト",
       "接続",
-      "Git",
-      "プロバイダー/モデル",
-      "コスパランキング",
+      "モデル",
       "エージェント",
       "スキル",
       "MCP",
       "プラグイン",
       "アドオン",
     ]);
+    expect(
+      screen.getAllByRole("tab").map((button) => button.textContent),
+    ).toEqual(
+      expect.not.arrayContaining([
+        "プロジェクト",
+        "Git",
+        "コスパランキング",
+        "プロバイダー/モデル",
+      ]),
+    );
   });
 
-  it("shows an attention badge on the プロジェクト tab when orphans exist", async () => {
+  it("shows an attention badge on the 全般 tab when orphans exist", async () => {
     mockGetJson({
       orphans: {
         orphans: [{ id: "o1", displayName: "orphan", absolutePath: "C:\\x" }],
@@ -546,10 +548,8 @@ describe("SettingsView", () => {
     render(<SettingsView />);
 
     await screen.findByText("エンジン");
-    const projectTab = await screen.findByRole("tab", {
-      name: /プロジェクト/,
-    });
-    expect(projectTab.textContent).toContain("1");
+    const generalTab = await screen.findByRole("tab", { name: /全般/ });
+    expect(generalTab.textContent).toContain("1");
   });
 
   it("shows the daily rate and disables editing in auto mode", async () => {
@@ -720,43 +720,6 @@ describe("SettingsView", () => {
     expect(healthPolls).toBe(2);
   });
 
-  it("archives a project via the archive button", async () => {
-    const projects = [
-      {
-        id: "prj1",
-        name: "Repo",
-        rootPath: "C:\\repo",
-        favorite: false,
-        archived: false,
-        lastOpenedAt: null,
-      },
-    ];
-    mockGetJson({ projects });
-    sendJson.mockImplementation(async () => {
-      projects.splice(0, 1);
-      return {};
-    });
-
-    render(<SettingsView />);
-    await screen.findByText("エンジン");
-    fireEvent.click(screen.getByRole("tab", { name: /プロジェクト/ }));
-
-    expect(
-      await screen.findByRole("button", { name: "Repoをお気に入りに追加" }),
-    ).toBeTruthy();
-    const archiveButton = await screen.findByRole("button", {
-      name: "Repoをアーカイブ",
-    });
-    fireEvent.click(archiveButton);
-
-    await waitFor(() => {
-      expect(sendJson).toHaveBeenCalledWith(
-        "PATCH",
-        "/api/projects/prj1/archive",
-      );
-    });
-  });
-
   it("confirms the root path and removes the row after a successful delete", async () => {
     const roots = ["C:\\repo1"];
     mockSettingsGetJson(roots);
@@ -768,7 +731,7 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("tab", { name: /プロジェクト/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /全般/ }));
     const deleteBtn = await screen.findByRole("button", { name: /C:\\repo1を削除/ });
     deleteBtn.focus();
     fireEvent.click(deleteBtn);
@@ -796,7 +759,7 @@ describe("SettingsView", () => {
     );
 
     render(<SettingsView />);
-    fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /全般/ }));
     const firstDelete = await screen.findByRole("button", { name: /C:\\repo1を削除/ });
     const secondDelete = screen.getByRole("button", { name: /C:\\repo2を削除/ });
     fireEvent.click(firstDelete);
@@ -818,7 +781,7 @@ describe("SettingsView", () => {
     sendJson.mockRejectedValue(new Error("削除に失敗しました"));
 
     render(<SettingsView />);
-    fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /全般/ }));
     fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
     (await screen.findByRole("alertdialog")).querySelector("button")?.click();
 
@@ -835,7 +798,7 @@ describe("SettingsView", () => {
     });
 
     render(<SettingsView />);
-    fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /全般/ }));
     fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
     (await screen.findByRole("alertdialog")).querySelector("button")?.click();
 
@@ -849,7 +812,7 @@ describe("SettingsView", () => {
     mockSettingsGetJson(roots);
 
     render(<SettingsView />);
-    fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /全般/ }));
     fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
 
     const dialog = await screen.findByRole("alertdialog");
@@ -1024,7 +987,7 @@ describe("SettingsView", () => {
     expect(await screen.findByText("UAC がキャンセルされました")).toBeTruthy();
   });
 
-  it("loads default model settings only in the プロバイダー/モデル tab", async () => {
+  it("loads default model settings only in the モデル tab", async () => {
     localStorage.setItem("webui:default-model", "local::model");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/settings/default-model") {
@@ -1071,7 +1034,7 @@ describe("SettingsView", () => {
     await screen.findByText("エンジン");
     expect(screen.queryByRole("heading", { name: "デフォルトモデル" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("tab", { name: "プロバイダー/モデル" }));
+    fireEvent.click(screen.getByRole("tab", { name: "モデル" }));
 
     expect(
       await screen.findByRole("heading", { name: "デフォルトモデル" }),

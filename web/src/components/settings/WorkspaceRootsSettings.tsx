@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, FileCog, Plus, Star, Trash2 } from "lucide-react";
-import Link from "next/link";
-import { AddProjectButton } from "@/components/AddProjectButton";
+import { Plus, Trash2 } from "lucide-react";
 import { sendJson } from "@/lib/client";
 import { notifyTasksChanged } from "@/lib/events";
-import { Button, timeAgo } from "@/components/ui";
-import type { ProjectDto } from "@/lib/types";
+import { Button } from "@/components/ui";
 
 type OrphanDto = {
   id: string;
@@ -15,9 +12,7 @@ type OrphanDto = {
 
 type StrayDto = { projectId: string; projectName: string; path: string };
 
-interface ProjectSettingsTabProps {
-  projects: ProjectDto[];
-  archivedProjects: ProjectDto[];
+interface WorkspaceRootsSettingsProps {
   roots: string[];
   orphans: OrphanDto[];
   stray: StrayDto[];
@@ -29,12 +24,11 @@ interface ProjectSettingsTabProps {
 }
 
 /**
- * Settings の「プロジェクト」タブ（REFACTORING_PLAN 5-c / IMPROVEMENT 1-1）。
- * プロジェクトの一覧・アーカイブ・削除、許可ルート、孤立ワークスペース掃除を表示する。
+ * Settings の「全般」タブ末尾に置くワークスペース保守セクション。
+ * 旧「プロジェクト」タブから許可ルート（allowlist）と孤立 worktree 掃除だけを
+ * 引き継ぐ。プロジェクト一覧・アーカイブ操作は左サイドバーに一本化した。
  */
-export function ProjectSettingsTab({
-  projects,
-  archivedProjects,
+export function WorkspaceRootsSettings({
   roots,
   orphans,
   stray,
@@ -43,19 +37,15 @@ export function ProjectSettingsTab({
   refresh,
   guard,
   setError,
-}: ProjectSettingsTabProps) {
+}: WorkspaceRootsSettingsProps) {
   const [newRoot, setNewRoot] = useState("");
   const [deletingRoot, setDeletingRoot] = useState<string | null>(null);
   const [pendingRootDelete, setPendingRootDelete] = useState<string | null>(null);
-  const [pendingProjectDelete, setPendingProjectDelete] =
-    useState<ProjectDto | null>(null);
   const mountedRef = useRef(false);
   const busyRef = useRef(false);
   const deletingRootRef = useRef<string | null>(null);
   const rootConfirmRef = useRef<HTMLDivElement | null>(null);
   const rootTriggerRef = useRef<HTMLElement | null>(null);
-  const projectConfirmRef = useRef<HTMLDivElement | null>(null);
-  const projectTriggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -80,63 +70,6 @@ export function ProjectSettingsTab({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [pendingRootDelete]);
-
-  useEffect(() => {
-    if (!pendingProjectDelete) {
-      if (projectTriggerRef.current?.isConnected) projectTriggerRef.current.focus();
-      projectTriggerRef.current = null;
-      return;
-    }
-
-    projectConfirmRef.current?.querySelector<HTMLElement>("button")?.focus();
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setPendingProjectDelete(null);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [pendingProjectDelete]);
-
-  const toggleFavorite = (p: ProjectDto) =>
-    guard(async () => {
-      await sendJson("PATCH", "/api/projects", {
-        id: p.id,
-        favorite: !p.favorite,
-      });
-    });
-
-  const archiveProjectAction = (p: ProjectDto) =>
-    void guard(async () => {
-      await sendJson(
-        "PATCH",
-        `/api/projects/${encodeURIComponent(p.id)}/archive`,
-      );
-      notifyTasksChanged();
-    });
-
-  const restoreArchivedProject = (p: ProjectDto) =>
-    void guard(async () => {
-      await sendJson(
-        "PATCH",
-        `/api/projects/${encodeURIComponent(p.id)}/restore`,
-      );
-      notifyTasksChanged();
-    });
-
-  const destroyArchivedProject = (p: ProjectDto, confirmed = false) => {
-    if (!confirmed) {
-      projectTriggerRef.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-      setPendingProjectDelete(p);
-      return;
-    }
-    void guard(async () => {
-      await sendJson("DELETE", "/api/projects", undefined, { id: p.id });
-    });
-  };
 
   const addRoot = () =>
     guard(async () => {
@@ -208,155 +141,12 @@ export function ProjectSettingsTab({
   return (
     <>
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-muted">プロジェクト</h2>
-        <div className="mb-3">
-          <AddProjectButton onAdded={() => void refresh()} />
-        </div>
-        {pendingProjectDelete && (
-          <div
-            ref={projectConfirmRef}
-            role="alertdialog"
-            aria-label="プロジェクト削除の確認"
-            aria-describedby="project-delete-confirm-description"
-            className="mb-3 rounded-xl border border-danger/30 bg-danger-bg px-3 py-3 text-sm text-danger"
-          >
-            <p id="project-delete-confirm-description">
-              アーカイブ済みプロジェクト「{pendingProjectDelete.name}」を完全に削除しますか？
-              <br />
-              関連タスクとworktreeも削除されます。
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button
-                variant="danger"
-                size="sm"
-                busy={busy}
-                onClick={() => {
-                  const project = pendingProjectDelete;
-                  projectTriggerRef.current = null;
-                  setPendingProjectDelete(null);
-                  destroyArchivedProject(project, true);
-                }}
-              >
-                削除する
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setPendingProjectDelete(null)}
-              >
-                キャンセル
-              </Button>
-            </div>
-          </div>
-        )}
-        <ul className="space-y-2">
-          {projects.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{p.name}</p>
-                <p className="truncate font-mono text-xs text-faint">
-                  {p.rootPath}
-                </p>
-              </div>
-              {p.lastOpenedAt && (
-                <span className="hidden text-xs text-faint sm:inline">
-                  {timeAgo(p.lastOpenedAt)}
-                </span>
-              )}
-              <Link
-                href={`/project/${encodeURIComponent(p.id)}/settings`}
-                aria-label={`${p.name}の設定`}
-                title="プロジェクト設定"
-                className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2 hover:text-text"
-              >
-                <FileCog className="h-4 w-4" />
-              </Link>
-              <button
-                type="button"
-                disabled={busy}
-                aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
-                title="お気に入り"
-                onClick={() => void toggleFavorite(p)}
-                className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2"
-              >
-                <Star
-                  className={
-                    p.favorite
-                      ? "h-4 w-4 fill-warning text-warning"
-                      : "h-4 w-4"
-                  }
-                />
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                aria-label={`${p.name}をアーカイブ`}
-                title="プロジェクトをアーカイブ"
-                onClick={() => void archiveProjectAction(p)}
-                className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2 hover:text-text"
-              >
-                <Archive className="h-4 w-4" />
-              </button>
-            </li>
-          ))}
-          {projects.length === 0 && (
-            <li className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-faint">
-              プロジェクトがありません
-            </li>
-          )}
-        </ul>
-      </section>
-
-      {archivedProjects.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">
-            アーカイブ済みプロジェクト
-          </h2>
-          <ul className="space-y-2">
-            {archivedProjects.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 opacity-80"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{p.name}</p>
-                  <p className="truncate font-mono text-xs text-faint">
-                    {p.rootPath}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={busy}
-                  aria-label={`${p.name}を復元`}
-                  title="プロジェクトを復元"
-                  onClick={() => void restoreArchivedProject(p)}
-                  className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2 hover:text-text"
-                >
-                  <ArchiveRestore className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  aria-label={`${p.name}を完全に削除`}
-                  title="プロジェクトを完全に削除"
-                  onClick={() => void destroyArchivedProject(p)}
-                  className="cursor-pointer rounded-lg p-2 text-faint hover:bg-danger-bg hover:text-danger"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section>
         <h2 className="mb-3 text-sm font-semibold text-muted">
           許可ルート（allowlist）
         </h2>
+        <p className="mb-3 text-xs text-faint">
+          ここに登録したフォルダ配下だけをプロジェクトとして追加できます。
+        </p>
         <div className="mb-3 flex gap-2">
           <input
             value={newRoot}
@@ -427,6 +217,11 @@ export function ProjectSettingsTab({
               </button>
             </li>
           ))}
+          {roots.length === 0 && (
+            <li className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-faint">
+              許可ルートが登録されていません
+            </li>
+          )}
         </ul>
       </section>
 

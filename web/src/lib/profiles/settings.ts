@@ -17,7 +17,7 @@ export type ProfileSetupSettings = {
 /**
  * 画像事前解析は OpenCode 登録モデルへ一本化している。ローカル Ollama も
  * `opencode.jsonc` の provider として登録し、`providerID::modelID` で参照する
- * （設定画面「プロバイダー/モデル」タブのプロバイダー登録が行う）。
+ * （設定画面「モデル」タブのプロバイダー登録が行う）。
  */
 export type QwenNativeSettings = {
   enabled: boolean;

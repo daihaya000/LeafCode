@@ -20,7 +20,7 @@ import { ConnectivitySettingsTab } from "./ConnectivitySettingsTab";
 import { EngineSettingsTab } from "./EngineSettingsTab";
 import { GitSettingsTab } from "./GitSettingsTab";
 import { GeneralSettingsTab } from "./GeneralSettingsTab";
-import { ProjectSettingsTab } from "./ProjectSettingsTab";
+import { WorkspaceRootsSettings } from "./WorkspaceRootsSettings";
 import { ModelRankingSettings } from "@/components/settings/ModelRankingSettings";
 import { MemorySettings } from "@/components/settings/MemorySettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
@@ -38,7 +38,7 @@ import {
   setWindowsAuthEnabled,
   upsertAuthUser,
 } from "@/lib/auth";
-import type { HealthDto, ProjectDto, UpdateAvailability } from "@/lib/types";
+import type { HealthDto, UpdateAvailability } from "@/lib/types";
 
 type OrphanDto = {
   id: string;
@@ -52,16 +52,13 @@ type StrayDto = { projectId: string; projectName: string; path: string };
 type SettingsTab =
   | "engine"
   | "general"
-  | "project"
   | "connectivity"
-  | "git"
   | "skills"
   | "mcp"
   | "plugins"
   | "addons"
   | "agents"
   | "providers"
-  | "ranking"
   | "profiles"
   | "users"
   | "memory";
@@ -79,8 +76,6 @@ export function SettingsView() {
     opencode: UpdateAvailability;
     nextjs: UpdateAvailability;
   } | null>(null);
-  const [projects, setProjects] = useState<ProjectDto[]>([]);
-  const [archivedProjects, setArchivedProjects] = useState<ProjectDto[]>([]);
   const [roots, setRoots] = useState<string[]>([]);
   const [orphans, setOrphans] = useState<OrphanDto[]>([]);
 const [stray, setStray] = useState<StrayDto[]>([]);
@@ -109,9 +104,8 @@ const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestRef.current;
-    const [h, p, r, o, host, updates, ap] = await Promise.allSettled([
+    const [h, r, o, host, updates] = await Promise.allSettled([
       getJson<HealthDto>("/api/health"),
-      getJson<{ projects: ProjectDto[] }>("/api/projects"),
       getJson<{ roots: string[] }>("/api/roots"),
       getJson<{ orphans: OrphanDto[]; stray: StrayDto[] }>(
         "/api/workspaces/orphans",
@@ -126,14 +120,12 @@ const [error, setError] = useState<string | null>(null);
         opencode: UpdateAvailability;
         nextjs: UpdateAvailability;
       }>("/api/updates/status"),
-      getJson<{ projects: ProjectDto[] }>("/api/projects/archived"),
     ]);
     if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
     if (h.status === "fulfilled") {
       setHealth(h.value);
       setWorkflowModeEnabled(h.value.workflowModeEnabled === true);
     }
-    if (p.status === "fulfilled") setProjects(p.value.projects ?? []);
     if (r.status === "fulfilled") setRoots(r.value.roots ?? []);
     if (o.status === "fulfilled") {
       setOrphans(o.value.orphans ?? []);
@@ -142,8 +134,6 @@ const [error, setError] = useState<string | null>(null);
     if (host.status === "fulfilled") setHostOk(host.value.ok);
     else setHostOk(false);
     if (updates.status === "fulfilled") setUpdateAvailability(updates.value);
-    if (ap.status === "fulfilled")
-      setArchivedProjects(ap.value.projects ?? []);
   }, []);
 
   useEffect(() => {
@@ -263,17 +253,14 @@ const [error, setError] = useState<string | null>(null);
 
   const tabs: { key: SettingsTab; label: string; badge?: number }[] = [
     { key: "engine", label: "エンジン" },
-    { key: "general", label: "全般" },
-    { key: "profiles", label: "プロファイル" },
     {
-      key: "project",
-      label: "プロジェクト",
+      key: "general",
+      label: "全般",
       badge: requiresAttention > 0 ? requiresAttention : undefined,
     },
+    { key: "profiles", label: "プロファイル" },
     { key: "connectivity", label: "接続" },
-    { key: "git", label: "Git" },
-    { key: "providers", label: "プロバイダー/モデル" },
-    { key: "ranking", label: "コスパランキング" },
+    { key: "providers", label: "モデル" },
     { key: "agents", label: "エージェント" },
     { key: "skills", label: "スキル" },
     { key: "mcp", label: "MCP" },
@@ -397,12 +384,24 @@ const [error, setError] = useState<string | null>(null);
 
 
         {activeTab === "general" && (
-          <GeneralSettingsTab
-            hostOk={hostOk}
-            workflowModeEnabled={workflowModeEnabled}
-            setWorkflowModeEnabled={setWorkflowModeEnabled}
-            setError={setError}
-          />
+          <>
+            <GeneralSettingsTab
+              hostOk={hostOk}
+              workflowModeEnabled={workflowModeEnabled}
+              setWorkflowModeEnabled={setWorkflowModeEnabled}
+              setError={setError}
+            />
+            <WorkspaceRootsSettings
+              roots={roots}
+              orphans={orphans}
+              stray={stray}
+              busy={busy}
+              setBusy={setBusy}
+              refresh={refresh}
+              guard={guard}
+              setError={setError}
+            />
+          </>
         )}
 
         {(activeTab === "skills" ||
@@ -420,24 +419,12 @@ const [error, setError] = useState<string | null>(null);
           </section>
         )}
 
-        {activeTab === "project" && (
-          <ProjectSettingsTab
-            projects={projects}
-            archivedProjects={archivedProjects}
-            roots={roots}
-            orphans={orphans}
-            stray={stray}
-            busy={busy}
-            setBusy={setBusy}
-            refresh={refresh}
-            guard={guard}
-            setError={setError}
-          />
+        {activeTab === "connectivity" && (
+          <>
+            <ConnectivitySettingsTab />
+            <GitSettingsTab />
+          </>
         )}
-
-        {activeTab === "git" && <GitSettingsTab />}
-
-        {activeTab === "connectivity" && <ConnectivitySettingsTab />}
 
         {activeTab === "agents" && <AgentsSettings />}
 
@@ -449,9 +436,12 @@ const [error, setError] = useState<string | null>(null);
           </>
         )}
 
-        {activeTab === "providers" && <ProviderModelsSettings />}
-
-        {activeTab === "ranking" && <ModelRankingSettings />}
+        {activeTab === "providers" && (
+          <>
+            <ProviderModelsSettings />
+            <ModelRankingSettings />
+          </>
+        )}
 
         {activeTab === "users" && (
           <section>
