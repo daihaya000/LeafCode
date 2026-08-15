@@ -720,4 +720,65 @@ describe("GlobalAttentionProvider", () => {
     openConnection();
     await waitFor(() => expect(latest.map((i) => i.request.id)).toEqual(["qa"]));
   });
+
+  describe("session run-state fan-out", () => {
+    const emitStatus = (sessionID: string, type: string) => {
+      act(() => {
+        FakeEventSource.latest?.onmessage?.({
+          data: JSON.stringify({
+            type: "session.status",
+            directory: "/repo",
+            properties: { sessionID, status: { type } },
+          }),
+        } as MessageEvent);
+      });
+    };
+
+    const renderWithTasks = async (
+      tasks: Array<{ directory: string; sessionId: string }>,
+    ) => {
+      getJsonMock.mockResolvedValue({ tasks });
+      render(
+        <GlobalAttentionProvider activeScope={null}>
+          <TestConsumer onItems={() => undefined} />
+        </GlobalAttentionProvider>,
+      );
+      // Wait for useAttentionQueue's initial /api/tasks load to land.
+      await waitFor(() => expect(getJsonMock).toHaveBeenCalled());
+      await act(async () => {
+        await Promise.resolve();
+      });
+    };
+
+    it("fires webui:tasks-changed when a tracked session flips busy", async () => {
+      await renderWithTasks([{ directory: "/repo", sessionId: "s1" }]);
+      const onChanged = vi.fn();
+      window.addEventListener("webui:tasks-changed", onChanged);
+      emitStatus("s1", "busy");
+      expect(onChanged).toHaveBeenCalledTimes(1);
+      window.removeEventListener("webui:tasks-changed", onChanged);
+    });
+
+    it("fires once per transition, not per repeated status event", async () => {
+      await renderWithTasks([{ directory: "/repo", sessionId: "s1" }]);
+      const onChanged = vi.fn();
+      window.addEventListener("webui:tasks-changed", onChanged);
+      emitStatus("s1", "busy");
+      emitStatus("s1", "busy");
+      emitStatus("s1", "busy");
+      expect(onChanged).toHaveBeenCalledTimes(1);
+      emitStatus("s1", "idle");
+      expect(onChanged).toHaveBeenCalledTimes(2);
+      window.removeEventListener("webui:tasks-changed", onChanged);
+    });
+
+    it("ignores sessions that are not primary task sessions", async () => {
+      await renderWithTasks([{ directory: "/repo", sessionId: "s1" }]);
+      const onChanged = vi.fn();
+      window.addEventListener("webui:tasks-changed", onChanged);
+      emitStatus("subagent-1", "busy");
+      expect(onChanged).not.toHaveBeenCalled();
+      window.removeEventListener("webui:tasks-changed", onChanged);
+    });
+  });
 });

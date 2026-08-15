@@ -89,6 +89,40 @@ export function parseGlobalSessionCreated(raw: string): GlobalSessionCreated | n
   return { directory, sessionID, parentID };
 }
 
+/** Session run-state transition observed on the global SSE stream. */
+export type GlobalSessionActivity = {
+  sessionID: string;
+  type: "idle" | "busy" | "retry";
+};
+
+/**
+ * Parse a global SSE `session.status` / `session.idle` payload into a run-state
+ * transition. The sidebar derives its per-task dot from `/api/tasks`, which is
+ * only refetched on `webui:tasks-changed`; without a global signal a task that
+ * is not currently open (e.g. one advanced by the server-side goal loop) never
+ * flips to 進行中. Returns null for unrelated events or missing session ids.
+ */
+export function parseGlobalSessionActivity(raw: string): GlobalSessionActivity | null {
+  let envelope: GlobalEventEnvelope;
+  try {
+    envelope = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const { type, props } = normalizeEnvelope(envelope);
+  if (type !== "session.status" && type !== "session.idle") return null;
+  const sessionID =
+    typeof props.sessionID === "string" ? props.sessionID.trim() : "";
+  if (!sessionID || sessionID.length > 256) return null;
+  if (type === "session.idle") return { sessionID, type: "idle" };
+  const status = props.status as { type?: unknown } | undefined;
+  const statusType = typeof status?.type === "string" ? status.type : "";
+  if (statusType !== "idle" && statusType !== "busy" && statusType !== "retry") {
+    return null;
+  }
+  return { sessionID, type: statusType };
+}
+
 export function parseGlobalEvent(raw: string): AttentionItem | null {
   let envelope: GlobalEventEnvelope;
   try {

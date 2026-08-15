@@ -16,9 +16,10 @@ import {
   isSseSilent,
   SSE_SILENCE_MS,
 } from "@/lib/sse-health";
-import { notifyAttentionCountChanged } from "@/lib/events";
+import { notifyAttentionCountChanged, notifyTasksChanged } from "@/lib/events";
 import {
   parseGlobalEvent,
+  parseGlobalSessionActivity,
   parseGlobalSessionCreated,
   isResolvedEvent,
   replyPath,
@@ -199,6 +200,12 @@ export function GlobalAttentionProvider({
   tasksRef.current = tasks;
   /** Per root session: descendant ids seen via global session.created. */
   const knownDescendantsByRootRef = useRef(new Map<string, Set<string>>());
+  /**
+   * Last run-state seen per session on the global SSE stream. Only transitions
+   * fan out to `webui:tasks-changed`, so a busy session emitting repeated
+   * `session.status` events cannot storm the sidebar's `/api/tasks` refetch.
+   */
+  const sessionActivityRef = useRef(new Map<string, "idle" | "busy" | "retry">());
   const [open, setOpenState] = useState(false);
   const openRef = useRef(open);
   openRef.current = open;
@@ -621,6 +628,26 @@ export function GlobalAttentionProvider({
             }).catch(() => {
               /* non-fatal — next sync / TaskView remount can retry */
             });
+          }
+          return;
+        }
+        // The sidebar dot comes from /api/tasks, which is only refetched on
+        // `webui:tasks-changed`. TaskView fires that for the open task only, so
+        // a task advanced elsewhere (server-side goal loop, another tab) stayed
+        // stuck on its last-rendered dot. Fan out run-state transitions here.
+        const activity = parseGlobalSessionActivity(ev.data);
+        if (activity) {
+          // Only primary task sessions feed deriveTaskStatus; subagent sessions
+          // cannot move a dot, so ignore them instead of refetching for nothing.
+          const tracked = tasksRef.current.some(
+            (task) => task.sessionId === activity.sessionID,
+          );
+          if (tracked) {
+            const seen = sessionActivityRef.current.get(activity.sessionID);
+            if (seen !== activity.type) {
+              sessionActivityRef.current.set(activity.sessionID, activity.type);
+              notifyTasksChanged();
+            }
           }
           return;
         }

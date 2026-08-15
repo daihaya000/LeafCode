@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseGlobalEvent,
+  parseGlobalSessionActivity,
   parseGlobalSessionCreated,
   isResolvedEvent,
 } from "./attention";
@@ -172,6 +173,74 @@ describe("parseGlobalSessionCreated", () => {
           type: "session.created",
           directory: "/repo",
           properties: { info: { id: "child" } },
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("parseGlobalSessionActivity", () => {
+  it("parses session.status busy", () => {
+    expect(
+      parseGlobalSessionActivity(
+        JSON.stringify({
+          type: "session.status",
+          directory: "/repo",
+          properties: { sessionID: "s1", status: { type: "busy" } },
+        }),
+      ),
+    ).toEqual({ sessionID: "s1", type: "busy" });
+  });
+
+  it("parses session.idle without a status object", () => {
+    expect(
+      parseGlobalSessionActivity(
+        JSON.stringify({
+          type: "session.idle",
+          directory: "/repo",
+          properties: { sessionID: "s1" },
+        }),
+      ),
+    ).toEqual({ sessionID: "s1", type: "idle" });
+  });
+
+  it("parses nested payload envelopes", () => {
+    expect(
+      parseGlobalSessionActivity(
+        JSON.stringify({
+          directory: "/repo",
+          payload: {
+            type: "session.status",
+            properties: { sessionID: "s2", status: { type: "retry" } },
+          },
+        }),
+      ),
+    ).toEqual({ sessionID: "s2", type: "retry" });
+  });
+
+  it("returns null for unrelated events, bad json and unknown status types", () => {
+    expect(
+      parseGlobalSessionActivity(
+        JSON.stringify({
+          type: "message.updated",
+          properties: { sessionID: "s1" },
+        }),
+      ),
+    ).toBeNull();
+    expect(parseGlobalSessionActivity("{not json")).toBeNull();
+    expect(
+      parseGlobalSessionActivity(
+        JSON.stringify({
+          type: "session.status",
+          properties: { sessionID: "s1", status: { type: "weird" } },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseGlobalSessionActivity(
+        JSON.stringify({
+          type: "session.status",
+          properties: { status: { type: "busy" } },
         }),
       ),
     ).toBeNull();
