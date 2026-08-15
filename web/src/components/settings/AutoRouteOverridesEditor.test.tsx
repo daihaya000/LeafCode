@@ -86,6 +86,8 @@ describe("AutoRouteOverridesEditor", () => {
     expect(screen.getByText("ライト")).toBeTruthy();
     expect(screen.getByText("標準")).toBeTruthy();
     expect(screen.getByText("ヘビー")).toBeTruthy();
+    // effort フォールバック順エディタは UI から隠した
+    expect(screen.queryByText("effort フォールバック順")).toBeNull();
   });
 
   it("shows a reset-all button only when a config exists and clears it", () => {

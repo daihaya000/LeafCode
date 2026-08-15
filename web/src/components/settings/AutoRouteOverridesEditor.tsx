@@ -344,7 +344,6 @@ function TierEditor({
     [cell],
   );
   const isPreset = cellMatchesPreset(mode, tier, cell);
-  const [fallbackOpen, setFallbackOpen] = useState(false);
 
   const setCell = useCallback(
     (nextCell: AutoTierRoute | undefined) => {
@@ -467,37 +466,6 @@ function TierEditor({
         候補を追加
       </button>
 
-      <button
-        type="button"
-        aria-expanded={fallbackOpen}
-        onClick={() => setFallbackOpen((v) => !v)}
-        className="flex items-center gap-1 text-xs text-muted hover:text-text"
-      >
-        <ChevronDown
-          className={cx(
-            "h-3 w-3 transition-transform",
-            fallbackOpen ? "rotate-0" : "-rotate-90",
-          )}
-        />
-        effort フォールバック順
-      </button>
-      {fallbackOpen && (
-        <VariantFallbackEditor
-          mode={mode}
-          tier={tier}
-          cell={cell}
-          onChange={(variantFallbackOrder) =>
-            setCell({
-              candidates,
-              ...(variantFallbackOrder
-                ? { variantFallbackOrder }
-                : {}),
-              ...(cell?.fallback ? { fallback: cell.fallback } : {}),
-            })
-          }
-        />
-      )}
-
       <div className="space-y-1">
         <p className="text-[10px] uppercase tracking-wide text-faint">
           全候補が使えない時
@@ -534,100 +502,13 @@ function TierEditor({
   );
 }
 
-function VariantFallbackEditor({
-  mode,
-  tier,
-  cell,
-  onChange,
-}: {
-  mode: AutoOptimizeMode;
-  tier: AutoTier;
-  cell: AutoTierRoute | undefined;
-  onChange: (order: readonly IntelligenceVariant[] | undefined) => void;
-}) {
-  const preset = presetTierRoute(mode, tier).variantFallbackOrder ?? [];
-  const explicit = cell?.variantFallbackOrder;
-  const list: IntelligenceVariant[] = explicit ? [...explicit] : [...preset];
-  const [isExplicit, setIsExplicit] = useState(explicit !== undefined);
-
-  const handleToggle = (variant: IntelligenceVariant) => {
-    if (!isExplicit) {
-      setIsExplicit(true);
-      const next = preset.includes(variant)
-        ? preset.filter((v) => v !== variant)
-        : [...preset, variant];
-      onChange(next.length > 0 ? next : undefined);
-      return;
-    }
-    const next = list.includes(variant)
-      ? list.filter((v) => v !== variant)
-      : [...list, variant];
-    onChange(next.length > 0 ? next : undefined);
-  };
-
-  const handleMove = (index: number, dir: -1 | 1) => {
-    onChange(moveItem(list, index, index + dir));
-  };
-
-  return (
-    <div className="space-y-1">
-      {ALL_INTELLIGENCE_VARIANTS.map((variant) => {
-        const checked = list.includes(variant);
-        const index = list.indexOf(variant);
-        return (
-          <div
-            key={variant}
-            className="flex items-center gap-2 rounded-md bg-surface-2 px-2 py-1.5"
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={() => handleToggle(variant)}
-              className="h-3.5 w-3.5 accent-primary"
-            />
-            <span className="flex-1 text-xs text-muted">
-              {VARIANT_LABEL[variant]}
-            </span>
-            {checked && (
-              <div className="flex items-center gap-0.5">
-                <button
-                  type="button"
-                  aria-label={`${VARIANT_LABEL[variant]}を上へ`}
-                  disabled={index <= 0}
-                  onClick={() => handleMove(index, -1)}
-                  className="rounded p-0.5 text-faint hover:bg-surface-3 hover:text-muted disabled:opacity-30"
-                >
-                  <ChevronUp className="h-3 w-3" />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`${VARIANT_LABEL[variant]}を下へ`}
-                  disabled={index >= list.length - 1}
-                  onClick={() => handleMove(index, 1)}
-                  className="rounded p-0.5 text-faint hover:bg-surface-3 hover:text-muted disabled:opacity-30"
-                >
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-      {!isExplicit && (
-        <p className="text-[10px] text-faint">
-          チェックを変えると個別設定を上書きします
-        </p>
-      )}
-    </div>
-  );
-}
-
 /**
  * Editor for per-mode/per-tier Auto routing candidates. Mode tabs pick the
  * mode being edited independently from the running one; each tier holds an
  * ordered candidate list (new rows are model-pinned — 種別は「モデル指定」に
- * 一本化; legacy cost band / strongest rows stay editable), an effort
- * fallback order, and a fallback policy. Unchanged cells stay stored as the
+ * 一本化; legacy cost band / strongest rows stay editable), and a fallback
+ * policy（effort フォールバック順は UI から隠し、保存値をそのまま維持）。
+ * Unchanged cells stay stored as the
  * preset. The model dropdown lists connected models only, and the effort
  * dropdown mirrors the Composer's.
  */
