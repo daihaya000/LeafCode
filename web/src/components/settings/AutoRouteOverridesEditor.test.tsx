@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AutoRouteConfig } from "@/lib/auto-model";
-import { AutoRouteOverridesEditor, type AutoRouteProviders } from "./AutoRouteOverridesEditor";
+import {
+  AutoRouteOverridesEditor,
+  autoRouteModelOptions,
+  type AutoRouteProviders,
+} from "./AutoRouteOverridesEditor";
 
 afterEach(cleanup);
 
@@ -137,18 +141,77 @@ describe("AutoRouteOverridesEditor", () => {
     expect(screen.getAllByText("プリセットを使用中").length).toBe(3);
   });
 
-  it("adds a candidate and switches its kind to a model reference", () => {
+  it("adds a model-pinned candidate without a kind dropdown", () => {
     renderEditor();
     open();
     fireEvent.click(screen.getAllByText("候補を追加")[0]);
-    expect(screen.getAllByLabelText("候補1の種別")[0]).toBeTruthy();
+    expect(screen.queryByLabelText("候補1の種別")).toBeNull();
 
-    fireEvent.change(screen.getAllByLabelText("候補1の種別")[0], {
-      target: { value: "model" },
-    });
     const modelSelect = screen.getAllByLabelText("候補1のモデル")[0];
     expect(modelSelect).toBeTruthy();
     expect(modelSelect.getAttribute("value")).toBe("alpha::cheap");
+  });
+
+  it("excludes unconnected providers and models from the options", () => {
+    expect(autoRouteModelOptions(PROVIDERS).map((o) => o.value)).toEqual([
+      "alpha::cheap",
+      "alpha::mid",
+    ]);
+    renderEditor();
+    open();
+    fireEvent.click(screen.getAllByText("候補を追加")[0]);
+    fireEvent.click(screen.getAllByLabelText("候補1のモデル")[0]);
+    expect(screen.queryByText("Beta Premium")).toBeNull();
+    expect(screen.getAllByText("Alpha Cheap").length).toBeGreaterThan(0);
+  });
+
+  it("shows the Composer-style effort dropdown for a model candidate", () => {
+    render(
+      <Harness
+        initial={{
+          version: 2,
+          modes: {
+            balanced: {
+              light: {
+                candidates: [
+                  { kind: "model", providerID: "alpha", modelID: "mid" },
+                ],
+              },
+            },
+          },
+        }}
+      />,
+    );
+    open();
+    fireEvent.click(screen.getByLabelText("候補1のeffort"));
+    expect(screen.getByRole("option", { name: "デフォルト" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "low" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "high" })).toBeTruthy();
+    // Not the model's declared variants, and no legacy 自動 / 指定なし entries.
+    expect(screen.queryByRole("option", { name: "medium" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "自動" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "指定なし" })).toBeNull();
+  });
+
+  it("hides the effort dropdown when the pinned model declares no variants", () => {
+    render(
+      <Harness
+        initial={{
+          version: 2,
+          modes: {
+            balanced: {
+              light: {
+                candidates: [
+                  { kind: "model", providerID: "alpha", modelID: "cheap" },
+                ],
+              },
+            },
+          },
+        }}
+      />,
+    );
+    open();
+    expect(screen.queryByLabelText("候補1のeffort")).toBeNull();
   });
 
   it("removes a candidate with the delete button", () => {
@@ -173,7 +236,7 @@ describe("AutoRouteOverridesEditor", () => {
     fireEvent.click(screen.getByLabelText("候補2を削除"));
     expect(screen.queryByLabelText("候補2を削除")).toBeNull();
     // Only the light tier still has candidates; standard/heavy stay preset.
-    expect(screen.getAllByLabelText("候補1の種別").length).toBe(1);
+    expect(screen.getAllByLabelText("候補1のコスト帯").length).toBe(1);
   });
 
   it("moves a candidate down within the order", () => {
@@ -213,6 +276,29 @@ describe("AutoRouteOverridesEditor", () => {
         initial={{
           version: 2,
           modes: { balanced: { light: { candidates } } },
+        }}
+      />,
+    );
+    open();
+    const addButtons = screen.getAllByText("候補を追加");
+    expect(addButtons[0]?.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("disables the add button when every connected model is already listed", () => {
+    render(
+      <Harness
+        initial={{
+          version: 2,
+          modes: {
+            balanced: {
+              light: {
+                candidates: [
+                  { kind: "model", providerID: "alpha", modelID: "cheap" },
+                  { kind: "model", providerID: "alpha", modelID: "mid" },
+                ],
+              },
+            },
+          },
         }}
       />,
     );

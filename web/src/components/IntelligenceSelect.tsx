@@ -16,22 +16,26 @@ export function IntelligenceSelect({
   variants,
   value,
   onChange,
-  disabled,
+  disabled = false,
+  ariaLabel = "インテリジェンス",
+  className = "h-8 shrink-0",
 }: {
   variants: IntelligenceVariant[];
   value: string;
   onChange: (value: string) => void;
-  disabled: boolean;
+  disabled?: boolean;
+  ariaLabel?: string;
+  className?: string;
 }) {
   return (
     <GhostSelect
       value={value}
       disabled={disabled}
-      aria-label="インテリジェンス"
+      aria-label={ariaLabel}
       icon={<Brain className="h-3.5 w-3.5" />}
       valueLabel={value || "デフォルト"}
       onChange={onChange}
-      className="h-8 shrink-0"
+      className={className}
     >
       <option value="">デフォルト</option>
       {variants.map((variant) => (

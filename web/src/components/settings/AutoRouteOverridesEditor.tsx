@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, RotateCcw, X } from "lucide-react";
+import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { ModelSelect } from "@/components/ModelSelect";
 import { Button, cx } from "@/components/ui";
 import { formatModelLabel, sortModelOptions, type ModelOption } from "@/lib/model-options";
@@ -61,12 +62,6 @@ const VARIANT_LABEL: Record<IntelligenceVariant, string> = {
   thinking: "思考",
 };
 
-const KIND_LABEL: Record<AutoRouteCandidate["kind"], string> = {
-  model: "モデル指定",
-  cost: "コスト帯",
-  strongest: "最強候補",
-};
-
 const FALLBACK_LABEL: Record<AutoTierFallback, string> = {
   preset: "プリセットに従う",
   strongest: "最強候補にフォールバック",
@@ -74,9 +69,6 @@ const FALLBACK_LABEL: Record<AutoTierFallback, string> = {
 };
 
 const FALLBACKS: readonly AutoTierFallback[] = ["preset", "strongest", "error"];
-
-/** Candidate list kind for the kind dropdown. */
-type CandidateKind = AutoRouteCandidate["kind"];
 
 function moveItem<T>(items: T[], from: number, to: number): T[] {
   if (from === to || from < 0 || to < 0) return items;
@@ -111,18 +103,22 @@ export type AutoRouteProviders = readonly {
   }[];
 }[];
 
-/** Model dropdown options from the provider list (no Auto entry). */
+/**
+ * Model dropdown options from the provider list (no Auto entry).
+ * Unconnected providers / disabled models are omitted — 未接続モデルは
+ * 選択肢に出さない。
+ */
 export function autoRouteModelOptions(providers: AutoRouteProviders): ModelOption[] {
   return sortModelOptions(
     providers.flatMap((provider) =>
-      provider.name
-        ? provider.models.map((model) => ({
-            value: `${provider.id}::${model.id}`,
-            label: `${formatModelLabel(model.name, model.id)}${
-              provider.enabled && model.enabled ? "" : "（未接続）"
-            }`,
-            group: provider.name,
-          }))
+      provider.enabled && provider.name
+        ? provider.models
+            .filter((model) => model.enabled)
+            .map((model) => ({
+              value: `${provider.id}::${model.id}`,
+              label: formatModelLabel(model.name, model.id),
+              group: provider.name,
+            }))
         : [],
     ),
   );
@@ -140,21 +136,21 @@ function modelVariantsFor(
 }
 
 /**
- * Effort options for a candidate row. A fixed model narrows the list to its
- * declared variants; cost/strongest rows show everything (the model is not
- * known yet).
+ * Effort options for a candidate row, matching the Composer effort dropdown.
+ * A fixed model lists only the variants it declares — an empty list hides
+ * the selector, exactly like the Composer. Legacy cost / strongest rows have
+ * no model yet, so the full variant list stays available there.
  */
 function effortOptionsFor(
   candidate: AutoRouteCandidate,
   providers: AutoRouteProviders,
 ): IntelligenceVariant[] {
   if (candidate.kind === "model") {
-    const declared = modelVariantsFor(
+    return modelVariantsFor(
       providers,
       candidate.providerID,
       candidate.modelID,
     );
-    return declared.length > 0 ? declared : ALL_INTELLIGENCE_VARIANTS;
   }
   return ALL_INTELLIGENCE_VARIANTS;
 }
@@ -218,16 +214,6 @@ function ResolutionPreview({
   );
 }
 
-/**
- * Select value that distinguishes "auto" (no variant key) from "explicit
- * none" (`""`). The raw `""` value cannot represent both.
- */
-function effortSelectValue(variant: IntelligenceVariant | "" | undefined): string {
-  if (variant === undefined) return "auto";
-  if (variant === "") return "none";
-  return variant;
-}
-
 function CandidateRow({
   index,
   candidate,
@@ -253,36 +239,6 @@ function CandidateRow({
       <span className="w-4 shrink-0 text-right text-[10px] text-faint">
         {index + 1}.
       </span>
-      <select
-        aria-label={`候補${index + 1}の種別`}
-        value={candidate.kind}
-        onChange={(event) => {
-          const next = event.target.value as CandidateKind;
-          if (next === "model") {
-            const firstModel = modelOptions[0];
-            onChange(
-              firstModel
-                ? {
-                    kind: "model",
-                    providerID: firstModel.value.split("::")[0] ?? "",
-                    modelID: firstModel.value.split("::")[1] ?? "",
-                  }
-                : { kind: "cost", cost: "mid" },
-            );
-          } else if (next === "cost") {
-            onChange({ kind: "cost", cost: "mid" });
-          } else {
-            onChange({ kind: "strongest" });
-          }
-        }}
-        className="h-7 rounded border border-border bg-surface px-1.5 text-xs text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-      >
-        {(["model", "cost", "strongest"] as const).map((value) => (
-          <option key={value} value={value}>
-            {KIND_LABEL[value]}
-          </option>
-        ))}
-      </select>
 
       {candidate.kind === "model" && (
         <ModelSelect
@@ -321,29 +277,20 @@ function CandidateRow({
         <span className="flex-1 text-xs text-faint">最強候補を優先</span>
       )}
 
-      <select
-        aria-label={`候補${index + 1}のeffort`}
-        value={effortSelectValue(candidate.variant)}
-        onChange={(event) => {
-          const value = event.target.value;
-          if (value === "auto") {
-            onChange({ ...candidate, variant: undefined });
-          } else if (value === "none") {
-            onChange({ ...candidate, variant: "" });
-          } else {
-            onChange({ ...candidate, variant: value as IntelligenceVariant });
+      {effortOptions.length > 0 && (
+        <IntelligenceSelect
+          variants={effortOptions}
+          value={candidate.variant ?? ""}
+          onChange={(next) =>
+            onChange({
+              ...candidate,
+              variant: next === "" ? undefined : (next as IntelligenceVariant),
+            })
           }
-        }}
-        className="h-7 rounded border border-border bg-surface px-1.5 text-xs text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-      >
-        <option value="auto">自動</option>
-        <option value="none">指定なし</option>
-        {effortOptions.map((variant) => (
-          <option key={variant} value={variant}>
-            {VARIANT_LABEL[variant] ?? variant}
-          </option>
-        ))}
-      </select>
+          ariaLabel={`候補${index + 1}のeffort`}
+          className="h-7 shrink-0"
+        />
+      )}
 
       <div className="flex items-center gap-0.5">
         <button
@@ -398,7 +345,6 @@ function TierEditor({
   );
   const isPreset = cellMatchesPreset(mode, tier, cell);
   const [fallbackOpen, setFallbackOpen] = useState(false);
-  const preset = presetTierRoute(mode, tier);
 
   const setCell = useCallback(
     (nextCell: AutoTierRoute | undefined) => {
@@ -439,20 +385,27 @@ function TierEditor({
     [candidates, setCandidates],
   );
 
+  /** Connected models not yet listed in this tier's candidates. */
+  const addableOptions = useMemo(() => {
+    const used = new Set(
+      candidates.flatMap((candidate) =>
+        candidate.kind === "model"
+          ? [`${candidate.providerID}::${candidate.modelID}`]
+          : [],
+      ),
+    );
+    return modelOptions.filter((option) => !used.has(option.value));
+  }, [candidates, modelOptions]);
+
   const handleAdd = () => {
     if (candidates.length >= MAX_AUTO_ROUTE_CANDIDATES) return;
-    const defaultCandidate = preset.candidates[0];
-    const exists =
-      defaultCandidate &&
-      candidates.some(
-        (c) =>
-          c.kind === defaultCandidate.kind &&
-          JSON.stringify(c) === JSON.stringify(defaultCandidate),
-      );
-    const nextCandidate: AutoRouteCandidate = exists
-      ? { kind: "cost", cost: "mid" }
-      : (defaultCandidate ?? { kind: "cost", cost: "mid" });
-    setCandidates([...candidates, nextCandidate]);
+    const next = addableOptions[0];
+    if (!next) return;
+    const [providerID, modelID] = next.value.split("::");
+    setCandidates([
+      ...candidates,
+      { kind: "model", providerID: providerID ?? "", modelID: modelID ?? "" },
+    ]);
   };
 
   return (
@@ -503,7 +456,10 @@ function TierEditor({
       )}
       <button
         type="button"
-        disabled={candidates.length >= MAX_AUTO_ROUTE_CANDIDATES}
+        disabled={
+          candidates.length >= MAX_AUTO_ROUTE_CANDIDATES ||
+          addableOptions.length === 0
+        }
         onClick={handleAdd}
         className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted hover:bg-surface-3 hover:text-text disabled:opacity-40"
       >
@@ -669,8 +625,11 @@ function VariantFallbackEditor({
 /**
  * Editor for per-mode/per-tier Auto routing candidates. Mode tabs pick the
  * mode being edited independently from the running one; each tier holds an
- * ordered candidate list (model / cost band / strongest), an effort fallback
- * order, and a fallback policy. Unchanged cells stay stored as the preset.
+ * ordered candidate list (new rows are model-pinned — 種別は「モデル指定」に
+ * 一本化; legacy cost band / strongest rows stay editable), an effort
+ * fallback order, and a fallback policy. Unchanged cells stay stored as the
+ * preset. The model dropdown lists connected models only, and the effort
+ * dropdown mirrors the Composer's.
  */
 export function AutoRouteOverridesEditor({
   mode,
