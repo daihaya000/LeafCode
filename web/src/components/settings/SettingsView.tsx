@@ -60,7 +60,6 @@ type SettingsTab =
   | "skills"
   | "mcp"
   | "plugins"
-  | "addons"
   | "agents"
   | "providers"
   | "profiles"
@@ -269,7 +268,6 @@ const [error, setError] = useState<string | null>(null);
     { key: "skills", label: "スキル" },
     { key: "mcp", label: "MCP" },
     { key: "plugins", label: "プラグイン" },
-    { key: "addons", label: "アドオン" },
     { key: "users", label: "ユーザー" },
     { key: "memory", label: "メモリ" },
   ];
@@ -374,13 +372,23 @@ const [error, setError] = useState<string | null>(null);
         )}
 
         {activeTab === "engine" && (
-          <EngineSettingsTab
-            health={health}
-            hostOk={hostOk}
-            refresh={refresh}
-            setError={setError}
-            updateAvailability={updateAvailability}
-          />
+          <>
+            <EngineSettingsTab
+              health={health}
+              hostOk={hostOk}
+              refresh={refresh}
+              setError={setError}
+              updateAvailability={updateAvailability}
+            />
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">アドオン</h2>
+              <p className="mb-3 text-xs text-faint">
+                サイドバーに表示するウィジェットの有効/無効を切り替えます。
+                OpenCode 本体のプラグインとは別物です。
+              </p>
+              <AddonSettings />
+            </section>
+          </>
         )}
 
 
@@ -412,17 +420,6 @@ const [error, setError] = useState<string | null>(null);
         {(activeTab === "skills" ||
           activeTab === "mcp" ||
           activeTab === "plugins") && <ExtensionsSettings activeSection={activeTab} />}
-
-        {activeTab === "addons" && (
-          <section>
-            <h2 className="mb-3 text-sm font-semibold text-muted">アドオン</h2>
-            <p className="mb-3 text-xs text-faint">
-              サイドバーに表示するウィジェットの有効/無効を切り替えます。
-              OpenCode 本体のプラグインとは別物です。
-            </p>
-            <AddonSettings />
-          </section>
-        )}
 
         {activeTab === "connectivity" && (
           <>

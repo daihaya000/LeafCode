@@ -280,7 +280,8 @@ describe("SettingsView", () => {
     expect(screen.queryAllByText("プロジェクト")).toHaveLength(0);
     // 許可ルートは全般タブへ移設したので、エンジンタブには出ない。
     expect(screen.queryByText("許可ルート（allowlist）")).toBeNull();
-    expect(screen.queryByTestId("addon-settings")).toBeNull();
+    // アドオンはエンジンタブへ統合したので表示される。
+    expect(screen.getByTestId("addon-settings")).toBeTruthy();
     expect(screen.queryByTestId("host-log-panel")).toBeNull();
   });
 
@@ -366,10 +367,18 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("tab", { name: "アドオン" }));
+    fireEvent.click(screen.getByRole("tab", { name: "全般" }));
 
-    expect(await screen.findByTestId("addon-settings")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "外観" })).toBeTruthy();
     expect(screen.queryByText("接続状態")).toBeNull();
+  });
+
+  it("renders addon settings inside the エンジン tab", async () => {
+    render(<SettingsView />);
+
+    await screen.findByText("接続状態");
+    expect(screen.getByTestId("addon-settings")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "アドオン" })).toBeTruthy();
   });
 
   it("shows the admin/user role badge for each registered account", async () => {
@@ -512,7 +521,6 @@ describe("SettingsView", () => {
         "スキル",
         "MCP",
         "プラグイン",
-        "アドオン",
       ]),
     );
     const tabLabels = screen
@@ -529,7 +537,6 @@ describe("SettingsView", () => {
           "スキル",
           "MCP",
           "プラグイン",
-          "アドオン",
         ].includes(label),
       );
     expect(tabLabels).toEqual([
@@ -542,7 +549,6 @@ describe("SettingsView", () => {
       "スキル",
       "MCP",
       "プラグイン",
-      "アドオン",
     ]);
     expect(
       screen.getAllByRole("tab").map((button) => button.textContent),
@@ -552,6 +558,7 @@ describe("SettingsView", () => {
         "Git",
         "コスパランキング",
         "プロバイダー/モデル",
+        "アドオン",
       ]),
     );
   });
