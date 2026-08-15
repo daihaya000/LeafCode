@@ -41,8 +41,10 @@ describe("memoryPolarity", () => {
     ["MEMORY.md はコミットしない", "negative"],
     ["bat に非 ASCII を書いてはいけない", "negative"],
     ["この値は変更されません", "negative"],
+    ["テストをスキップしないでください", "negative"],
     ["MEMORY.md はコミットする", "affirmative"],
     ["bat は CRLF で保存します", "affirmative"],
+    ["テストはスキップしてください", "affirmative"],
   ])("classifies %s", (content, expected) => {
     expect(memoryPolarity(content)).toBe(expected);
   });
@@ -79,6 +81,15 @@ describe("memorySimilarityVerdict", () => {
     const verdict = memorySimilarityVerdict(
       "MEMORY.md はコミットしない。",
       "MEMORY.md はコミットする。",
+    );
+    expect(verdict.duplicate).toBe(false);
+    expect(verdict.reason).toBe("opposite-polarity");
+  });
+
+  it("never merges しないでください with してください (negative polite imperative)", () => {
+    const verdict = memorySimilarityVerdict(
+      "テストをスキップしないでください",
+      "テストはスキップしてください",
     );
     expect(verdict.duplicate).toBe(false);
     expect(verdict.reason).toBe("opposite-polarity");

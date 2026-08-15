@@ -26,7 +26,7 @@ const JP_TAIL_RE =
  * them would silently replace a rule with its negation.
  */
 const JP_NEGATIVE_TAIL_RE =
-  /(?:してはいけない|してはならない|すべきではない|しないこと|されていない|されません|されない|しません|ではない|しない|ません|ない)$/u;
+  /(?:してはいけない|してはならない|すべきではない|しないこと|されていない|されません|されない|しません|しないでください|しないで下さい|ではない|しない|ません|ない)$/u;
 
 /** Marker appended to a normalized negative proposition. */
 const NEGATIVE_MARKER = "nai";
