@@ -9,7 +9,7 @@ function mockFetch(responses: Record<string, unknown>) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/api/profiles/settings")) {
-        return new Response(JSON.stringify({ browserBridge: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true, autoInstallOnStartup: false }), {
+        return new Response(JSON.stringify({ browserBridge: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true, playwrightCliWrap: true, autoInstallOnStartup: false }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -285,6 +285,7 @@ describe("ProfilesSettings", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Browser Bridgeの自動セットアップ")).toBeTruthy();
       expect(screen.getByLabelText("Cursor CLI Proxyの自動セットアップ")).toBeTruthy();
+      expect(screen.getByLabelText("Playwright CLI Wrapの自動セットアップ")).toBeTruthy();
     });
     expect(
       (screen.getByLabelText("Browser Bridgeの自動セットアップ") as HTMLInputElement).checked,

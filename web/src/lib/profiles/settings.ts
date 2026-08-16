@@ -11,6 +11,7 @@ export type ProfileSetupSettings = {
   cursorAcp: boolean;
   claudeAuth: boolean;
   commandcodeAuth: boolean;
+  playwrightCliWrap: boolean;
   autoInstallOnStartup: boolean;
 };
 
@@ -38,6 +39,7 @@ const DEFAULT_SETTINGS: ProfileSetupSettings = {
   cursorAcp: true,
   claudeAuth: true,
   commandcodeAuth: true,
+  playwrightCliWrap: true,
   autoInstallOnStartup: false,
 };
 
@@ -53,6 +55,7 @@ export function readProfileSetupSettings(): ProfileSetupSettings {
       cursorAcp: parsed.cursorAcp !== false,
       claudeAuth: parsed.claudeAuth !== false,
       commandcodeAuth: parsed.commandcodeAuth !== false,
+      playwrightCliWrap: parsed.playwrightCliWrap !== false,
       autoInstallOnStartup: parsed.autoInstallOnStartup === true,
     };
   } catch {

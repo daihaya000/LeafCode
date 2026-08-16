@@ -39,8 +39,10 @@ export type WebUiDependencyOptions = {
   cursorAcp?: boolean;
   claudeAuth?: boolean;
   commandcodeAuth?: boolean;
+  playwrightCliWrap?: boolean;
 };
 
+const PLAYWRIGHT_CLI_WRAP_SKILL_REL = "skills/playwright-cli-wrap/SKILL.md";
 
 function configPath(dir: string): string {
   return ["opencode.jsonc", "opencode.json"]
@@ -57,6 +59,34 @@ function bundledVendorDir(vendorName: string, envVar?: string): string | undefin
     : path.resolve(process.cwd());
   const candidates = [path.join(root, "vendor", vendorName), path.join(root, "..", "vendor", vendorName)];
   return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+function leafcodeSearchRoots(): string[] {
+  const cwd = path.resolve(process.cwd());
+  const roots = process.env.LEAFCODE_ROOT?.trim()
+    ? [path.resolve(process.env.LEAFCODE_ROOT), cwd, path.dirname(cwd)]
+    : [cwd, path.dirname(cwd)];
+  return roots.filter((dir, index, all) => all.indexOf(dir) === index);
+}
+
+function playwrightCliWrapSkillSource(): string | undefined {
+  for (const root of leafcodeSearchRoots()) {
+    const candidate = path.join(root, "scripts", "playwright-cli-wrap", "SKILL.md");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function installPlaywrightCliWrapSkill(profileDir: string): string[] {
+  const source = playwrightCliWrapSkillSource();
+  if (!source) return [];
+  const target = path.join(profileDir, PLAYWRIGHT_CLI_WRAP_SKILL_REL);
+  const bundledHash = hashEntry(source);
+  const installedHash = readVendorVersion(profileDir, PLAYWRIGHT_CLI_WRAP_SKILL_REL);
+  if (fs.existsSync(target) && installedHash === bundledHash) return [];
+  copyEntry(source, target);
+  writeVendorVersion(profileDir, PLAYWRIGHT_CLI_WRAP_SKILL_REL, bundledHash);
+  return [PLAYWRIGHT_CLI_WRAP_SKILL_REL];
 }
 
 function copyEntry(source: string, target: string): void {
@@ -350,6 +380,9 @@ export function installWebUiDependencies(
   }
   if (options.commandcodeAuth !== false && bundledCommandcodeCli) {
     installed.push(...copyVendorFiles(profileDir, [bundledCommandcodeCli], ["plugin/commandcode-cli-proxy.js", "packages/commandcode-cli-proxy"]));
+  }
+  if (options.playwrightCliWrap !== false) {
+    installed.push(...installPlaywrightCliWrapSkill(profileDir));
   }
   const formattingOptions = {
     insertSpaces: true,

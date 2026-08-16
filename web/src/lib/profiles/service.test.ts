@@ -770,6 +770,7 @@ describe("installDependenciesOnStartup", () => {
       cursorAcp: true,
       claudeAuth: true,
       commandcodeAuth: true,
+      playwrightCliWrap: true,
       autoInstallOnStartup: true,
     });
     const created = createProfile({ name: "startup", from: "empty" }) as { kind: string };
@@ -789,6 +790,7 @@ describe("installDependenciesOnStartup", () => {
       cursorAcp: true,
       claudeAuth: true,
       commandcodeAuth: true,
+      playwrightCliWrap: true,
       autoInstallOnStartup: true,
     });
     expect(installDependenciesOnStartup()).toEqual({

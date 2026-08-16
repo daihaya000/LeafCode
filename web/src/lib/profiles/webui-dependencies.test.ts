@@ -33,6 +33,11 @@ beforeEach(() => {
   fs.mkdirSync(path.join(source, "vendor", "commandcode-cli-proxy", "packages", "commandcode-cli-proxy"), { recursive: true });
   fs.writeFileSync(path.join(source, "vendor", "commandcode-cli-proxy", "plugin", "commandcode-cli-proxy.js"), "export default {};");
   fs.writeFileSync(path.join(source, "vendor", "commandcode-cli-proxy", "packages", "commandcode-cli-proxy", "index.mjs"), "export default {};");
+  fs.mkdirSync(path.join(source, "scripts", "playwright-cli-wrap"), { recursive: true });
+  fs.writeFileSync(
+    path.join(source, "scripts", "playwright-cli-wrap", "SKILL.md"),
+    "---\nname: playwright-cli-wrap\n---\n# wrap fixture\n",
+  );
 });
 
 afterEach(() => {
@@ -54,7 +59,10 @@ describe("installWebUiDependencies", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-"));
     dirs.push(dir);
 
-    expect(installWebUiDependencies(dir, { commandcodeAuth: false })).toEqual(["mcp.browser-bridge"]);
+    expect(installWebUiDependencies(dir, { commandcodeAuth: false })).toEqual([
+      "skills/playwright-cli-wrap/SKILL.md",
+      "mcp.browser-bridge",
+    ]);
     const config = JSON.parse(fs.readFileSync(path.join(dir, "opencode.jsonc"), "utf8"));
     expect(config.mcp["browser-bridge"].command[0]).toBe("node");
     expect(config.mcp["browser-bridge"].command[1]).toBe(
@@ -98,7 +106,9 @@ describe("installWebUiDependencies", () => {
     const configPath = path.join(dir, "opencode.jsonc");
     fs.writeFileSync(configPath, '{ "mcp": { "browser-bridge": { "command": ["custom"] } } }');
 
-    expect(installWebUiDependencies(dir, { commandcodeAuth: false })).toEqual([]);
+    expect(installWebUiDependencies(dir, { commandcodeAuth: false })).toEqual([
+      "skills/playwright-cli-wrap/SKILL.md",
+    ]);
     expect(fs.readFileSync(configPath, "utf8")).toContain("custom");
   });
 
@@ -180,6 +190,7 @@ describe("installWebUiDependencies", () => {
       cursorAcp: false,
       claudeAuth: false,
       commandcodeAuth: false,
+      playwrightCliWrap: false,
     })).toEqual([]);
     expect(JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"))).toEqual({
       $schema: "https://opencode.ai/config.json",
@@ -200,6 +211,7 @@ describe("installWebUiDependencies", () => {
       "packages/claude-cli-proxy",
       "plugin/commandcode-cli-proxy.js",
       "packages/commandcode-cli-proxy",
+      "skills/playwright-cli-wrap/SKILL.md",
       "mcp.browser-bridge",
     ]);
     expect(fs.existsSync(path.join(target, "plugin", "claude-cli-proxy.js"))).toBe(true);
@@ -231,6 +243,7 @@ describe("installWebUiDependencies", () => {
     expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, commandcodeAuth: false })).toEqual([
       "plugin/claude-cli-proxy.js",
       "packages/claude-cli-proxy",
+      "skills/playwright-cli-wrap/SKILL.md",
       "provider.anthropic",
     ]);
     const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
@@ -268,6 +281,7 @@ describe("installWebUiDependencies", () => {
     expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, commandcodeAuth: false })).toEqual([
       "plugin/claude-cli-proxy.js",
       "packages/claude-cli-proxy",
+      "skills/playwright-cli-wrap/SKILL.md",
     ]);
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
     expect(config.provider.anthropic.name).toBe("Existing Anthropic");
@@ -281,6 +295,7 @@ describe("installWebUiDependencies", () => {
     expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false })).toEqual([
       "plugin/commandcode-cli-proxy.js",
       "packages/commandcode-cli-proxy",
+      "skills/playwright-cli-wrap/SKILL.md",
     ]);
     expect(fs.existsSync(path.join(target, "plugin", "commandcode-cli-proxy.js"))).toBe(true);
   });
@@ -350,11 +365,70 @@ describe("installWebUiDependencies", () => {
     const marker = JSON.parse(fs.readFileSync(path.join(target, ".webui-vendor-versions.json"), "utf8"));
     expect(marker).toHaveProperty("plugin/commandcode-cli-proxy.js");
     expect(marker).toHaveProperty("packages/commandcode-cli-proxy");
+    expect(marker).toHaveProperty("skills/playwright-cli-wrap/SKILL.md");
 
     // A profile without the marker still gets the file re-copied (legacy upgrade path).
     fs.rmSync(path.join(target, ".webui-vendor-versions.json"), { force: true });
     const legacyRound = installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
     expect(legacyRound).toContain("packages/commandcode-cli-proxy");
+  });
+
+  it("copies the playwright-cli-wrap skill into a new profile", () => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-pw-wrap-"));
+    dirs.push(target);
+
+    expect(installWebUiDependencies(target, {
+      browserBridge: false,
+      cursorAcp: false,
+      claudeAuth: false,
+      commandcodeAuth: false,
+    })).toEqual(["skills/playwright-cli-wrap/SKILL.md"]);
+    const skillPath = path.join(target, "skills", "playwright-cli-wrap", "SKILL.md");
+    expect(fs.readFileSync(skillPath, "utf8")).toContain("name: playwright-cli-wrap");
+  });
+
+  it("skips playwright-cli-wrap when disabled", () => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-pw-wrap-off-"));
+    dirs.push(target);
+
+    expect(installWebUiDependencies(target, {
+      browserBridge: false,
+      cursorAcp: false,
+      claudeAuth: false,
+      commandcodeAuth: false,
+      playwrightCliWrap: false,
+    })).toEqual([]);
+    expect(fs.existsSync(path.join(target, "skills", "playwright-cli-wrap", "SKILL.md"))).toBe(false);
+  });
+
+  it("updates an already-installed playwright-cli-wrap skill when the bundle hash changes", () => {
+    const skillPath = path.join(process.env.LEAFCODE_ROOT!, "scripts", "playwright-cli-wrap", "SKILL.md");
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-pw-wrap-update-"));
+    dirs.push(target);
+
+    installWebUiDependencies(target, {
+      browserBridge: false,
+      cursorAcp: false,
+      claudeAuth: false,
+      commandcodeAuth: false,
+    });
+    const secondRound = installWebUiDependencies(target, {
+      browserBridge: false,
+      cursorAcp: false,
+      claudeAuth: false,
+      commandcodeAuth: false,
+    });
+    expect(secondRound).toEqual([]);
+
+    fs.writeFileSync(skillPath, "---\nname: playwright-cli-wrap\n---\n# wrap fixture updated\n");
+    const thirdRound = installWebUiDependencies(target, {
+      browserBridge: false,
+      cursorAcp: false,
+      claudeAuth: false,
+      commandcodeAuth: false,
+    });
+    expect(thirdRound).toEqual(["skills/playwright-cli-wrap/SKILL.md"]);
+    expect(fs.readFileSync(path.join(target, "skills", "playwright-cli-wrap", "SKILL.md"), "utf8")).toContain("updated");
   });
 
   it("migrates provider.cursor-acp to cursor and agent model references", () => {

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   QWEN_NATIVE_DEFAULTS,
+  readProfileSetupSettings,
   readQwenNativeSettings,
   writeQwenNativeSettings,
 } from "./settings";
@@ -112,5 +113,38 @@ describe("readQwenNativeSettings / writeQwenNativeSettings", () => {
       "utf8",
     );
     expect(readQwenNativeSettings()).toEqual(QWEN_NATIVE_DEFAULTS);
+  });
+});
+
+describe("readProfileSetupSettings", () => {
+  it("defaults playwrightCliWrap to true when the saved file omits it", () => {
+    fs.writeFileSync(
+      path.join(testDir, "profile-setup-settings.json"),
+      JSON.stringify({
+        browserBridge: true,
+        cursorAcp: true,
+        claudeAuth: true,
+        commandcodeAuth: true,
+        autoInstallOnStartup: false,
+      }),
+      "utf8",
+    );
+    expect(readProfileSetupSettings().playwrightCliWrap).toBe(true);
+  });
+
+  it("honors playwrightCliWrap: false", () => {
+    fs.writeFileSync(
+      path.join(testDir, "profile-setup-settings.json"),
+      JSON.stringify({
+        browserBridge: true,
+        cursorAcp: true,
+        claudeAuth: true,
+        commandcodeAuth: true,
+        playwrightCliWrap: false,
+        autoInstallOnStartup: false,
+      }),
+      "utf8",
+    );
+    expect(readProfileSetupSettings().playwrightCliWrap).toBe(false);
   });
 });

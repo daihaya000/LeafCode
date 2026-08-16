@@ -48,6 +48,7 @@ type ProfileSetupSettings = {
   cursorAcp: boolean;
   claudeAuth: boolean;
   commandcodeAuth: boolean;
+  playwrightCliWrap: boolean;
   autoInstallOnStartup: boolean;
 };
 
@@ -586,12 +587,13 @@ export function ProfilesSettings() {
           <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">
             新規作成・複製時にLeafCode連携用の依存ファイルと設定を自動配置します。
           </p>
-          <div className="mt-3 grid gap-2 lg:grid-cols-4">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {([
               ["browserBridge", "Browser Bridge", "ブラウザ操作用のMCPを追加"],
               ["cursorAcp", "Cursor CLI Proxy", "Cursor連携プラグインとプロバイダーを追加"],
               ["claudeAuth", "Claude CLI Proxy", "Claudeサブスクリプション認証プラグインを追加"],
               ["commandcodeAuth", "CommandCode CLI Proxy", "CommandCode CLI経由の認証・ローカルプロキシを追加"],
+              ["playwrightCliWrap", "Playwright CLI Wrap", "Windows で playwright-cli がハングしない回避スキルを追加"],
             ] as const).map(([key, label, description]) => (
               <label
                 key={key}
