@@ -93,6 +93,7 @@ import {
   stopProcessTreeGracefully,
   stopWebTreeSync,
 } from './process-stop.js';
+import { createJobSupervisor } from './windows-job.js';
 // Reuse the build guard's listener identification so the stop path and the
 // build guard agree on what counts as "our" production WebUI (never kill an
 // unrelated app that happens to occupy the port). Import-safe: the guard only
@@ -389,6 +390,32 @@ const opencodeUpgrader = createOpencodeUpgrader({
 });
 let quitting = false;
 let restartingServices = false;
+
+const childJobs = createJobSupervisor({
+  log: (message) => log(message),
+  error: (message) => error(message),
+  dataDir: DATA_DIR,
+});
+const jobAdoptTimers = new Map();
+
+function adoptChildJob(id, pid) {
+  childJobs.adopt(id, pid);
+  const previous = jobAdoptTimers.get(id);
+  if (previous) clearTimeout(previous);
+  const timer = setTimeout(() => {
+    jobAdoptTimers.delete(id);
+    if (!quitting) childJobs.adopt(id, pid);
+  }, 400);
+  timer.unref?.();
+  jobAdoptTimers.set(id, timer);
+}
+
+function dropChildJob(id) {
+  const previous = jobAdoptTimers.get(id);
+  if (previous) clearTimeout(previous);
+  jobAdoptTimers.delete(id);
+  childJobs.drop(id);
+}
 
 /** WebUI self-healing. Expected exits (manual restart/quit) never consume it. */
 const MAX_WEB_RESTARTS = 5;
@@ -711,6 +738,7 @@ function handleOpencodeExit(child, code, signal) {
   // listener behind. Planned or stale exits must not trigger recovery work.
   if (exitDecision.shouldReapPortHolders) {
     try {
+      dropChildJob('opencode');
       reapOpencodePortHolders(exitedPid, {
         port: OPENCODE_PORT,
         log,
@@ -814,6 +842,7 @@ function spawnOpencode(opencodePath) {
     },
   );
   opencodeProc = child;
+  adoptChildJob('opencode', child.pid);
 
   child.on('error', (err) => {
     error(`OpenCode spawn error: ${err.message}`);
@@ -946,6 +975,7 @@ function spawnCaddy() {
       windowsHide: true,
     },
   );
+  adoptChildJob('caddy', caddyProc.pid);
 
   caddyProc.on('error', (err) => {
     error(`Caddy spawn error: ${err.message}`);
@@ -964,6 +994,7 @@ function spawnCaddy() {
       log(`Caddy exited (code=${code}, signal=${signal ?? 'none'})`);
     }
     caddyProc = null;
+    dropChildJob('caddy');
 
     if (abnormal && shouldRestartCaddy()) {
       log('Caddy crashed — attempting auto-restart…');
@@ -1095,12 +1126,14 @@ function buildWebProductionInternal(reason = 'missing') {
       env: { ...process.env },
     });
     webBuildProc = child;
+    adoptChildJob('build', child.pid);
     void refreshStatusMenu();
     let settled = false;
     const finish = (err) => {
       if (settled) return;
       settled = true;
       if (webBuildProc === child) webBuildProc = null;
+      dropChildJob('build');
       void refreshStatusMenu();
       if (err) reject(err);
       else resolve();
@@ -1249,6 +1282,7 @@ async function spawnWeb() {
     },
   });
   webProc = child;
+  adoptChildJob('web', child.pid);
   webStartedAt = Date.now();
   webHealthFailures = 0;
   armWebStableReset(child);
@@ -1273,6 +1307,7 @@ async function spawnWeb() {
     }
     if (wasCurrent) {
       webProc = null;
+      dropChildJob('web');
       if (webStableTimer) {
         clearTimeout(webStableTimer);
         webStableTimer = null;
@@ -1726,6 +1761,8 @@ async function stopWebOnly({ preserveRestartBudget = false } = {}) {
     hardKillTree(pid);
   }
   webProc = null;
+  dropChildJob('web');
+  dropChildJob('build');
   await httpWaiter.waitForPortFree(WEBUI_PORT);
 }
 
@@ -1743,6 +1780,7 @@ async function stopOpencodeOnly() {
     isAlive: isProcessAlive,
     hardKill: hardKillTree,
   });
+  dropChildJob('opencode');
   await httpWaiter.waitForPortFree(OPENCODE_PORT);
 }
 
@@ -1796,6 +1834,10 @@ async function stopChildren() {
   webProc = null;
   webBuildProc = null;
   caddyProc = null;
+  dropChildJob('opencode');
+  dropChildJob('web');
+  dropChildJob('build');
+  dropChildJob('caddy');
 
   // Stop independent services and wait for their ports concurrently. Normal
   // quit does not need OpenCode to finish before the WebUI/Caddy trees begin
@@ -2103,6 +2145,7 @@ async function quit() {
     // a stale one. A rejection still propagates, preserving the exit(1) path.
     removeLock(LOCK_FILE, { removeControlFile });
   }
+  childJobs.disposeSync();
   try {
     if (systray) {
       await systray.kill(false);
@@ -2159,6 +2202,7 @@ function stopWebTreeOnExit() {
 function onHostExit() {
   if (quitting) return;
   stopWebTreeOnExit();
+  childJobs.disposeSync();
   removeLock(LOCK_FILE, { removeControlFile });
 }
 
@@ -2268,6 +2312,7 @@ function wireTrayLifecycle() {
     // Drop the reference so refreshStatusMenu stops pushing to the dead helper
     // until scheduleTrayRestart installs a fresh one.
     systray = null;
+    dropChildJob('tray');
     if (quitting) return;
     error(
       `Tray helper exited unexpectedly (code=${code}, signal=${signal ?? 'none'}); restoring icon`,
@@ -2298,6 +2343,7 @@ async function startTray() {
       await systray.ready();
       log(`Tray host ready (copyDir=${copyDir})`);
       wireTrayLifecycle();
+      adoptChildJob('tray', systray.process?.pid);
       return;
     } catch (err) {
       lastErr = err;
@@ -2310,6 +2356,7 @@ async function startTray() {
         // best effort
       }
       systray = null;
+      dropChildJob('tray');
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -2352,6 +2399,7 @@ async function main() {
 
   ensureDataDir();
   await acquireLock();
+  childJobs.start();
 
   // Write a header line to the disk log so each host run is identifiable in
   // post-mortem analysis (version / PID / start time / mode). Goes through the
@@ -2362,6 +2410,9 @@ async function main() {
     quit().catch(() => process.exit(1));
   });
   process.on('SIGTERM', () => {
+    quit().catch(() => process.exit(1));
+  });
+  process.on('SIGBREAK', () => {
     quit().catch(() => process.exit(1));
   });
   process.on('exit', onHostExit);
@@ -2382,6 +2433,7 @@ async function main() {
     await closeControlServer(controlServer);
     controlServer = null;
     removeControlFile();
+    childJobs.disposeSync();
     removeLock(LOCK_FILE, { removeControlFile });
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -2419,8 +2471,9 @@ async function main() {
   try {
     await startTray();
   } catch (err) {
-    removeLock(LOCK_FILE, { removeControlFile });
     await stopChildren();
+    childJobs.disposeSync();
+    removeLock(LOCK_FILE, { removeControlFile });
     error(`Tray failed to start: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
@@ -2447,6 +2500,7 @@ async function main() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((err) => {
+    childJobs.disposeSync();
     removeLock(LOCK_FILE, { removeControlFile });
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);

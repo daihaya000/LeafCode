@@ -433,6 +433,16 @@ test('index.js imports process-stop helpers that cold start still calls', () => 
   }
 });
 
+test('index.js starts a Windows kill-on-close job supervisor for children', () => {
+  const src = readFileSync(fileURLToPath(new URL('./index.js', import.meta.url)), 'utf8');
+  assert.match(src, /from '\.\/windows-job\.js'/);
+  assert.match(src, /createJobSupervisor\(/);
+  assert.match(src, /childJobs\.start\(\)/);
+  assert.match(src, /adoptChildJob\('opencode'/);
+  assert.match(src, /dropChildJob\('opencode'\)/);
+  assert.match(src, /childJobs\.disposeSync\(\)/);
+});
+
 test('index.js constructs factories that cold start calls as instances', () => {
   const src = readFileSync(fileURLToPath(new URL('./index.js', import.meta.url)), 'utf8');
   for (const [factory, instance] of [

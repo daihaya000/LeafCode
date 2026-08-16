@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -26,6 +27,13 @@ function findCsc() {
 }
 
 const csc = isWindows ? findCsc() : null;
+
+test("Launcher.cs assigns the batch process to a kill-on-close job", () => {
+  const src = readFileSync(launcherSource, "utf8");
+  assert.match(src, /CreateJobObject/);
+  assert.match(src, /JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE/);
+  assert.match(src, /AssignProcessToJobObject/);
+});
 
 /** Compile Launcher.cs into `outExe` (no icon: keeps the test fast and
  * independent of scripts/build-launcher.bat's icon-extraction step). */
