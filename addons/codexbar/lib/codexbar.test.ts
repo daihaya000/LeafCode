@@ -406,6 +406,10 @@ describe("providerIconSrc", () => {
     expect(providerIconSrc("qwen-cloud")).toBe("/icons/qwen.png");
     expect(providerIconSrc("qwen")).toBe("/icons/qwen.png");
   });
+
+  it("maps LM Studio brand key to the bundled lmstudio.png icon", () => {
+    expect(providerIconSrc("lmstudio")).toBe("/icons/lmstudio.png");
+  });
 });
 
 describe("providerIconSrcForOpencodeId", () => {
@@ -421,6 +425,7 @@ describe("providerIconSrcForOpencodeId", () => {
     expect(providerIconSrcForOpencodeId("synthetic")).toBe("/icons/synthetic.png");
     expect(providerIconSrcForOpencodeId("qwen-cloud")).toBe("/icons/qwen.png");
     expect(providerIconSrcForOpencodeId("qwen")).toBe("/icons/qwen.png");
+    expect(providerIconSrcForOpencodeId("lmstudio")).toBe("/icons/lmstudio.png");
     expect(providerIconSrcForOpencodeId("mystery")).toBeNull();
     expect(providerIconSrcForOpencodeId("")).toBeNull();
   });

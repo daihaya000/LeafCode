@@ -193,6 +193,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   "qwen-cloud": "Qwen Cloud",
   qwen: "Qwen Cloud",
   openrouter: "OpenRouter",
+  lmstudio: "LM Studio",
 };
 
 export function providerLabel(id: string): string {
@@ -216,6 +217,7 @@ const PROVIDER_ICONS: Record<string, string> = {
   "qwen-cloud": "qwen.png",
   qwen: "qwen.png",
   openrouter: "openrouter.svg",
+  lmstudio: "lmstudio.png",
 };
 
 /** Public path of a provider's icon, or null when there is no bundled icon. */
@@ -247,6 +249,7 @@ const OPENCODE_TO_CODEXBAR: Record<string, string> = {
   "qwen-cloud": "qwen-cloud",
   qwen: "qwen",
   openrouter: "openrouter",
+  lmstudio: "lmstudio",
 };
 
 /** Public path of a brand icon for an OpenCode provider id, or null. */
