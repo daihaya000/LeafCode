@@ -707,7 +707,7 @@ export function ProfilesSettings() {
                       )}
                       {p.exists && (
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           className="justify-center"
                           aria-label={`${p.name}にLeafCode依存を適用`}
@@ -720,7 +720,7 @@ export function ProfilesSettings() {
                       )}
                       {p.active && p.exists && (
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           className="justify-center"
                           aria-label={`${p.name}の設定ファイルを開く`}
@@ -733,7 +733,7 @@ export function ProfilesSettings() {
                       )}
                       {p.active && p.exists && (
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           className="justify-center"
                           aria-label={`${p.name}のフォルダを開く`}
@@ -757,7 +757,7 @@ export function ProfilesSettings() {
                         </Button>
                       ) : (
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           className="justify-center"
                           aria-label={`${p.name}の名前を変更`}
@@ -772,7 +772,7 @@ export function ProfilesSettings() {
                       )}
                       {!p.active && (
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           className="justify-center"
                           aria-label={`${p.name}をゴミ箱へ移動`}
@@ -819,7 +819,7 @@ export function ProfilesSettings() {
                 )}
                 {p.exists && (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     className="justify-center"
                     aria-label={`${p.name}にLeafCode依存を適用`}
@@ -832,7 +832,7 @@ export function ProfilesSettings() {
                 )}
                 {p.active && p.exists && (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     className="justify-center"
                     aria-label={`${p.name}の設定ファイルを開く`}
@@ -845,7 +845,7 @@ export function ProfilesSettings() {
                 )}
                 {p.active && p.exists && (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     className="justify-center"
                     aria-label={`${p.name}のフォルダを開く`}
@@ -857,7 +857,7 @@ export function ProfilesSettings() {
                   </Button>
                 )}
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   className="justify-center"
                   aria-label={`${p.name}の名前を変更`}
@@ -871,7 +871,7 @@ export function ProfilesSettings() {
                 </Button>
                 {!p.active && (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     className="justify-center"
                     aria-label={`${p.name}をゴミ箱へ移動`}

@@ -148,7 +148,7 @@ export function NextTaskSuggest({
       <div className="flex items-center gap-2">
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
           busy={busy}
           disabled={!canGenerate}
