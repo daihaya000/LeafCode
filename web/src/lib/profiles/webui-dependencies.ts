@@ -16,9 +16,13 @@ const BROKER_TOKEN = "{env:LEAFCODE_BROWSER_BROKER_TOKEN}";
  * available in every newly-created OpenCode profile.
  */
 export function webUiMcpEntry(): Record<string, unknown> {
-  const root = process.env.LEAFCODE_ROOT?.trim()
-    ? path.resolve(process.env.LEAFCODE_ROOT)
-    : path.resolve(process.cwd());
+  const cwd = path.resolve(process.cwd());
+  const roots = process.env.LEAFCODE_ROOT?.trim()
+    ? [path.resolve(process.env.LEAFCODE_ROOT)]
+    : [cwd, path.dirname(cwd)];
+  const root = roots.find((candidate) => fs.existsSync(
+    path.join(candidate, "browser-bridge", "mcp", "server.mjs"),
+  )) ?? roots[0];
   return {
     type: "local",
     command: ["node", path.join(root, "browser-bridge", "mcp", "server.mjs")],

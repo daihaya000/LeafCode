@@ -57,10 +57,39 @@ describe("installWebUiDependencies", () => {
     expect(installWebUiDependencies(dir, { commandcodeAuth: false })).toEqual(["mcp.browser-bridge"]);
     const config = JSON.parse(fs.readFileSync(path.join(dir, "opencode.jsonc"), "utf8"));
     expect(config.mcp["browser-bridge"].command[0]).toBe("node");
+    expect(config.mcp["browser-bridge"].command[1]).toBe(
+      path.join(process.env.LEAFCODE_ROOT!, "browser-bridge", "mcp", "server.mjs"),
+    );
     expect(config.mcp["browser-bridge"].environment).toEqual({
       LEAFCODE_BROWSER_BROKER: "{env:LEAFCODE_BROWSER_BROKER}",
       LEAFCODE_BROWSER_BROKER_TOKEN: "{env:LEAFCODE_BROWSER_BROKER_TOKEN}",
     });
+  });
+
+  it("resolves Browser Bridge next to a production web directory", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-root-"));
+    const webDir = path.join(root, "web");
+    const serverPath = path.join(root, "browser-bridge", "mcp", "server.mjs");
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
+    dirs.push(root, target);
+    fs.mkdirSync(webDir, { recursive: true });
+    fs.mkdirSync(path.dirname(serverPath), { recursive: true });
+    fs.writeFileSync(serverPath, "");
+
+    const previousCwd = process.cwd();
+    const configuredRoot = process.env.LEAFCODE_ROOT;
+    delete process.env.LEAFCODE_ROOT;
+    process.chdir(webDir);
+    try {
+      installWebUiDependencies(target, { commandcodeAuth: false });
+    } finally {
+      process.chdir(previousCwd);
+      if (configuredRoot === undefined) delete process.env.LEAFCODE_ROOT;
+      else process.env.LEAFCODE_ROOT = configuredRoot;
+    }
+
+    const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
+    expect(config.mcp["browser-bridge"].command[1]).toBe(serverPath);
   });
 
   it("does not overwrite an existing Browser Bridge configuration", () => {
