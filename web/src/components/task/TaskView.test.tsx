@@ -4350,12 +4350,15 @@ describe("TaskView voice input", () => {
       Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
     });
 
-    // At the first message, 一つ前 is a no-op but the buttons stay visible.
+    // With no previous user message, 一つ前 falls back to the first message.
     fireEvent.scroll(scroller);
     expect(screen.getByLabelText("最初のユーザーメッセージへ")).not.toBeNull();
     expect(screen.getByLabelText("一つ前のユーザーメッセージへ")).not.toBeNull();
     fireEvent.click(screen.getByLabelText("一つ前のユーザーメッセージへ"));
-    expect(scroller.scrollTo).not.toHaveBeenCalled();
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({
+      top: 24 - 4,
+      behavior: "smooth",
+    });
 
     // Scrolled to the last message: clicking 最初 jumps to the first.
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 200, writable: true });
@@ -4410,12 +4413,14 @@ describe("TaskView voice input", () => {
       Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
     });
 
-    // At the first user message, 一つ前 is a no-op but the button stays
-    // visible for consecutive presses.
+    // With no previous user message, 一つ前 falls back to the first message.
     fireEvent.scroll(scroller);
     expect(screen.getByLabelText("一つ前のユーザーメッセージへ")).not.toBeNull();
     fireEvent.click(screen.getByLabelText("一つ前のユーザーメッセージへ"));
-    expect(scroller.scrollTo).not.toHaveBeenCalled();
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({
+      top: 24 - 4,
+      behavior: "smooth",
+    });
 
     // Scrolled so that m3 is at the top line (scrollTop 200 => line 204,
     // m3 top 224 is below, m2 top 124 is above): previous user message = m1.
@@ -4435,6 +4440,44 @@ describe("TaskView voice input", () => {
     expect(screen.getByLabelText("最初のユーザーメッセージへ")).not.toBeNull();
     expect(screen.getByLabelText("一つ後のユーザーメッセージへ")).not.toBeNull();
     expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
+  });
+
+  it("treats a user message exactly at the top line as the current message", async () => {
+    const mkUser = (id: string) => ({
+      info: { id, role: "user", time: { created: Date.now() } },
+      parts: [{ id: `p-${id}`, messageID: id, type: "text", text: id }],
+    });
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      loaded: true,
+      messages: [mkUser("m1"), mkUser("m2"), mkUser("m3")],
+      visibleMessages: [mkUser("m1"), mkUser("m2"), mkUser("m3")],
+      status: { type: "idle" },
+      permissions: [],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const scroller = screen.getByTestId("message-scroller") as HTMLDivElement;
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 500 });
+    // m2's offsetTop is 124, so scrollTop 120 places it exactly at the 4px top line.
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 120, writable: true });
+    const wrappers = Array.from(scroller.querySelectorAll("[data-message-id]"));
+    wrappers.forEach((el, i) => {
+      Object.defineProperty(el, "offsetTop", { configurable: true, value: 24 + i * 100 });
+    });
+    (scroller.scrollTo as unknown as ReturnType<typeof vi.fn>).mockClear();
+
+    fireEvent.scroll(scroller);
+    fireEvent.click(screen.getByLabelText("一つ前のユーザーメッセージへ"));
+
+    // The previous message is m1 (top 24), not m2 (already at the line).
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({
+      top: 120 + 24 - 124,
+      behavior: "smooth",
+    });
   });
 
   it("jumps to the next user message and stays clickable at every position", async () => {

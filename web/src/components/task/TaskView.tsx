@@ -2563,10 +2563,10 @@ export function TaskView({
     let idx = currentMessageIdxRef.current;
     const line = el.scrollTop + 4;
     const elAt = (i: number) => els.get(userMessageIdsRef.current[i]);
-    while (idx < userMessageIdsRef.current.length && (elAt(idx)?.offsetTop ?? Infinity) <= line) {
+    while (idx < userMessageIdsRef.current.length && (elAt(idx)?.offsetTop ?? Infinity) < line) {
       idx += 1;
     }
-    while (idx > 0 && (elAt(idx - 1)?.offsetTop ?? -Infinity) > line) {
+    while (idx > 0 && (elAt(idx - 1)?.offsetTop ?? -Infinity) >= line) {
       idx -= 1;
     }
     if (idx >= userMessageIdsRef.current.length) idx = userMessageIdsRef.current.length - 1;
@@ -5184,7 +5184,20 @@ export function TaskView({
                     const el = scrollRef.current;
                     if (!el) return;
                     const target = currentMessageIdxRef.current - 1;
-                    if (target < 0) return;
+                    if (target < 0) {
+                      // 前のユーザーメッセージが無ければ、最初のユーザー
+                      // メッセージへフォールバックする。
+                      const firstEl = messageElsRef.current.get(userMessageIdsRef.current[0]);
+                      if (!firstEl) return;
+                      const line = el.scrollTop + 4;
+                      el.scrollTo({
+                        top: el.scrollTop + firstEl.offsetTop - line,
+                        behavior: "smooth",
+                      });
+                      currentMessageIdxRef.current = 0;
+                      stickRef.current = false;
+                      return;
+                    }
                     const targetEl = messageElsRef.current.get(userMessageIdsRef.current[target]);
                     if (!targetEl) return;
                     const line = el.scrollTop + 4;
