@@ -44,6 +44,15 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     if (hasWebSocket && socket?.readyState === WebSocketImpl.OPEN) socket.send(JSON.stringify(message));
   };
 
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+  }
+
   async function load() {
     const stored = await chromeApi.storage.local.get(STORAGE_KEY);
     state = { ...state, ...(stored[STORAGE_KEY] ?? {}), sharedTabs: stored[STORAGE_KEY]?.sharedTabs ?? {} };
@@ -122,13 +131,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
         socket = null;
         pairingRequested = false;
       }
-      if (!reconnectTimer && !wasIntentional) {
-        reconnectTimer = setTimeout(() => {
-          reconnectTimer = null;
-          connect();
-        }, reconnectDelay);
-        reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
-      }
+      if (!wasIntentional) scheduleReconnect();
     });
   }
 
@@ -145,9 +148,9 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     reconnectDelay = 500;
     state = { ...state, deviceKey: null };
     await persist();
-    // Immediately offer a fresh pairing request so re-approving from the
-    // WebUI is the only step needed to recover (no popup interaction).
-    connect();
+    // Use the normal backoff so a stale key cannot create a tight reconnect
+    // loop while the Broker is still rejecting it.
+    scheduleReconnect();
   }
 
   async function setBrokerUrl(url) {

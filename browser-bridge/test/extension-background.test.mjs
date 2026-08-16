@@ -207,9 +207,9 @@ test('forgets a stale pairing when the Broker rejects it as NOT_PAIRED instead o
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(controller.publicState().paired, false);
   assert.equal(stored.browserBridge.deviceKey, null);
-  // Rather than looping "reconnecting" forever with a stale key, forgetPairing()
-  // immediately offers a fresh pairing request on a brand-new socket so
-  // re-approving from the WebUI is the only step needed to recover.
+  // A stale key must not create a tight reconnect loop while the Broker rejects it.
+  assert.equal(FakeSocket.instances.length, 1);
+  await new Promise((resolve) => setTimeout(resolve, 550));
   assert.equal(FakeSocket.instances.length, 2);
   const freshSocket = FakeSocket.instances[1];
   freshSocket.emit('open');
