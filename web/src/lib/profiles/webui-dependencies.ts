@@ -290,7 +290,7 @@ export function installWebUiDependencies(
   const activeDir = opencodeConfigDir();
   const bundledDir = bundledVendorDir("cursor-cli-proxy", "LEAFCODE_CURSOR_CLI_PROXY_DIR");
   const bundledClaudeAuth = bundledVendorDir("claude-cli-proxy", "LEAFCODE_CLAUDE_CLI_PROXY_DIR");
-  const bundledCommandcodeCli = bundledVendorDir("commandcode-cli-proxy");
+  const bundledCommandcodeCli = bundledVendorDir("commandcode-cli-proxy", "LEAFCODE_COMMANDCODE_CLI_PROXY_DIR");
   const sourceDirs = [activeDir, bundledDir].filter(
     (dir, index, all): dir is string => Boolean(dir) && all.indexOf(dir) === index,
   );

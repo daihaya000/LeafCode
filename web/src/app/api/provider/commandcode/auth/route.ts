@@ -11,7 +11,12 @@ export const dynamic = "force-dynamic";
 // CLI; WebUI never stores an API key itself. This mirrors the auth-file
 // discovery logic in vendor/commandcode-cli-proxy so the badge can reflect the
 // real login state without duplicating the proxy.
-const secretPath = () => path.join(os.homedir(), ".commandcode", "auth.json");
+function getConfigDir(): string {
+  const override = process.env.COMMANDCODE_CONFIG_DIR;
+  return override && override.length > 0 ? override : path.join(os.homedir(), ".commandcode");
+}
+
+const secretPath = () => path.join(getConfigDir(), "auth.json");
 
 function readSecrets(): Record<string, unknown> {
   try {

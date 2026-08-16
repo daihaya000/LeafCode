@@ -9,19 +9,26 @@ const dirs: string[] = [];
 let previousConfigDir: string | undefined;
 let previousCursorCliProxyDir: string | undefined;
 let previousClaudeCliProxyDir: string | undefined;
+let previousCommandcodeCliProxyDir: string | undefined;
 let previousRoot: string | undefined;
 
 beforeEach(() => {
   previousConfigDir = process.env.OPENCODE_CONFIG_DIR;
   previousCursorCliProxyDir = process.env.LEAFCODE_CURSOR_CLI_PROXY_DIR;
   previousClaudeCliProxyDir = process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR;
+  previousCommandcodeCliProxyDir = process.env.LEAFCODE_COMMANDCODE_CLI_PROXY_DIR;
   previousRoot = process.env.LEAFCODE_ROOT;
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-source-"));
   dirs.push(source);
   process.env.OPENCODE_CONFIG_DIR = source;
   process.env.LEAFCODE_CURSOR_CLI_PROXY_DIR = path.join(source, "bundled");
   process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR = path.join(source, "claude-bundled");
+  process.env.LEAFCODE_COMMANDCODE_CLI_PROXY_DIR = path.join(source, "commandcode-bundled");
   process.env.LEAFCODE_ROOT = source;
+  fs.mkdirSync(path.join(source, "commandcode-bundled", "plugin"), { recursive: true });
+  fs.mkdirSync(path.join(source, "commandcode-bundled", "packages", "commandcode-cli-proxy"), { recursive: true });
+  fs.writeFileSync(path.join(source, "commandcode-bundled", "plugin", "commandcode-cli-proxy.js"), "export default {};");
+  fs.writeFileSync(path.join(source, "commandcode-bundled", "packages", "commandcode-cli-proxy", "index.mjs"), "export default {};");
   fs.mkdirSync(path.join(source, "vendor", "commandcode-cli-proxy", "plugin"), { recursive: true });
   fs.mkdirSync(path.join(source, "vendor", "commandcode-cli-proxy", "packages", "commandcode-cli-proxy"), { recursive: true });
   fs.writeFileSync(path.join(source, "vendor", "commandcode-cli-proxy", "plugin", "commandcode-cli-proxy.js"), "export default {};");
@@ -35,6 +42,8 @@ afterEach(() => {
   else process.env.LEAFCODE_CURSOR_CLI_PROXY_DIR = previousCursorCliProxyDir;
   if (previousClaudeCliProxyDir === undefined) delete process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR;
   else process.env.LEAFCODE_CLAUDE_CLI_PROXY_DIR = previousClaudeCliProxyDir;
+  if (previousCommandcodeCliProxyDir === undefined) delete process.env.LEAFCODE_COMMANDCODE_CLI_PROXY_DIR;
+  else process.env.LEAFCODE_COMMANDCODE_CLI_PROXY_DIR = previousCommandcodeCliProxyDir;
   if (previousRoot === undefined) delete process.env.LEAFCODE_ROOT;
   else process.env.LEAFCODE_ROOT = previousRoot;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -247,6 +256,21 @@ describe("installWebUiDependencies", () => {
     expect(fs.existsSync(path.join(target, "plugin", "commandcode-cli-proxy.js"))).toBe(true);
   });
 
+  it("copies the CommandCode plugin from the env-override bundle dir", () => {
+    const bundle = process.env.LEAFCODE_COMMANDCODE_CLI_PROXY_DIR!;
+    fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
+    fs.mkdirSync(path.join(bundle, "packages", "commandcode-cli-proxy"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "plugin", "commandcode-cli-proxy.js"), "export default 'from-bundle';\n");
+    fs.writeFileSync(path.join(bundle, "packages", "commandcode-cli-proxy", "index.mjs"), "export default 'from-bundle';\n");
+
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
+    dirs.push(target);
+    installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
+
+    expect(fs.readFileSync(path.join(target, "plugin", "commandcode-cli-proxy.js"), "utf8")).toContain("from-bundle");
+    expect(fs.readFileSync(path.join(target, "packages", "commandcode-cli-proxy", "index.mjs"), "utf8")).toContain("from-bundle");
+  });
+
   it("removes the legacy CommandCode plugin when installing the CLI proxy", () => {
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
@@ -267,21 +291,21 @@ describe("installWebUiDependencies", () => {
   });
 
   it("updates an already-installed CommandCode CLI Proxy when the bundle hash changes", () => {
-    const bundle = process.env.LEAFCODE_ROOT!;
-    const vendorRoot = path.join(bundle, "vendor", "commandcode-cli-proxy");
-    const src = fs.readFileSync(path.join(vendorRoot, "packages", "commandcode-cli-proxy", "index.mjs"), "utf8");
+    const bundle = process.env.LEAFCODE_COMMANDCODE_CLI_PROXY_DIR!;
+    const indexPath = path.join(bundle, "packages", "commandcode-cli-proxy", "index.mjs");
+    const src = fs.readFileSync(indexPath, "utf8");
 
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-update-"));
     dirs.push(target);
 
     installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
 
-    // Same bundle → no re-install on second run (idempotent).
+    // Same bundle 竊・no re-install on second run (idempotent).
     const secondRound = installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
     expect(secondRound).toEqual([]);
 
-    // Bundle content changes → existing profile is updated.
-    fs.writeFileSync(path.join(vendorRoot, "packages", "commandcode-cli-proxy", "index.mjs"), src + "\n// updated\n");
+    // Bundle content changes 竊・existing profile is updated.
+    fs.writeFileSync(indexPath, src + "\n// updated\n");
 
     const thirdRound = installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
     expect(thirdRound).toContain("packages/commandcode-cli-proxy");
