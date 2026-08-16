@@ -10,6 +10,8 @@ import {
   Cpu,
   GitBranch,
   Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRight,
   Plus,
   Settings,
@@ -48,12 +50,14 @@ type SidebarConfirmation = {
 
 const EXPANDED_KEY = "webui.sidebar.expanded";
 const WIDTH_KEY = "webui.sidebar.width";
+const COLLAPSED_KEY = "webui.sidebar.collapsed";
 const ARCHIVED_EXPANDED_KEY = "webui.sidebar.archived_expanded";
 const ARCHIVED_PROJECTS_EXPANDED_KEY =
   "webui.sidebar.archived_projects_expanded";
 const ARCHIVED_GROUPS_COLLAPSED_KEY =
   "webui.sidebar.archived_groups_collapsed";
 const DEFAULT_WIDTH = 240;
+const COLLAPSED_WIDTH = 56;
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const ACTIVE_TASK_POLL_MS = 3000;
@@ -124,6 +128,22 @@ function loadWidth(): number {
 function saveWidth(n: number) {
   try {
     localStorage.setItem(WIDTH_KEY, String(clampWidth(n)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveCollapsed(value: boolean) {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, String(value));
   } catch {
     /* ignore */
   }
@@ -258,6 +278,7 @@ export function Sidebar({
   const [hydrated, setHydrated] = useState(false);
   const canPersistRef = useRef(false);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [collapsed, setCollapsed] = useState(false);
   const [resizing, setResizing] = useState(false);
   const [destroyingGroupKey, setDestroyingGroupKey] = useState<string | null>(
     null,
@@ -507,10 +528,12 @@ export function Sidebar({
     // the DB with stale localStorage before "DB wins" applies.
     const localExpanded = loadExpanded();
     const localWidth = loadWidth();
+    const localCollapsed = loadCollapsed();
     const localArchivedExpanded = loadArchivedExpanded();
     const localArchivedGroupsCollapsed = loadArchivedGroupsCollapsed();
     setExpanded(localExpanded);
     setWidth(localWidth);
+    setCollapsed(localCollapsed);
     archivedExpandedRef.current = localArchivedExpanded;
     setArchivedExpanded(localArchivedExpanded);
     setArchivedGroupsCollapsed(localArchivedGroupsCollapsed);
@@ -1109,6 +1132,18 @@ export function Sidebar({
             </span>
           )}
         </Link>
+        <button
+          type="button"
+          aria-label="サイドバーを折りたたむ"
+          title="サイドバーを折りたたむ"
+          onClick={() => {
+            setCollapsed(true);
+            saveCollapsed(true);
+          }}
+          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:inline-flex"
+        >
+          <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+        </button>
         <Link
           href="/"
           aria-label="新規タスク"
@@ -1234,21 +1269,14 @@ export function Sidebar({
                     <div className="flex shrink-0 items-center">
                       <button
                         type="button"
-                        aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
-                        title={p.favorite ? "お気に入りから外す" : "お気に入りに追加"}
-                        aria-busy={actionBusyKey === `favorite:${p.id}`}
+                        aria-label={`${p.name}をアーカイブ`}
+                        title="プロジェクトをアーカイブ"
+                        aria-busy={actionBusyKey === `archive-project:${p.id}`}
                         disabled={actionBusyKey !== null}
-                        onClick={(e) => void toggleFavorite(p, e)}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
+                        onClick={(e) => void archiveProjectAction(p, e)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
                       >
-                        <Star
-                          className={
-                            p.favorite
-                              ? "h-3 w-3 fill-warning text-warning"
-                              : "h-3 w-3"
-                          }
-                          aria-hidden="true"
-                        />
+                        <Archive className="h-3 w-3" aria-hidden="true" />
                       </button>
                       <button
                         type="button"
@@ -1278,14 +1306,21 @@ export function Sidebar({
                       </button>
                       <button
                         type="button"
-                        aria-label={`${p.name}をアーカイブ`}
-                        title="プロジェクトをアーカイブ"
-                        aria-busy={actionBusyKey === `archive-project:${p.id}`}
+                        aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
+                        title={p.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+                        aria-busy={actionBusyKey === `favorite:${p.id}`}
                         disabled={actionBusyKey !== null}
-                        onClick={(e) => void archiveProjectAction(p, e)}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
+                        onClick={(e) => void toggleFavorite(p, e)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
                       >
-                        <Archive className="h-3 w-3" aria-hidden="true" />
+                        <Star
+                          className={
+                            p.favorite
+                              ? "h-3 w-3 fill-warning text-warning"
+                              : "h-3 w-3"
+                          }
+                          aria-hidden="true"
+                        />
                       </button>
                     </div>
                   </div>
@@ -1753,6 +1788,40 @@ export function Sidebar({
     </div>
   );
 
+  const collapsedBody = (
+    <div className="flex h-full flex-col items-center bg-surface">
+      <div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-border">
+        <Link
+          href="/"
+          aria-label="ホーム"
+          onClick={() => onClose()}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon-192.png"
+            alt=""
+            width={18}
+            height={18}
+            className="h-4.5 w-4.5 rounded-[3px] object-contain"
+          />
+        </Link>
+      </div>
+      <button
+        type="button"
+        aria-label="サイドバーを展開"
+        title="サイドバーを展開"
+        onClick={() => {
+          setCollapsed(false);
+          saveCollapsed(false);
+        }}
+        className="mt-2 inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+      >
+        <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+
   const confirmationPanel = pendingConfirmation ? (
     <div
       ref={confirmationRef}
@@ -1790,32 +1859,34 @@ export function Sidebar({
       {/* Desktop */}
       <aside
         className="relative hidden h-full shrink-0 border-r border-border md:block"
-        style={{ width }}
+        style={{ width: collapsed ? COLLAPSED_WIDTH : width }}
       >
-        {body(!mobileOpen)}
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="サイドバー幅を調整"
-          aria-valuenow={width}
-          aria-valuemin={MIN_WIDTH}
-          aria-valuemax={MAX_WIDTH}
-          title="ドラッグで幅を変更（ダブルクリックでリセット）"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            setResizing(true);
-          }}
-          onDoubleClick={() => {
-            setWidth(DEFAULT_WIDTH);
-            saveWidth(DEFAULT_WIDTH);
-            persistSidebar(expanded, DEFAULT_WIDTH, archivedExpanded);
-          }}
-          className={cx(
-            "absolute top-0 right-0 z-10 h-full w-1.5 translate-x-1/2 cursor-col-resize touch-none",
-            "hover:bg-accent/40 active:bg-accent/60",
-            resizing && "bg-accent/50",
-          )}
-        />
+        {collapsed ? collapsedBody : body(!mobileOpen)}
+        {!collapsed && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="サイドバー幅を調整"
+            aria-valuenow={width}
+            aria-valuemin={MIN_WIDTH}
+            aria-valuemax={MAX_WIDTH}
+            title="ドラッグで幅を変更（ダブルクリックでリセット）"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              setResizing(true);
+            }}
+            onDoubleClick={() => {
+              setWidth(DEFAULT_WIDTH);
+              saveWidth(DEFAULT_WIDTH);
+              persistSidebar(expanded, DEFAULT_WIDTH, archivedExpanded);
+            }}
+            className={cx(
+              "absolute top-0 right-0 z-10 h-full w-1.5 translate-x-1/2 cursor-col-resize touch-none",
+              "hover:bg-accent/40 active:bg-accent/60",
+              resizing && "bg-accent/50",
+            )}
+          />
+        )}
       </aside>
 
       {/* Mobile drawer */}
