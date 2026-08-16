@@ -1265,14 +1265,21 @@ export function Sidebar({
                     <div className="flex shrink-0 items-center">
                       <button
                         type="button"
-                        aria-label={`${p.name}をアーカイブ`}
-                        title="プロジェクトをアーカイブ"
-                        aria-busy={actionBusyKey === `archive-project:${p.id}`}
+                        aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
+                        title={p.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+                        aria-busy={actionBusyKey === `favorite:${p.id}`}
                         disabled={actionBusyKey !== null}
-                        onClick={(e) => void archiveProjectAction(p, e)}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
+                        onClick={(e) => void toggleFavorite(p, e)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
                       >
-                        <Archive className="h-3 w-3" aria-hidden="true" />
+                        <Star
+                          className={
+                            p.favorite
+                              ? "h-3 w-3 fill-warning text-warning"
+                              : "h-3 w-3"
+                          }
+                          aria-hidden="true"
+                        />
                       </button>
                       <button
                         type="button"
@@ -1302,21 +1309,14 @@ export function Sidebar({
                       </button>
                       <button
                         type="button"
-                        aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
-                        title={p.favorite ? "お気に入りから外す" : "お気に入りに追加"}
-                        aria-busy={actionBusyKey === `favorite:${p.id}`}
+                        aria-label={`${p.name}をアーカイブ`}
+                        title="プロジェクトをアーカイブ"
+                        aria-busy={actionBusyKey === `archive-project:${p.id}`}
                         disabled={actionBusyKey !== null}
-                        onClick={(e) => void toggleFavorite(p, e)}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
+                        onClick={(e) => void archiveProjectAction(p, e)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
                       >
-                        <Star
-                          className={
-                            p.favorite
-                              ? "h-3 w-3 fill-warning text-warning"
-                              : "h-3 w-3"
-                          }
-                          aria-hidden="true"
-                        />
+                        <Archive className="h-3 w-3" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -1486,20 +1486,6 @@ export function Sidebar({
                                       data-testid="task-row-actions"
                                       className="flex shrink-0 items-center"
                                     >
-                                      <button
-                                        type="button"
-                                        aria-label={`「${task.title}」をアーカイブ`}
-                                        title={`「${task.title}」をアーカイブ`}
-                                        aria-busy={actionBusyKey === `archive:${task.id}`}
-                                        disabled={actionBusyKey !== null}
-                                        onClick={(e) => void archiveTask(task, e)}
-                                        className={cx(
-                                          TASK_ROW_ACTION_BTN,
-                                          "text-muted hover:bg-surface-2 hover:text-text",
-                                        )}
-                                      >
-                                        <Archive className="h-3 w-3" />
-                                      </button>
                                       {task.sessionId && (
                                         <button
                                           type="button"
@@ -1522,6 +1508,20 @@ export function Sidebar({
                                           />
                                         </button>
                                       )}
+                                      <button
+                                        type="button"
+                                        aria-label={`「${task.title}」をアーカイブ`}
+                                        title={`「${task.title}」をアーカイブ`}
+                                        aria-busy={actionBusyKey === `archive:${task.id}`}
+                                        disabled={actionBusyKey !== null}
+                                        onClick={(e) => void archiveTask(task, e)}
+                                        className={cx(
+                                          TASK_ROW_ACTION_BTN,
+                                          "text-muted hover:bg-surface-2 hover:text-text",
+                                        )}
+                                      >
+                                        <Archive className="h-3 w-3" />
+                                      </button>
                                     </div>
                                 </div>
                               </div>

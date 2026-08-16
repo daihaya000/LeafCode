@@ -165,6 +165,7 @@ describe("Sidebar", () => {
     const favorite = await screen.findByRole("button", { name: "「Task title」をお気に入りに追加" });
     const taskButton = screen.getByText("Task title").closest("button");
     const actionGroup = screen.getByTestId("task-row-actions");
+    const archive = screen.getByRole("button", { name: "「Task title」をアーカイブ" });
     // The title row is its own full-width button so the title never shares
     // width with the archive/favorite icons; branch/session info (and the
     // action icons) live in a second row below it instead.
@@ -176,6 +177,8 @@ describe("Sidebar", () => {
     expect(actionGroup.className).not.toContain("absolute");
     expect(actionGroup.className).toContain("shrink-0");
     expect(actionGroup.parentElement).toBe(infoRow);
+    expect(actionGroup.querySelectorAll("button")[0]).toBe(favorite);
+    expect(actionGroup.querySelectorAll("button")[1]).toBe(archive);
     expect(taskButton?.getAttribute("draggable")).toBe("true");
     const dataTransfer = { effectAllowed: "none", setData: vi.fn() };
     fireEvent.dragStart(taskButton!, { dataTransfer });
