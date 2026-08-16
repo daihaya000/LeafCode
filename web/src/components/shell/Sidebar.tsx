@@ -1108,9 +1108,9 @@ export function Sidebar({
             <span className="truncate">LeafCode</span>
           </span>
           {BUILD_COMMIT_LABEL && (
-            <span className="ml-6 flex shrink-0 items-center gap-1">
+            <span className="ml-6 flex min-w-0 max-w-full items-center gap-1 overflow-hidden">
               <span
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
+                className="inline-flex min-w-0 max-w-full items-center gap-1 overflow-hidden rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
                 title={
                   BUILD_COMMIT_DATE
                     ? `Build commit: ${BUILD_COMMIT} (${BUILD_COMMIT_DATE})`
@@ -1124,14 +1124,14 @@ export function Sidebar({
               >
                 <span>{BUILD_COMMIT_LABEL}</span>
                 {BUILD_COMMIT_DATE_LABEL && (
-                  <time dateTime={BUILD_COMMIT_DATE} className="text-faint">
+                  <time dateTime={BUILD_COMMIT_DATE} className="min-w-0 truncate text-faint">
                     {BUILD_COMMIT_DATE_LABEL}
                   </time>
                 )}
               </span>
               {HOST_NAME && (
                 <span
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
+                  className="inline-flex min-w-0 max-w-full items-center gap-1 truncate rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
                   title={HOST_NAME}
                 >
                   {HOST_NAME}
@@ -1145,12 +1145,13 @@ export function Sidebar({
           aria-label="新規タスク"
           onClick={() => onClose()}
           title="新規タスク"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
           <Plus className="h-4 w-4" />
         </Link>
         <AddProjectButton
           variant="icon"
+          className="shrink-0"
           onAdded={() => {
             void refresh();
             onClose();
@@ -1161,7 +1162,7 @@ export function Sidebar({
           aria-label="設定"
           onClick={() => onClose()}
           title="設定"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
           <Settings className="h-4 w-4" />
         </Link>
