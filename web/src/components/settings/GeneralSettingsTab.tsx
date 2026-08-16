@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Monitor, Moon, Palette, Shell, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cx } from "@/components/ui";
+import { NotificationSoundSettings } from "@/components/settings/NotificationSoundSettings";
 import {
   CUSTOM_THEME_DEFAULT_TOKENS,
   CUSTOM_THEME_PARTS,
@@ -596,6 +597,7 @@ export function GeneralSettingsTab({
           </p>
         </div>
       </section>
+      <NotificationSoundSettings />
     </>
   );
 }

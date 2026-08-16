@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { HangTimeoutSync } from "@/components/HangTimeoutSync";
+import { NotificationSoundSync } from "@/components/NotificationSoundSync";
 import { AppShell } from "@/components/shell/AppShell";
 import { LoginGate } from "@/components/auth/LoginGate";
 import { maybeRedirectToLocalhost } from "@/lib/localhost-redirect";
@@ -22,6 +23,7 @@ export default function MainLayout({
   return (
     <LoginGate>
       <HangTimeoutSync />
+      <NotificationSoundSync />
       <AppShell>{children}</AppShell>
     </LoginGate>
   );

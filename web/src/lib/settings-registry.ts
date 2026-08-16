@@ -25,6 +25,14 @@ import {
   MAX_TOKEN_SAVING_THRESHOLD,
   MIN_TOKEN_SAVING_THRESHOLD,
 } from "@/lib/token-saving-settings";
+import {
+  isNotificationSoundType,
+  NOTIFICATION_SOUND_TYPE_SETTING_KEY,
+  NOTIFICATION_SOUND_VOLUME_SETTING_KEY,
+  clampNotificationSoundVolume,
+  MAX_NOTIFICATION_SOUND_VOLUME,
+  MIN_NOTIFICATION_SOUND_VOLUME,
+} from "@/lib/notification-sound-settings";
 import { GENERATION_MODEL_EFFORT_SETTING_KEY, GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
 import {
   isOpenCodeApiGeneration,
@@ -53,6 +61,8 @@ export const ALLOWED_KEYS = new Set<string>([
   COMMIT_AUTHOR_EMAIL_KEY,
   TOKEN_SAVING_SETTING_KEY,
   TOKEN_SAVING_THRESHOLD_KEY,
+  NOTIFICATION_SOUND_TYPE_SETTING_KEY,
+  NOTIFICATION_SOUND_VOLUME_SETTING_KEY,
   GENERATION_MODEL_SETTING_KEY,
   GENERATION_MODEL_EFFORT_SETTING_KEY,
   OPENCODE_API_GENERATION_SETTING_KEY,
@@ -193,6 +203,31 @@ export function normalizeSettingValue(
       };
     }
     return { ok: true, value: String(clampThreshold(n)) };
+  }
+
+  if (key === NOTIFICATION_SOUND_TYPE_SETTING_KEY) {
+    if (!isNotificationSoundType(value)) {
+      return {
+        ok: false,
+        error: "notification-sound-type must be standard, soft or clear",
+      };
+    }
+    return { ok: true, value };
+  }
+
+  if (key === NOTIFICATION_SOUND_VOLUME_SETTING_KEY) {
+    const n = Number(value);
+    if (
+      !Number.isInteger(n) ||
+      n < MIN_NOTIFICATION_SOUND_VOLUME ||
+      n > MAX_NOTIFICATION_SOUND_VOLUME
+    ) {
+      return {
+        ok: false,
+        error: `notification-sound-volume must be an integer between ${MIN_NOTIFICATION_SOUND_VOLUME} and ${MAX_NOTIFICATION_SOUND_VOLUME}`,
+      };
+    }
+    return { ok: true, value: String(clampNotificationSoundVolume(n)) };
   }
 
   if (key === MEMORY_ENABLED_SETTING_KEY) {

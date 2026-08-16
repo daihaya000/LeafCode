@@ -1,12 +1,86 @@
-const SOUND_DURATION_SEC = 0.18;
-const SOUND_GAIN = 0.045;
+import {
+  readNotificationSoundType,
+  readNotificationSoundVolume,
+  type NotificationSoundType,
+} from "@/lib/notification-sound-settings";
 
-/** Attention (permission / question) alert: three staccato beeps. */
-const ATTENTION_BEEP_COUNT = 3;
-const ATTENTION_BEEP_DURATION_SEC = 0.11;
-const ATTENTION_BEEP_GAP_SEC = 0.1;
-const ATTENTION_BEEP_FREQ = 660;
-const ATTENTION_GAIN = 0.05;
+const STANDARD_COMPLETION_GAIN = 0.135;
+const STANDARD_ATTENTION_GAIN = 0.15;
+
+type ToneConfig = {
+  duration: number;
+  startFreq: number;
+  endFreq: number;
+  gain: number;
+  waveform: OscillatorType;
+};
+
+type AttentionConfig = ToneConfig & {
+  count: number;
+  gap: number;
+};
+
+type SoundProfile = {
+  completion: ToneConfig;
+  attention: AttentionConfig;
+};
+
+const SOUND_PROFILES: Record<NotificationSoundType, SoundProfile> = {
+  standard: {
+    completion: {
+      duration: 0.18,
+      startFreq: 880,
+      endFreq: 1320,
+      gain: STANDARD_COMPLETION_GAIN,
+      waveform: "sine",
+    },
+    attention: {
+      count: 3,
+      gap: 0.1,
+      duration: 0.11,
+      startFreq: 660,
+      endFreq: 660,
+      gain: STANDARD_ATTENTION_GAIN,
+      waveform: "sine",
+    },
+  },
+  soft: {
+    completion: {
+      duration: 0.24,
+      startFreq: 660,
+      endFreq: 990,
+      gain: 0.105,
+      waveform: "sine",
+    },
+    attention: {
+      count: 2,
+      gap: 0.12,
+      duration: 0.14,
+      startFreq: 520,
+      endFreq: 520,
+      gain: 0.11,
+      waveform: "sine",
+    },
+  },
+  clear: {
+    completion: {
+      duration: 0.16,
+      startFreq: 1046,
+      endFreq: 1568,
+      gain: 0.15,
+      waveform: "triangle",
+    },
+    attention: {
+      count: 3,
+      gap: 0.08,
+      duration: 0.09,
+      startFreq: 740,
+      endFreq: 740,
+      gain: 0.16,
+      waveform: "triangle",
+    },
+  },
+};
 
 type AudioContextConstructor = new () => AudioContext;
 
@@ -44,21 +118,20 @@ function withAudioContext(
 function createTone(
   ctx: AudioContext,
   start: number,
-  duration: number,
-  startFreq: number,
-  endFreq: number,
-  gainValue: number,
+  tone: ToneConfig,
+  volumeMultiplier: number,
 ): OscillatorNode {
   const oscillator = ctx.createOscillator();
   const gain = ctx.createGain();
-  const end = start + duration;
+  const end = start + tone.duration;
+  const rampEnd = start + Math.min(0.08, tone.duration / 2);
 
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(startFreq, start);
-  oscillator.frequency.exponentialRampToValueAtTime(endFreq, start + 0.08);
+  oscillator.type = tone.waveform;
+  oscillator.frequency.setValueAtTime(tone.startFreq, start);
+  oscillator.frequency.exponentialRampToValueAtTime(tone.endFreq, rampEnd);
 
   gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.02);
+  gain.gain.exponentialRampToValueAtTime(tone.gain * volumeMultiplier, start + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, end);
 
   oscillator.connect(gain);
@@ -74,8 +147,11 @@ function createTone(
  * effort and intentionally never surfaces errors to the UI.
  */
 export function playSessionCompleteSound() {
+  const volumeMultiplier = readNotificationSoundVolume() / 100;
+  if (volumeMultiplier <= 0) return;
+  const tone = SOUND_PROFILES[readNotificationSoundType()].completion;
   withAudioContext((ctx, start) => [
-    createTone(ctx, start, SOUND_DURATION_SEC, 880, 1320, SOUND_GAIN),
+    createTone(ctx, start, tone, volumeMultiplier),
   ]);
 }
 
@@ -84,19 +160,15 @@ export function playSessionCompleteSound() {
  * question UI appears. Best effort, like the completion chime.
  */
 export function playAttentionRequiredSound() {
+  const volumeMultiplier = readNotificationSoundVolume() / 100;
+  if (volumeMultiplier <= 0) return;
+  const attention = SOUND_PROFILES[readNotificationSoundType()].attention;
   withAudioContext((ctx, start) => {
     const oscillators: OscillatorNode[] = [];
-    for (let i = 0; i < ATTENTION_BEEP_COUNT; i++) {
-      const at = start + i * (ATTENTION_BEEP_DURATION_SEC + ATTENTION_BEEP_GAP_SEC);
+    for (let i = 0; i < attention.count; i++) {
+      const at = start + i * (attention.duration + attention.gap);
       oscillators.push(
-        createTone(
-          ctx,
-          at,
-          ATTENTION_BEEP_DURATION_SEC,
-          ATTENTION_BEEP_FREQ,
-          ATTENTION_BEEP_FREQ,
-          ATTENTION_GAIN,
-        ),
+        createTone(ctx, at, attention, volumeMultiplier),
       );
     }
     return oscillators;
