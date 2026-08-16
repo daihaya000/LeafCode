@@ -62,6 +62,8 @@ describe("ProfileAgentsSyncSettings", () => {
     );
     expect(screen.getByRole("button", { name: "AGENTS.mdを保存" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /同期を実行/ })).toBeTruthy();
+    expect(screen.getByText(/playwright-cli-wrap/)).toBeTruthy();
+    expect(screen.getByText(/ミラーしません/)).toBeTruthy();
   });
 
   it("saves the AGENTS.md content", async () => {

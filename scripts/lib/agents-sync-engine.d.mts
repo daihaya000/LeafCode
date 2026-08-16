@@ -51,4 +51,6 @@ export function readMasterAgents(): {
 
 export function writeMasterAgents(content: string): { path: string };
 
+export function isDistributableSkill(name: string): boolean;
+
 export function applyAgentsSync(): AgentsSyncResult;

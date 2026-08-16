@@ -190,6 +190,7 @@ export function ProfileAgentsSyncSettings() {
           は <code className="font-mono">~/.hermes/config.yaml</code> の{" "}
           <code className="font-mono">skills.external_dirs</code> に
           <code className="font-mono">~/.agents/skills</code> を登録し、外部ディレクトリを直接スキャンさせます。
+          LeafCode 専用の <code className="font-mono">playwright-cli-wrap</code> スキルはミラーしません（Browser Bridge MCP と同様）。
         </p>
 
         {error && (

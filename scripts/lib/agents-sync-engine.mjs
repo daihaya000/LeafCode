@@ -20,6 +20,17 @@ const HOME = os.homedir();
 /** External skill directory registered in Hermes config.yaml. */
 const HERMES_EXTERNAL_DIR = "~/.agents/skills";
 
+/**
+ * LeafCode-only skills stay in the OpenCode profile. They depend on the tray
+ * host (same reason `browser-bridge` is excluded from MCP profile sync) and
+ * must not be mirrored to Claude / Codex / Cursor / agents.
+ */
+const NON_DISTRIBUTABLE_SKILLS = new Set(["playwright-cli-wrap"]);
+
+export function isDistributableSkill(name) {
+  return !NON_DISTRIBUTABLE_SKILLS.has(name);
+}
+
 export function agentsSyncPaths() {
   return {
     masterMd: path.join(HOME, ".config", "opencode", "AGENTS.md"),
@@ -56,6 +67,10 @@ function readDirNames(p) {
   } catch {
     return [];
   }
+}
+
+function distributableSkillNames(p) {
+  return readDirNames(p).filter(isDistributableSkill);
 }
 
 /** True if a path is a symlink pointing at the given target. */
@@ -277,7 +292,7 @@ function instructionsStatus() {
 
 function skillsStatus() {
   const p = agentsSyncPaths();
-  const names = readDirNames(p.opencodeSkills);
+  const names = distributableSkillNames(p.opencodeSkills);
   const mirrors = {};
   for (const name of names) {
     const masterPath = path.join(p.opencodeSkills, name);
@@ -372,7 +387,7 @@ export function applyAgentsSync() {
 
   // --- skills ---------------------------------------------------------------
   if (fs.existsSync(p.opencodeSkills)) {
-    const names = readDirNames(p.opencodeSkills);
+    const names = distributableSkillNames(p.opencodeSkills);
     for (const name of names) {
       const masterSkillPath = path.join(p.opencodeSkills, name);
       const linkRoots = [

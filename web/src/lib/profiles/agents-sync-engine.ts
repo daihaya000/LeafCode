@@ -8,6 +8,7 @@
 export {
   agentsSyncPaths,
   applyAgentsSync,
+  isDistributableSkill,
   readAgentsSyncStatus,
   readMasterAgents,
   writeMasterAgents,

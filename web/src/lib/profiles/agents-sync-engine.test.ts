@@ -204,4 +204,29 @@ describe("agents-sync-engine filesystem operations", () => {
     expect(fs.readFileSync(path.join(blockedPath, "local.txt"), "utf8")).toBe("keep me\n");
     expect(fs.lstatSync(blockedPath).isDirectory()).toBe(true);
   });
+
+  it("does not mirror the LeafCode-only playwright-cli-wrap skill", () => {
+    const paths = engine.agentsSyncPaths();
+    engine.writeMasterAgents("shared instructions\n");
+    const demoPath = path.join(paths.opencodeSkills, "demo");
+    fs.mkdirSync(demoPath, { recursive: true });
+    fs.writeFileSync(path.join(demoPath, "SKILL.md"), "demo skill\n", "utf8");
+    const wrapPath = path.join(paths.opencodeSkills, "playwright-cli-wrap");
+    fs.mkdirSync(wrapPath, { recursive: true });
+    fs.writeFileSync(path.join(wrapPath, "SKILL.md"), "wrap skill\n", "utf8");
+
+    const result = engine.applyAgentsSync();
+
+    expect(result.ok).toBe(true);
+    expect(result.skills).toEqual({ created: 4, skipped: 0, errors: [] });
+    expect(fs.existsSync(path.join(paths.claudeSkills, "playwright-cli-wrap"))).toBe(false);
+    expect(fs.existsSync(path.join(paths.codexSkills, "playwright-cli-wrap"))).toBe(false);
+    expect(fs.existsSync(path.join(paths.agentsSkills, "playwright-cli-wrap"))).toBe(false);
+    expect(fs.existsSync(path.join(paths.cursorSkills, "playwright-cli-wrap"))).toBe(false);
+
+    const status = engine.readAgentsSyncStatus();
+    expect(status.skills.opencodeRoot.count).toBe(1);
+    expect(status.skills.mirrors["claude:demo"]?.status.kind).toBe("ok");
+    expect(status.skills.mirrors["claude:playwright-cli-wrap"]).toBeUndefined();
+  });
 });
