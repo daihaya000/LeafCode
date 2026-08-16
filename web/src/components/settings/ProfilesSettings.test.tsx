@@ -293,6 +293,10 @@ describe("ProfilesSettings", () => {
     expect(
       (screen.getByLabelText("起動時自動配布") as HTMLInputElement).checked,
     ).toBe(false);
+    expect(screen.getByText("MCP")).toBeTruthy();
+    expect(screen.getAllByText("プラグイン").length).toBe(3);
+    expect(screen.getByText("スキル")).toBeTruthy();
+    expect(screen.getByText("運用")).toBeTruthy();
   });
 
   it("shows error state when the API fails", async () => {

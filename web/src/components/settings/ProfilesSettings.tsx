@@ -589,12 +589,12 @@ export function ProfilesSettings() {
           </p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {([
-              ["browserBridge", "Browser Bridge", "ブラウザ操作用のMCPを追加"],
-              ["cursorAcp", "Cursor CLI Proxy", "Cursor連携プラグインとプロバイダーを追加"],
-              ["claudeAuth", "Claude CLI Proxy", "Claudeサブスクリプション認証プラグインを追加"],
-              ["commandcodeAuth", "CommandCode CLI Proxy", "CommandCode CLI経由の認証・ローカルプロキシを追加"],
-              ["playwrightCliWrap", "Playwright CLI Wrap", "Windows で playwright-cli がハングしない回避スキルを追加"],
-            ] as const).map(([key, label, description]) => (
+              ["browserBridge", "Browser Bridge", "ブラウザ操作用のMCPを追加", "MCP"],
+              ["cursorAcp", "Cursor CLI Proxy", "Cursor連携プラグインとプロバイダーを追加", "プラグイン"],
+              ["claudeAuth", "Claude CLI Proxy", "Claudeサブスクリプション認証プラグインを追加", "プラグイン"],
+              ["commandcodeAuth", "CommandCode CLI Proxy", "CommandCode CLI経由の認証・ローカルプロキシを追加", "プラグイン"],
+              ["playwrightCliWrap", "Playwright CLI Wrap", "Windows で playwright-cli がハングしない回避スキルを追加", "スキル"],
+            ] as const).map(([key, label, description, kind]) => (
               <label
                 key={key}
                 className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-bg px-3.5 py-3 transition-colors hover:border-primary/40 hover:bg-surface-2"
@@ -608,8 +608,11 @@ export function ProfilesSettings() {
                   aria-label={`${label}の自動セットアップ`}
                 />
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium text-text">{label}</span>
-                  <span className="block text-xs text-muted">{description}</span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-text">{label}</span>
+                    <Badge tone="neutral">{kind}</Badge>
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted">{description}</span>
                 </span>
               </label>
             ))}
@@ -625,8 +628,11 @@ export function ProfilesSettings() {
                 aria-label="起動時自動配布"
               />
               <span className="min-w-0">
-                <span className="block text-sm font-medium text-text">起動時自動配布</span>
-                <span className="block text-xs text-muted">LeafCode 起動時にアクティブプロファイルへ連携依存を自動適用します。</span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-text">起動時自動配布</span>
+                  <Badge tone="neutral">運用</Badge>
+                </span>
+                <span className="mt-0.5 block text-xs text-muted">LeafCode 起動時にアクティブプロファイルへ連携依存を自動適用します。</span>
               </span>
             </label>
           </div>
