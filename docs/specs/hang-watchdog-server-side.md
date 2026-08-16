@@ -58,6 +58,9 @@ composer から2回目以降の送信をして、その送信がハングした�
     （`goal-loop.ts` の `TURN_TIMEOUT_MS`、`workflow-scheduler.ts` の
     `recoverInterruptedAttempts` という独自の監督機構を既に持つため、
     二重に停止させない。watchdog は登録された watch のみを対象とする）。
+  - `parentID` を持つサブエージェントセッション。サブエージェントの長時間処理は
+    親セッション（またはエンジン側の監督機構）に委譲し、WebUI watchdog 自身は
+    子セッションをハング判定・停止しない。
   - `PartView.tsx` の shell ツール経過警告バナー（表示のみ。現状維持）。
   - ハング閾値設定 UI（`SettingsView.tsx` の既存 UI をそのまま使う）。
 

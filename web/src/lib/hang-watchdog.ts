@@ -82,6 +82,28 @@ export type ArmHangWatchInput = {
   startedAt?: number;
 };
 
+/**
+ * Subagent turns are supervised by the engine's parent session.  The WebUI
+ * watchdog must not stop a child session merely because its work takes longer
+ * than the user-facing hang threshold.
+ */
+async function isSubagentSession(row: SessionHangWatchRow): Promise<boolean> {
+  try {
+    const info = await ocServer<unknown>(
+      row.directory,
+      `/session/${encodeURIComponent(row.session_id)}`,
+      { timeoutMs: STATUS_TIMEOUT_MS },
+    );
+    if (!info || typeof info !== "object") return false;
+    const parentID = (info as { parentID?: unknown }).parentID;
+    return typeof parentID === "string" && parentID.trim().length > 0;
+  } catch {
+    // Fail open: an unavailable session detail endpoint must not change the
+    // existing watchdog behavior or leave a turn permanently unmonitored.
+    return false;
+  }
+}
+
 let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 let watchdogStarted = false;
 let watchdogTicking = false;
@@ -659,6 +681,11 @@ export async function runHangWatchdogTick(): Promise<void> {
       }
       for (const row of rows) {
         try {
+          if (await isSubagentSession(row)) {
+            disarmHangWatch(row.session_id);
+            logWatchdog("subagent session — delegated to the parent session", row);
+            continue;
+          }
           await evaluateWatch(row, statuses ?? {}, timeoutMs);
         } catch (error) {
           logWatchdog("evaluation failed", row, error);

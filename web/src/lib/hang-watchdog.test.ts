@@ -210,6 +210,23 @@ describe("activity helpers", () => {
 });
 
 describe("runHangWatchdogTick", () => {
+  it("does not classify a subagent session as hung", async () => {
+    arm();
+    ageWatch(TIMEOUT_MS + 1_000);
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (requestPath === `/session/${SESSION}`) {
+        return { id: SESSION, parentID: "ses_parent" };
+      }
+      return busyStatus();
+    });
+
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(0);
+    expect(callsTo("/message")).toHaveLength(0);
+    expect(getHangWatch(SESSION)).toBeNull();
+  });
+
   it("does nothing while the turn is inside the threshold", async () => {
     arm();
     ocServer.mockResolvedValue(busyStatus());
