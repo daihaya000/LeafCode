@@ -1042,16 +1042,24 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       const localBusy =
         statusRef.current?.type === "busy" ||
         statusRef.current?.type === "retry";
+      // No status yet: the turn may have ended before this view subscribed, so
+      // there is no SSE `session.idle` left to arrive. Because the engine omits
+      // idle sessions from the map (below), REST alone would never resolve the
+      // status and it would stay `null` for the whole page lifetime — leaving
+      // TaskView on its `task.status` fallback and the composer stuck on
+      // "作業中" forever.
+      const localUnresolved = !statusRef.current;
       // `/session/status` omits sessions the engine is no longer tracking, so a
       // missing entry means "not running" (server-side `task-status.ts` derives
-      // the same). Synthesize idle only when a local busy state would otherwise
-      // never clear, so a just-sent prompt keeps its lock. While a mutation is
-      // pending we wait a short grace period for the engine to emit status; once
-      // that grace has passed the terminal SSE event is treated as lost.
+      // the same). Synthesize idle only when a local busy/unknown state would
+      // otherwise never clear, so a just-sent prompt keeps its lock. While a
+      // mutation is pending we wait a short grace period for the engine to emit
+      // status; once that grace has passed the terminal SSE event is treated as
+      // lost.
       const quietSinceMutation =
         Date.now() - sessionActivityAtRef.current >= MUTATION_LOST_EVENT_GRACE_MS;
       const canSynthesizeIdle =
-        localBusy &&
+        (localBusy || localUnresolved) &&
         (!pendingMutationRef.current || quietSinceMutation);
       const next: SessionStatus | undefined =
         restStatus ?? (canSynthesizeIdle ? { type: "idle" } : undefined);

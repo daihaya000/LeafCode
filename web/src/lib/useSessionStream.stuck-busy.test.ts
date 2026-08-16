@@ -119,6 +119,39 @@ describe("useSessionStream stuck-busy recovery", () => {
     expect(result.current.connection).toBe("live");
   });
 
+  it("resolves to idle when the turn ended before this view subscribed", async () => {
+    const { useSessionStream } = await import("./useSessionStream");
+
+    // A session id this file has not used yet: `useSessionStream` keeps a
+    // module-level per-scope state cache, and a reused id would seed `status`
+    // from an earlier test instead of the null this case is about.
+    const fresh = "sess-fresh";
+    ocJson.mockImplementation(async (path: string) => {
+      if (path === "/session/status") return statusMap;
+      if (path === `/session/${fresh}`) return { revert: null };
+      if (path === `/session/${fresh}/message`) return [];
+      if (path === `/session/${fresh}/todo`) return [];
+      return [];
+    });
+
+    // The engine omits idle sessions from `/session/status`, so an already
+    // finished session yields neither a REST entry nor a terminal SSE event.
+    // Without synthesizing idle here `status` stays null for the whole page
+    // lifetime, and TaskView falls back to its (stale) `task.status` snapshot —
+    // that is the "work is done but the UI still says 作業中" bug.
+    statusMap = {};
+    const { result } = renderHook(() => useSessionStream(DIRECTORY, fresh));
+    await flush();
+
+    const es = FakeEventSource.instances[0]!;
+    await act(async () => {
+      es.onopen?.();
+    });
+    await flush();
+
+    expect(result.current.status?.type).toBe("idle");
+  });
+
   it("keeps the busy state while session-scoped SSE events keep arriving", async () => {
     const { useSessionStream, ACTIVE_SESSION_RECONCILE_MS, STUCK_BUSY_QUIET_MS } =
       await import("./useSessionStream");

@@ -2478,6 +2478,12 @@ export function TaskView({
       // R3 skips message init while busy; reconcile the final REST snapshot now.
       void resync();
       if (goalLoop) void refreshGoalLoop();
+    } else if (nowIdle && prevStatusRef.current == null && taskRef.current?.status === "working") {
+      // The turn had already finished before this view subscribed, so there was
+      // no busy → idle transition to observe. The task summary that seeded the
+      // header is then a stale "working" snapshot; refresh it so the badge does
+      // not keep claiming the task is running.
+      void refreshTask();
     }
     prevStatusRef.current = cur;
   }, [goalLoop, refreshGoalLoop, refreshTask, refreshTodos, resync, streamScopeKey, streamStatusType, setDiffKey]);
