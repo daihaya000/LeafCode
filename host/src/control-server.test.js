@@ -103,6 +103,12 @@ test('matchControlRoute maps the voice input endpoint', () => {
   assert.equal(matchControlRoute('GET', '/voice-input'), null);
 });
 
+test('matchControlRoute maps the playwright-cli relay', () => {
+  assert.equal(matchControlRoute('POST', '/playwright-cli'), 'playwright-cli');
+  assert.equal(matchControlRoute('post', '/playwright-cli/'), 'playwright-cli');
+  assert.equal(matchControlRoute('GET', '/playwright-cli'), null);
+});
+
 test('matchControlRoute maps the allow-firewall endpoint', () => {
   assert.equal(matchControlRoute('POST', '/allow-firewall'), 'allow-firewall');
   assert.equal(matchControlRoute('post', '/allow-firewall/'), 'allow-firewall');

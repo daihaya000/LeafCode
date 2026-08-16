@@ -14,6 +14,8 @@
 - **禁止**: `npx playwright test --debug` / `--ui` / `codegen` / `--grep <存在しないパターン>` など、対話・常駐・終了しない実行形態を bash でフォアグラウンド起動すること
   - Playwright E2E は `npm run e2e` または wrapper スクリプト経由の CI モードのみ。テスト名絞り込みが必要なら `--grep` 使用前に `npx playwright test --list --grep <pattern>` で存在確認する
   - 理由: debug/ui モードは inspector 接続を待ち、bash ツールはプロセス終了待ちのためタイムアウトする。存在しない grep パターンでも `--debug` 付きでは worker が hung することがある
+- **Windows の `playwright-cli`**: OpenCode bash から npm の `playwright-cli` / `npx playwright-cli` を直接実行しない。`node scripts/playwright-cli-wrap/cli.mjs <args>` を使う（LeafCode host がデーモンを引き受ける）。host 再起動後は PATH 先頭の `playwright-cli` も同じ shim。
+  - 理由: `playwright-cli open` の常駐デーモンが Job Object に残り、bash が終わらない（OpenCode #24731）
 
 ## Windows バッチファイル / エンコード
 

@@ -66,13 +66,14 @@ const ROUTE_TABLE = [
   ['POST', '/stop/webui', 'stop-webui'],
   ['POST', '/voice-input', 'voice-input'],
   ['POST', '/allow-firewall', 'allow-firewall'],
+  ['POST', '/playwright-cli', 'playwright-cli'],
 ];
 
 /**
  * Match a host-control HTTP route.
  * @param {string} method
  * @param {string} pathname
- * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | 'allow-firewall' | 'users' | 'auth' | 'auth-config' | 'browser-config' | null}
+ * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | 'allow-firewall' | 'users' | 'auth' | 'auth-config' | 'browser-config' | 'playwright-cli' | null}
  */
 // Test-only export (used by control-server.test.js).
 export function matchControlRoute(method, pathname) {
@@ -365,6 +366,7 @@ function getTrustedDeviceCookie(header) {
  *   onVoiceInput?: () => Promise<void> | void,
  *   onGetLogs?: (since: number | null) => { entries: unknown[], nextSeq: number },
  *   onAllowFirewall?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,
+ *   onPlaywrightCli?: (body: unknown) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,
  *   authStore?: AuthStore,
  *   sessionSecret?: string,
  *   loginThrottle?: ReturnType<typeof createLoginThrottle>,
@@ -477,6 +479,38 @@ export function createControlRequestHandler(handlers) {
     const { entries, nextSeq } = handlers.onGetLogs(since);
     res.writeHead(200, JSON_HEADERS);
     res.end(JSON.stringify({ entries, nextSeq }));
+    return;
+  },
+
+  'playwright-cli': async (req, res) => {
+    if (typeof handlers.onPlaywrightCli !== 'function') {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(
+        JSON.stringify({ ok: false, error: 'playwright-cli relay is not supported by this host' }),
+      );
+      return;
+    }
+    const body = await readJsonBody(req, 262_144);
+    let result;
+    try {
+      result = await handlers.onPlaywrightCli(body);
+    } catch (err) {
+      res.writeHead(500, JSON_HEADERS);
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return;
+    }
+    if (result && result.ok === false) {
+      res.writeHead(typeof result.status === 'number' ? result.status : 400, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: result.error ?? 'invalid request' }));
+      return;
+    }
+    res.writeHead(200, JSON_HEADERS);
+    res.end(JSON.stringify({ ok: true, target: 'playwright-cli', ...(result ?? {}) }));
     return;
   },
 
@@ -944,6 +978,7 @@ export function createControlRequestHandler(handlers) {
  *   onVoiceInput?: () => Promise<void> | void,
  *   onGetLogs?: (since: number | null) => { entries: unknown[], nextSeq: number },
  *   onAllowFirewall?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,
+ *   onPlaywrightCli?: (body: unknown) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,
  *   authStore?: AuthStore,
  *   sessionSecret?: string,
  *   loginThrottle?: ReturnType<typeof createLoginThrottle>,

@@ -12,6 +12,7 @@ import {
   rmSync,
   writeFileSync,
   unlinkSync,
+  statSync,
 } from 'fs';
 import { randomBytes } from 'crypto';
 import { networkInterfaces } from 'os';
@@ -52,6 +53,12 @@ import { allowFirewallPort, launchWindowsVoiceInput } from './windows-integratio
 import { createBrowserBridgeManager } from './browser-bridge.js';
 import { spawnNpm } from './npm-cli.js';
 import { readPort } from './port-config.js';
+import {
+  parsePlaywrightCliRequest,
+  prependPlaywrightCliWrapPath,
+  resolvePlaywrightCliJs,
+  runPlaywrightCliProcess,
+} from '../../scripts/lib/playwright-cli-wrap.mjs';
 import {
   parseCaddyLoopbackUrl,
   parseCaddyPublicUrl,
@@ -796,11 +803,14 @@ function spawnOpencode(opencodePath) {
       shell: useShell,
       stdio: 'pipe',
       windowsHide: true,
-      env: {
-        ...process.env,
-        CURSOR_ACP_PROXY_PORT: String(proxyPort),
-        ...browserBridgeManager.environment(),
-      },
+      env: prependPlaywrightCliWrapPath(
+        {
+          ...process.env,
+          CURSOR_ACP_PROXY_PORT: String(proxyPort),
+          ...browserBridgeManager.environment(),
+        },
+        REPO_ROOT,
+      ),
     },
   );
   opencodeProc = child;
@@ -1996,6 +2006,25 @@ function removeControlFile() {
   }
 }
 
+async function handlePlaywrightCli(body) {
+  const parsed = parsePlaywrightCliRequest(body);
+  if ('error' in parsed) return { ok: false, status: 400, error: parsed.error };
+  try {
+    if (!existsSync(parsed.cwd) || !statSync(parsed.cwd).isDirectory()) {
+      return { ok: false, status: 400, error: 'cwd is not a directory' };
+    }
+  } catch {
+    return { ok: false, status: 400, error: 'cwd is not a directory' };
+  }
+  const cliJs = resolvePlaywrightCliJs(process.env);
+  const result = await runPlaywrightCliProcess({
+    cliJs,
+    argv: parsed.argv,
+    cwd: parsed.cwd,
+  });
+  return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+}
+
 
 async function startControlServer() {
   if (controlServer) return;
@@ -2007,6 +2036,7 @@ async function startControlServer() {
     onVoiceInput: () => launchWindowsVoiceInput(),
     onGetLogs: (since) => getLogEntries(since),
     onAllowFirewall: () => allowFirewallPort(WEBUI_PORT),
+    onPlaywrightCli: handlePlaywrightCli,
     authStore: {
       listUsers,
       verifyUser,
