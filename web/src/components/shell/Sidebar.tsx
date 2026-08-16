@@ -10,8 +10,6 @@ import {
   Cpu,
   GitBranch,
   Loader2,
-  PanelLeftClose,
-  PanelLeftOpen,
   PanelRight,
   Plus,
   Settings,
@@ -1080,12 +1078,22 @@ export function Sidebar({
 
   const setScrollTarget = useMobileScrollTarget();
 
-  const body = (includeAddons: boolean) => (
+  const body = (includeAddons: boolean, canCollapse: boolean) => (
     <div className="flex h-full flex-col bg-surface">
       <div className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2">
         <Link
           href="/"
-          onClick={() => onClose()}
+          onClick={(event) => {
+            if (canCollapse) {
+              event.preventDefault();
+              setCollapsed(true);
+              saveCollapsed(true);
+              return;
+            }
+            onClose();
+          }}
+          aria-label={canCollapse ? "サイドバーを折りたたむ" : undefined}
+          title={canCollapse ? "サイドバーを折りたたむ" : undefined}
           className="flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-tight hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
           <span className="flex min-w-0 items-center gap-2">
@@ -1132,18 +1140,6 @@ export function Sidebar({
             </span>
           )}
         </Link>
-        <button
-          type="button"
-          aria-label="サイドバーを折りたたむ"
-          title="サイドバーを折りたたむ"
-          onClick={() => {
-            setCollapsed(true);
-            saveCollapsed(true);
-          }}
-          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:inline-flex"
-        >
-          <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-        </button>
         <Link
           href="/"
           aria-label="新規タスク"
@@ -1791,10 +1787,14 @@ export function Sidebar({
   const collapsedBody = (
     <div className="flex h-full flex-col items-center bg-surface">
       <div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-border">
-        <Link
-          href="/"
-          aria-label="ホーム"
-          onClick={() => onClose()}
+        <button
+          type="button"
+          aria-label="サイドバーを展開"
+          title="サイドバーを展開"
+          onClick={() => {
+            setCollapsed(false);
+            saveCollapsed(false);
+          }}
           className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1805,20 +1805,8 @@ export function Sidebar({
             height={18}
             className="h-4.5 w-4.5 rounded-[3px] object-contain"
           />
-        </Link>
+        </button>
       </div>
-      <button
-        type="button"
-        aria-label="サイドバーを展開"
-        title="サイドバーを展開"
-        onClick={() => {
-          setCollapsed(false);
-          saveCollapsed(false);
-        }}
-        className="mt-2 inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-      >
-        <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-      </button>
     </div>
   );
 
@@ -1861,7 +1849,7 @@ export function Sidebar({
         className="relative hidden h-full shrink-0 border-r border-border md:block"
         style={{ width: collapsed ? COLLAPSED_WIDTH : width }}
       >
-        {collapsed ? collapsedBody : body(!mobileOpen)}
+        {collapsed ? collapsedBody : body(!mobileOpen, true)}
         {!collapsed && (
           <div
             role="separator"
@@ -1906,7 +1894,7 @@ export function Sidebar({
             aria-label="ナビゲーション"
             className="absolute top-0 left-0 h-dvh w-[min(18rem,85vw)] overflow-hidden pb-[env(safe-area-inset-bottom)] shadow-xl pt-[env(safe-area-inset-top)]"
           >
-            {body(mobileOpen)}
+            {body(mobileOpen, false)}
           </aside>
         </div>
       )}
