@@ -357,6 +357,9 @@ export function createBrowserBridgeBroker({
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const origin = req.headers.origin ?? '';
     if (url.pathname !== '/extension' || !isExtensionOrigin(origin)) {
+      // Finish the HTTP handshake with 403 instead of RST so Chrome does not
+      // treat the reject as a retryable connection failure (TIME_WAIT storm).
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
       socket.destroy();
       return;
     }

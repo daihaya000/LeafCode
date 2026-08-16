@@ -1,6 +1,9 @@
 const STORAGE_KEY = 'browserBridge';
 const DEFAULT_BROKER_URL = 'ws://127.0.0.1:18766/extension';
 const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024;
+const INITIAL_RECONNECT_DELAY_MS = 500;
+const MAX_RECONNECT_DELAY_MS = 30_000;
+const HEARTBEAT_INTERVAL_MS = 20_000;
 
 export function isSafeBrokerSocketUrl(value) {
   try {
@@ -24,11 +27,24 @@ function isShareableTabUrl(rawUrl) {
   }
 }
 
-export function createBackgroundController({ chromeApi, WebSocketImpl, randomId = () => crypto.randomUUID().replaceAll('-', '') }) {
+export function createBackgroundController({
+  chromeApi,
+  WebSocketImpl,
+  randomId = () => crypto.randomUUID().replaceAll('-', ''),
+  timers = {
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    now: Date.now,
+  },
+}) {
   let socket = null;
   let connectionGeneration = 0;
   let reconnectTimer = null;
-  let reconnectDelay = 500;
+  let heartbeatTimer = null;
+  let reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+  let nextRetryAt = 0;
   let nextSnapshotGeneration = 1;
   let handledCommandIds = new Set();
   // Transient (non-persisted) flag: true while a 'request_pairing' has been
@@ -38,37 +54,111 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   let state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {}, autoShareEnabled: false };
   const intentionalCloses = new WeakSet();
   const hasWebSocket = typeof WebSocketImpl === 'function';
+  const connectingState = WebSocketImpl?.CONNECTING ?? 0;
+  const openState = WebSocketImpl?.OPEN ?? 1;
 
-  const persist = async () => chromeApi.storage.local.set({ [STORAGE_KEY]: state });
+  const persist = async () => chromeApi.storage.local.set({
+    [STORAGE_KEY]: { ...state, reconnectDelay, nextRetryAt },
+  });
   const send = (message) => {
-    if (hasWebSocket && socket?.readyState === WebSocketImpl.OPEN) socket.send(JSON.stringify(message));
+    if (hasWebSocket && socket?.readyState === openState) socket.send(JSON.stringify(message));
   };
 
-  function scheduleReconnect() {
+  function stopHeartbeat() {
+    if (heartbeatTimer === null) return;
+    timers.clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+
+  function startHeartbeat() {
+    stopHeartbeat();
+    heartbeatTimer = timers.setInterval(() => {
+      send({ type: 'heartbeat' });
+    }, HEARTBEAT_INTERVAL_MS);
+    heartbeatTimer?.unref?.();
+  }
+
+  function clearReconnectTimer() {
+    if (!reconnectTimer) return;
+    timers.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  function armReconnect(waitMs) {
     if (reconnectTimer) return;
-    reconnectTimer = setTimeout(() => {
+    const wait = Math.min(Math.max(waitMs, 0), MAX_RECONNECT_DELAY_MS);
+    reconnectTimer = timers.setTimeout(() => {
       reconnectTimer = null;
-      connect();
-    }, reconnectDelay);
-    reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+      void connect();
+    }, wait);
+    reconnectTimer?.unref?.();
+  }
+
+  function remainingBackoffMs() {
+    return Math.max(0, nextRetryAt - timers.now());
+  }
+
+  async function stampBackoff() {
+    const wait = reconnectDelay;
+    nextRetryAt = timers.now() + wait;
+    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
+    await persist();
+    return wait;
+  }
+
+  async function rememberSuccess() {
+    stopHeartbeat();
+    startHeartbeat();
+    if (reconnectDelay === INITIAL_RECONNECT_DELAY_MS && nextRetryAt === 0) return;
+    reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+    nextRetryAt = 0;
+    await persist();
   }
 
   async function load() {
     const stored = await chromeApi.storage.local.get(STORAGE_KEY);
-    state = { ...state, ...(stored[STORAGE_KEY] ?? {}), sharedTabs: stored[STORAGE_KEY]?.sharedTabs ?? {} };
-    connect();
+    const saved = stored[STORAGE_KEY] ?? {};
+    const { reconnectDelay: savedDelay, nextRetryAt: savedRetry, ...rest } = saved;
+    state = { ...state, ...rest, sharedTabs: rest.sharedTabs ?? {} };
+    if (Number.isFinite(savedDelay) && savedDelay >= INITIAL_RECONNECT_DELAY_MS) {
+      reconnectDelay = Math.min(savedDelay, MAX_RECONNECT_DELAY_MS);
+    }
+    if (Number.isFinite(savedRetry)) nextRetryAt = savedRetry;
+    const wait = remainingBackoffMs();
+    if (wait > 0) armReconnect(wait);
+    else await connect();
     return publicState();
   }
 
-  function connect() {
+  function isLiveSocket(value) {
+    return value && (value.readyState === connectingState || value.readyState === openState);
+  }
+
+  async function connect({ replace = false } = {}) {
     if (!hasWebSocket || !isSafeBrokerSocketUrl(state.brokerUrl)) return;
+    if (!replace && isLiveSocket(socket)) return;
+    clearReconnectTimer();
+    // Stamp backoff before opening so a service-worker kill during CONNECTING
+    // cannot immediately open another socket on the next worker start.
+    await stampBackoff();
+    if (!replace && isLiveSocket(socket)) return;
     if (socket) {
       intentionalCloses.add(socket);
       socket.close();
+      socket = null;
     }
+    stopHeartbeat();
     pairingRequested = false;
-    socket = new WebSocketImpl(state.brokerUrl);
+    let nextSocket;
+    try {
+      nextSocket = new WebSocketImpl(state.brokerUrl);
+    } catch {
+      armReconnect(remainingBackoffMs() || reconnectDelay);
+      return;
+    }
+    socket = nextSocket;
     socket.addEventListener('open', () => {
+      void rememberSuccess();
       // No pairing code to type: an unpaired extension just announces itself
       // and waits for a human to allow it from the local WebUI.
       if (state.deviceKey) {
@@ -83,7 +173,6 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
       if (message.type === 'authenticated') {
         connectionGeneration = message.connectionGeneration;
         handledCommandIds = new Set();
-        reconnectDelay = 500;
         pairingRequested = false;
         // Re-validate persisted shared tabs before re-announcing them. A tab
         // closed while the extension socket was disconnected (service worker
@@ -116,7 +205,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
       }
     });
     // Errors are expected while the Broker is unavailable (e.g. during host
-    // startup or after a network change). The close listener above already
+    // startup or after a network change). The close listener already
     // schedules an exponential-backoff reconnect, so we just swallow the
     // error to avoid noisy unhandled-rejection reports in the extension console.
     socket.addEventListener('error', () => {});
@@ -130,34 +219,36 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
       if (socket === closedSocket) {
         socket = null;
         pairingRequested = false;
+        stopHeartbeat();
       }
-      if (!wasIntentional) scheduleReconnect();
+      if (!wasIntentional) armReconnect(remainingBackoffMs() || reconnectDelay);
     });
   }
 
   async function forgetPairing() {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
+    clearReconnectTimer();
+    stopHeartbeat();
     if (socket) {
       intentionalCloses.add(socket);
       socket.close();
       socket = null;
     }
-    reconnectDelay = 500;
+    reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+    nextRetryAt = timers.now() + reconnectDelay;
     state = { ...state, deviceKey: null };
     await persist();
     // Use the normal backoff so a stale key cannot create a tight reconnect
     // loop while the Broker is still rejecting it.
-    scheduleReconnect();
+    armReconnect(reconnectDelay);
   }
 
   async function setBrokerUrl(url) {
     if (!isSafeBrokerSocketUrl(url)) throw new Error('Broker URL が不正です');
-    state.brokerUrl = url;
+    reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+    nextRetryAt = 0;
+    state = { ...state, brokerUrl: url };
     await persist();
-    connect();
+    await connect({ replace: true });
     return publicState();
   }
 
@@ -288,19 +379,19 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     for (const tabId of Object.keys(state.sharedTabs)) send({ type: 'tab_unshared', tabId });
     send({ type: 'unpair' });
     state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {}, autoShareEnabled: false };
+    reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+    nextRetryAt = 0;
     await chromeApi.storage.local.remove(STORAGE_KEY);
+    clearReconnectTimer();
+    stopHeartbeat();
     if (socket) {
       intentionalCloses.add(socket);
       socket.close();
       socket = null;
     }
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
     // Immediately offer a fresh pairing request; the WebUI must still
     // explicitly allow it before any access is granted again.
-    connect();
+    await connect({ replace: true });
     return publicState();
   }
 

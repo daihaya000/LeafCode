@@ -325,3 +325,126 @@ test('does not nuke a fresh socket when the previous intentionally-closed socket
   assert.equal(controller.publicState().paired, true);
   assert.equal(controller.publicState().connected, true);
 });
+
+test('persists reconnect backoff so a restarted service worker does not immediately open another socket', async () => {
+  const stored = {};
+  const chromeApi = {
+    storage: {
+      local: {
+        get: async () => stored,
+        set: async (value) => Object.assign(stored, value),
+        remove: async (key) => delete stored[key],
+      },
+    },
+    tabs: { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } },
+  };
+  let now = 1_000;
+  const timers = { setTimeout, clearTimeout, setInterval, clearInterval, now: () => now };
+  class FakeSocket {
+    static OPEN = 1;
+    static instances = [];
+    constructor() {
+      this.readyState = 0;
+      this.listeners = {};
+      FakeSocket.instances.push(this);
+    }
+    addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
+    close() {}
+    send() {}
+  }
+  const first = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, timers });
+  await first.load();
+  assert.equal(FakeSocket.instances.length, 1);
+  assert.equal(stored.browserBridge.nextRetryAt, 1_500);
+  assert.equal(stored.browserBridge.reconnectDelay, 1_000);
+
+  const restarted = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, timers });
+  await restarted.load();
+  assert.equal(FakeSocket.instances.length, 1);
+});
+
+test('does not open a second socket while one is already connecting', async () => {
+  const stored = {};
+  const chromeApi = {
+    storage: {
+      local: {
+        get: async () => stored,
+        set: async (value) => Object.assign(stored, value),
+        remove: async (key) => delete stored[key],
+      },
+    },
+    tabs: { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } },
+  };
+  let now = 0;
+  const timers = { setTimeout, clearTimeout, setInterval, clearInterval, now: () => now };
+  class FakeSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static instances = [];
+    constructor() {
+      this.readyState = FakeSocket.CONNECTING;
+      this.listeners = {};
+      FakeSocket.instances.push(this);
+    }
+    addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
+    close() { this.readyState = 3; }
+    send() {}
+  }
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, timers });
+  await controller.load();
+  assert.equal(FakeSocket.instances.length, 1);
+  now = 50_000;
+  await controller.load();
+  assert.equal(FakeSocket.instances.length, 1);
+});
+
+test('does not throw from load when WebSocket construction fails with no buffer space', async () => {
+  const chromeApi = {
+    storage: { local: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
+    tabs: { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } },
+  };
+  class BoomSocket {
+    static OPEN = 1;
+    constructor() { throw new Error('ERR_NO_BUFFER_SPACE'); }
+  }
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: BoomSocket });
+  await controller.load();
+  assert.equal(controller.publicState().connected, false);
+});
+
+test('sends a heartbeat after the Broker socket opens so the service worker stays alive', async () => {
+  const chromeApi = {
+    storage: { local: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
+    tabs: { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } },
+  };
+  let heartbeat;
+  const timers = {
+    setTimeout,
+    clearTimeout,
+    setInterval: (fn) => { heartbeat = fn; return 1; },
+    clearInterval: () => { heartbeat = null; },
+    now: Date.now,
+  };
+  const created = [];
+  class FakeSocket {
+    static OPEN = 1;
+    constructor() {
+      this.readyState = FakeSocket.OPEN;
+      this.listeners = {};
+      this.sent = [];
+      created.push(this);
+    }
+    addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
+    close() {}
+    send(message) { this.sent.push(JSON.parse(message)); }
+    emit(type, event = {}) { for (const listener of this.listeners[type] ?? []) listener(event); }
+  }
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, timers });
+  await controller.load();
+  created[0].emit('open');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(typeof heartbeat, 'function');
+  heartbeat();
+  assert.deepEqual(created[0].sent.filter((message) => message.type === 'heartbeat'), [{ type: 'heartbeat' }]);
+  assert.equal(controller.publicState().connected, true);
+});

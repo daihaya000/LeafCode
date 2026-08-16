@@ -16,6 +16,28 @@ async function startBroker(options = {}) {
   return broker;
 }
 
+test('rejects non-extension WebSocket upgrades with HTTP 403 instead of a TCP reset', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+
+  const statusFrom = (origin) => new Promise((resolve, reject) => {
+    const socket = new WebSocket(broker.wsUrl, origin ? { origin } : undefined);
+    socket.once('unexpected-response', (_req, res) => {
+      resolve(res.statusCode);
+      res.resume();
+      socket.terminate();
+    });
+    socket.once('error', (err) => resolve(err.message));
+    socket.once('open', () => {
+      socket.close();
+      reject(new Error(`opened for origin ${origin}`));
+    });
+  });
+
+  assert.equal(await statusFrom('https://example.test'), 403);
+  assert.equal(await statusFrom(undefined), 403);
+});
+
 test('internal endpoints are loopback-only and require the generated bearer token', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
