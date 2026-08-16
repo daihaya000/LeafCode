@@ -4942,6 +4942,28 @@ describe("TaskView voice input", () => {
       });
     });
 
+    it("shows a completed silent resume when task status is stale and stream status is unknown", async () => {
+      taskStatus = "working";
+      mountStream(
+        [
+          userPrompt,
+          {
+            info: {
+              id: "assistant-silent-completed",
+              role: "assistant",
+              time: { created: 2, completed: 57_000 },
+            },
+            parts: [{ id: "reasoning-1", type: "reasoning", text: "考えました" }],
+          },
+        ],
+        { status: null },
+      );
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.getByRole("button", { name: "無言終了したターンを再開" })).toBeTruthy();
+    });
+
     it("waits for a running tool instead of calling the turn silent", async () => {
       taskStatus = "idle";
       mountStream([

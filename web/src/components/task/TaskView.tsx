@@ -4132,19 +4132,29 @@ export function TaskView({
     () => findResumableTurn(stream.visibleMessages),
     [stream.visibleMessages],
   );
+  const resumeMessage = resumeTarget
+    ? stream.visibleMessages.find((m) => m.info.id === resumeTarget.messageId)
+    : undefined;
+  const canShowCompletedResumeWhileStatusIsUnknown =
+    !!resumeMessage &&
+    typeof resumeMessage.info.time?.completed === "number" &&
+    !stream.aborting &&
+    stream.status?.type !== "busy" &&
+    stream.status?.type !== "retry";
   /**
    * `findResumableTurn` は idle 前提の判定なので `working` を必須にする。Goal Loop
-   * 稼働中の再開は GoalLoopPanel が担うので、こちらは出さない。
+   * 稼働中の再開は GoalLoopPanel が担うので、こちらは出さない。status が未確定でも
+   * 完了時刻のあるターンは、セッション status の欠落で残った task の working を
+   * 信用せず再開対象にする。
    */
   const showResume =
     !!resumeTarget &&
     !!task?.sessionId &&
     stream.loaded &&
-    !working &&
+    (!working || canShowCompletedResumeWhileStatusIsUnknown) &&
     !goalLoopLive;
   const resumeErrorText = resumeTarget
-    ? stream.visibleMessages.find((m) => m.info.id === resumeTarget.messageId)
-        ?.info.error?.data?.message ?? ""
+    ? resumeMessage?.info.error?.data?.message ?? ""
     : "";
   /**
    * 中断は既存の Aborted 枠へ差し込む。無言終了には枠が無く、中断でも parts を
