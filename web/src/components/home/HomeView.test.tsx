@@ -1156,7 +1156,7 @@ describe("HomeView subagent permission", () => {
     const select = (await screen.findByLabelText(
       "サブエージェント",
     )) as HTMLButtonElement;
-    expect(select.value).toBe("allow");
+    expect(select.value).toBe("deny");
 
     fireEvent.click(select);
     fireEvent.click(screen.getByRole("option", { name: "禁止" }));
@@ -1260,7 +1260,7 @@ describe("HomeView subagent permission", () => {
     const select = (await screen.findByLabelText(
       "サブエージェント",
     )) as HTMLButtonElement;
-    expect(select.value).toBe("allow");
+    expect(select.value).toBe("deny");
 
     window.dispatchEvent(
       new CustomEvent("webui:subagent-permission", { detail: "deny" }),

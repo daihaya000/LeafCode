@@ -16,8 +16,8 @@ describe("subagent-permission storage", () => {
     vi.restoreAllMocks();
   });
 
-  it("defaults to allow when nothing is stored", () => {
-    expect(readSubagentPermission()).toBe("allow");
+  it("defaults to deny when nothing is stored", () => {
+    expect(readSubagentPermission()).toBe("deny");
   });
 
   it("round-trips a stored value", () => {
@@ -28,9 +28,9 @@ describe("subagent-permission storage", () => {
     expect(readSubagentPermission()).toBe("allow");
   });
 
-  it("falls back to allow for an invalid stored value", () => {
+  it("falls back to deny for an invalid stored value", () => {
     localStorage.setItem("webui:subagent-permission", "bogus");
-    expect(readSubagentPermission()).toBe("allow");
+    expect(readSubagentPermission()).toBe("deny");
   });
 
   it("dispatches a CustomEvent with the mode on write", () => {

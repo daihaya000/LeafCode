@@ -81,8 +81,16 @@ describe("SkillPermissionSelect", () => {
 describe("SubagentPermissionSelect", () => {
   it("renders with the current subagent permission label", () => {
     render(<SubagentPermissionSelect value="allow" onChange={() => {}} />);
-    expect(
-      screen.getByRole("button", { name: /サブエージェント/ }),
-    ).toBeTruthy();
+    const select = screen.getByRole("button", { name: /サブエージェント/ });
+    expect(select).toBeTruthy();
+    expect(select.classList.contains("border-warning/40")).toBe(true);
+    expect(select.classList.contains("text-warning")).toBe(true);
+  });
+
+  it("defaults to a neutral tone when subagents are prohibited", () => {
+    render(<SubagentPermissionSelect value="deny" onChange={() => {}} />);
+    const select = screen.getByRole("button", { name: /サブエージェント/ });
+    expect(select.classList.contains("border-warning/40")).toBe(false);
+    expect(select.classList.contains("text-warning")).toBe(false);
   });
 });

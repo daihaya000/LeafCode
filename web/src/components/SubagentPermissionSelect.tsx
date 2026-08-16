@@ -33,7 +33,7 @@ export function SubagentPermissionSelect({
           <Bot className="h-3.5 w-3.5" />
         )
       }
-      tone={value === "deny" ? "warning" : "default"}
+      tone={value === "allow" ? "warning" : "default"}
     />
   );
 }

@@ -1,7 +1,7 @@
 /**
  * サブエージェント起動（task 権限）の許可 / 禁止設定。
  * `lib/access-mode.ts` の localStorage + CustomEvent 設計を踏襲する。
- * デフォルトは「許可」。
+ * デフォルトは「禁止」。
  */
 
 import type { SkillPermission } from "./skill-permission";
@@ -30,14 +30,14 @@ export const SUBAGENT_PERMISSION_OPTIONS: {
 ];
 
 export function readSubagentPermission(): SubagentPermission {
-  if (typeof window === "undefined") return "allow";
+  if (typeof window === "undefined") return "deny";
   try {
     const raw = localStorage.getItem(SUBAGENT_PERMISSION_STORAGE_KEY);
     if (raw === "allow" || raw === "deny") return raw;
   } catch {
     /* ignore */
   }
-  return "allow";
+  return "deny";
 }
 
 export function writeSubagentPermission(mode: SubagentPermission): void {
