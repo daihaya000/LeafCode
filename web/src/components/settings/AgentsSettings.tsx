@@ -824,7 +824,7 @@ export function AgentsSettings() {
       )}
 
       <div className="grid gap-4 md:grid-cols-[18rem_minmax(0,1fr)]">
-        <nav aria-label="エージェント一覧" className="space-y-3">
+        <nav aria-label="エージェント一覧" className="min-w-0 space-y-3">
           <div className="flex gap-2">
             <input
               type="text"
