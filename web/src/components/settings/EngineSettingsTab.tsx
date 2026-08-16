@@ -77,11 +77,14 @@ export function EngineSettingsTab({
   const [pendingRestart, setPendingRestart] = useState<"webui" | "opencode" | "all" | null>(
     null,
   );
+  const [pendingShutdown, setPendingShutdown] = useState(false);
+  const [shuttingDown, setShuttingDown] = useState(false);
   const [apiGeneration, setApiGeneration] = useState<OpenCodeApiGeneration>(
     () => readOpenCodeApiGeneration(),
   );
   const [apiGenerationBusy, setApiGenerationBusy] = useState(false);
   const restartingRef = useRef(false);
+  const shuttingDownRef = useRef(false);
   const updatingRef = useRef<UpdateTarget | null>(null);
   const mountedRef = useRef(false);
 
@@ -115,7 +118,14 @@ export function EngineSettingsTab({
 
   const requestRestart = (target: "webui" | "opencode" | "all") => {
     setError(null);
+    setPendingShutdown(false);
     setPendingRestart(target);
+  };
+
+  const requestShutdown = () => {
+    setError(null);
+    setPendingRestart(null);
+    setPendingShutdown(true);
   };
 
   const changeApiGeneration = (generation: OpenCodeApiGeneration) => {
@@ -128,8 +138,40 @@ export function EngineSettingsTab({
     });
   };
 
+  const shutdownHost = async () => {
+    if (shuttingDownRef.current || restartingRef.current) return;
+    shuttingDownRef.current = true;
+    setPendingShutdown(false);
+    setShuttingDown(true);
+    setError(null);
+    try {
+      const res = await timedFetch("/api/host/shutdown", {
+        method: "POST",
+        timeoutMs: 10_000,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        hint?: string;
+      };
+      if (!res.ok && res.status !== 202) {
+        throw new Error(
+          [data.error, data.hint].filter(Boolean).join(" — ") ||
+            "シャットダウンに失敗しました",
+        );
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setError(
+          err instanceof Error ? err.message : "シャットダウンに失敗しました",
+        );
+        setShuttingDown(false);
+      }
+      shuttingDownRef.current = false;
+    }
+  };
+
   const restartService = async (target: "webui" | "opencode" | "all") => {
-    if (restartingRef.current) return;
+    if (restartingRef.current || shuttingDownRef.current) return;
     restartingRef.current = true;
     setPendingRestart(null);
     setRestarting(target);
@@ -269,7 +311,7 @@ export function EngineSettingsTab({
                   size="sm"
                   variant="secondary"
                   busy={restarting === "webui"}
-                  disabled={hostOk !== true || restarting !== null}
+                  disabled={hostOk !== true || restarting !== null || shuttingDown}
                   onClick={() => requestRestart("webui")}
                 >
                   LeafCode を再起動
@@ -279,7 +321,7 @@ export function EngineSettingsTab({
                   size="sm"
                   variant="secondary"
                   busy={restarting === "opencode"}
-                  disabled={hostOk !== true || restarting !== null}
+                  disabled={hostOk !== true || restarting !== null || shuttingDown}
                   onClick={() => requestRestart("opencode")}
                 >
                   OpenCode を再起動
@@ -289,13 +331,13 @@ export function EngineSettingsTab({
                   size="sm"
                   variant="secondary"
                   busy={restarting === "all"}
-                  disabled={hostOk !== true || restarting !== null}
+                  disabled={hostOk !== true || restarting !== null || shuttingDown}
                   onClick={() => requestRestart("all")}
                 >
                   すべて再起動
                 </Button>
               </div>
-              {pendingRestart && !restarting && (
+              {pendingRestart && !restarting && !shuttingDown && (
                 <div
                   role="dialog"
                   aria-live="polite"
@@ -328,8 +370,61 @@ export function EngineSettingsTab({
               <p className="min-h-4 text-xs text-muted" role="status" aria-live="polite">
                 {restarting
                   ? `${RESTART_LABELS[restarting]}を再起動しています…`
-                  : null}
+                  : shuttingDown
+                    ? "ホストをシャットダウンしています…"
+                    : null}
               </p>
+              <div className="border-t border-border pt-3">
+                <h3 className="text-xs font-semibold text-muted">シャットダウン</h3>
+                <p className="mt-1 text-xs text-faint">
+                  OpenCode とトレイホストを正常終了します。コンソールを閉じたりタスクマネージャーで強制終了すると、Windows がポート 4096 をゴーストソケットとして残すことがあります。
+                </p>
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    busy={shuttingDown}
+                    disabled={hostOk !== true || restarting !== null || shuttingDown}
+                    onClick={requestShutdown}
+                  >
+                    ホストを終了
+                  </Button>
+                </div>
+                {pendingShutdown && !shuttingDown && (
+                  <div
+                    role="dialog"
+                    aria-live="polite"
+                    aria-label="シャットダウンの確認"
+                    className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger"
+                  >
+                    <p className="font-medium">
+                      トレイホストを含めてすべて終了しますか？
+                    </p>
+                    <p className="mt-1 text-xs text-faint">
+                      正常終了するため、ポート 4096 のゴーストソケットを残しません。
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="danger"
+                        onClick={() => void shutdownHost()}
+                      >
+                        終了する
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setPendingShutdown(false)}
+                      >
+                        キャンセル
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="space-y-3 rounded-lg border border-border bg-bg/40 p-3">
@@ -390,7 +485,7 @@ export function EngineSettingsTab({
                   size="sm"
                   variant="secondary"
                   busy={updating === "webui"}
-                  disabled={updating !== null || restarting !== null}
+                  disabled={updating !== null || restarting !== null || shuttingDown}
                   onClick={() => void updateService("webui")}
                 >
                   LeafCode を更新
@@ -400,7 +495,7 @@ export function EngineSettingsTab({
                   size="sm"
                   variant="secondary"
                   busy={updating === "opencode"}
-                  disabled={updating !== null || restarting !== null || health?.opencode?.ok !== true}
+                  disabled={updating !== null || restarting !== null || shuttingDown || health?.opencode?.ok !== true}
                   onClick={() => void updateService("opencode")}
                 >
                   OpenCode CLI を更新
@@ -410,7 +505,7 @@ export function EngineSettingsTab({
                   size="sm"
                   variant="secondary"
                   busy={updating === "nextjs"}
-                  disabled={updating !== null || restarting !== null}
+                  disabled={updating !== null || restarting !== null || shuttingDown}
                   onClick={() => void updateService("nextjs")}
                 >
                   Next.js を更新

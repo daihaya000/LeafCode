@@ -705,6 +705,57 @@ describe("SettingsView", () => {
     expect(screen.queryByRole("dialog", { name: "再起動の確認" })).toBeNull();
   });
 
+  it("posts a host shutdown request after inline confirmation", async () => {
+    const shutdownRequests: { input: RequestInfo | URL; init?: RequestInit }[] = [];
+    mockFetch((input, init) => {
+      if (String(input).includes("/api/host/shutdown")) {
+        shutdownRequests.push({ input, init });
+        return new Response(JSON.stringify({ ok: true, shutdown: true }), {
+          status: 202,
+        });
+      }
+      return undefined;
+    });
+
+    render(<SettingsView />);
+
+    await screen.findByRole("tab", { name: "エンジン" });
+    fireEvent.click(screen.getByRole("tab", { name: "エンジン" }));
+    await screen.findByText("LeafCode 接続中");
+    fireEvent.click(screen.getByRole("button", { name: "ホストを終了" }));
+    expect(screen.getByRole("dialog", { name: "シャットダウンの確認" })).toBeTruthy();
+    expect(shutdownRequests).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "終了する" }));
+
+    await waitFor(() => expect(shutdownRequests).toHaveLength(1));
+    const [shutdownRequest] = shutdownRequests;
+    expect(shutdownRequest.input).toBe("/api/host/shutdown");
+    expect(shutdownRequest.init?.method).toBe("POST");
+    expect(screen.getByText("ホストをシャットダウンしています…")).toBeTruthy();
+  });
+
+  it("cancels host shutdown without calling the control plane", async () => {
+    const shutdownRequests: { input: RequestInfo | URL; init?: RequestInit }[] = [];
+    mockFetch((input, init) => {
+      if (String(input).includes("/api/host/shutdown")) {
+        shutdownRequests.push({ input, init });
+        return new Response(JSON.stringify({ ok: true }), { status: 202 });
+      }
+      return undefined;
+    });
+
+    render(<SettingsView />);
+
+    await screen.findByRole("tab", { name: "エンジン" });
+    fireEvent.click(screen.getByRole("tab", { name: "エンジン" }));
+    await screen.findByText("LeafCode 接続中");
+    fireEvent.click(screen.getByRole("button", { name: "ホストを終了" }));
+    fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("dialog", { name: "シャットダウンの確認" })).toBeNull();
+    expect(shutdownRequests).toHaveLength(0);
+  });
+
   it("treats opencode target success as opencode.ok === true", async () => {
     const confirm = vi.fn(() => true);
     vi.stubGlobal("confirm", confirm);

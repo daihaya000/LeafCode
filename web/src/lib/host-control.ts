@@ -27,6 +27,11 @@ export function hostAllowFirewallPath(): string {
   return "/allow-firewall";
 }
 
+/** POST path that asks the tray host to quit after a graceful child stop. */
+export function hostShutdownPath(): string {
+  return "/shutdown";
+}
+
 /** GET path for the host log tail. `since` is the last-seen entry's `seq`. */
 export function hostLogsPath(since: number | null): string {
   return since !== null && Number.isFinite(since)

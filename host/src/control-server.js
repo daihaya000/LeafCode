@@ -45,7 +45,7 @@ function clientIpOf(req) {
 
 /**
  * Host-control route table: [method, path, routeId].
- * `/restart/*` and `/stop/*` are POST-only, resolved in one step.
+ * `/restart/*`, `/stop/*`, and `/shutdown` are POST-only, resolved in one step.
  */
 const ROUTE_TABLE = [
   ['GET', '/health', 'health'],
@@ -64,6 +64,7 @@ const ROUTE_TABLE = [
   ['POST', '/restart/opencode', 'opencode'],
   ['POST', '/restart/all', 'all'],
   ['POST', '/stop/webui', 'stop-webui'],
+  ['POST', '/shutdown', 'shutdown'],
   ['POST', '/voice-input', 'voice-input'],
   ['POST', '/allow-firewall', 'allow-firewall'],
   ['POST', '/playwright-cli', 'playwright-cli'],
@@ -73,7 +74,7 @@ const ROUTE_TABLE = [
  * Match a host-control HTTP route.
  * @param {string} method
  * @param {string} pathname
- * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | 'allow-firewall' | 'users' | 'auth' | 'auth-config' | 'browser-config' | 'playwright-cli' | null}
+ * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'shutdown' | 'voice-input' | 'logs' | 'allow-firewall' | 'users' | 'auth' | 'auth-config' | 'browser-config' | 'playwright-cli' | null}
  */
 // Test-only export (used by control-server.test.js).
 export function matchControlRoute(method, pathname) {
@@ -363,6 +364,7 @@ function getTrustedDeviceCookie(header) {
  *   onRestartOpencode: () => Promise<void> | void,
  *   onRestartAll: () => Promise<void> | void,
  *   onStopWebui?: () => Promise<void> | void,
+ *   onShutdown?: () => Promise<void> | void,
  *   onVoiceInput?: () => Promise<void> | void,
  *   onGetLogs?: (since: number | null) => { entries: unknown[], nextSeq: number },
  *   onAllowFirewall?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,
@@ -929,6 +931,26 @@ export function createControlRequestHandler(handlers) {
         });
     });
   },
+
+  shutdown: async (req, res) => {
+    // Graceful host exit (dispose + soft kill) so Windows does not leave a
+    // LISTENING ghost socket on :4096. Acknowledge first: quit() closes this
+    // control server, and the BFF must flush 202 before that happens.
+    if (typeof handlers.onShutdown !== 'function') {
+      res.writeHead(501, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'shutdown is not supported by this host' }));
+      return;
+    }
+    res.writeHead(202, JSON_HEADERS);
+    res.end(JSON.stringify({ ok: true, target: 'host', accepted: true, shutdown: true }));
+    setImmediate(() => {
+      Promise.resolve()
+        .then(() => handlers.onShutdown())
+        .catch(() => {
+          // Errors are logged by the host quit function.
+        });
+    });
+  },
   };
 
   return async (req, res) => {
@@ -975,6 +997,7 @@ export function createControlRequestHandler(handlers) {
  *   onRestartOpencode: () => Promise<void> | void,
  *   onRestartAll: () => Promise<void> | void,
  *   onStopWebui?: () => Promise<void> | void,
+ *   onShutdown?: () => Promise<void> | void,
  *   onVoiceInput?: () => Promise<void> | void,
  *   onGetLogs?: (since: number | null) => { entries: unknown[], nextSeq: number },
  *   onAllowFirewall?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,

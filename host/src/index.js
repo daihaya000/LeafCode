@@ -2033,6 +2033,7 @@ async function startControlServer() {
     onRestartOpencode: () => restartOpencode(),
     onRestartAll: () => restartServices(),
     onStopWebui: () => stopWebForBuild(),
+    onShutdown: () => quit().catch(() => process.exit(1)),
     onVoiceInput: () => launchWindowsVoiceInput(),
     onGetLogs: (since) => getLogEntries(since),
     onAllowFirewall: () => allowFirewallPort(WEBUI_PORT),
@@ -2222,7 +2223,7 @@ function buildTrayMenu() {
       SysTray.separator,
       {
         title: 'Quit',
-        tooltip: 'Stop services and exit',
+        tooltip: 'Gracefully stop OpenCode and LeafCode, then exit',
         checked: false,
         enabled: true,
         click: () => {

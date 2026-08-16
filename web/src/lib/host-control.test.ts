@@ -3,6 +3,7 @@ import {
   hostAllowFirewallPath,
   hostLogsPath,
   hostRestartPath,
+  hostShutdownPath,
   hostVoiceInputPath,
   resolveHostControlUrl,
 } from "@/lib/host-control";
@@ -28,6 +29,12 @@ describe("hostVoiceInputPath", () => {
 describe("hostAllowFirewallPath", () => {
   it("maps to the host allow-firewall control path", () => {
     expect(hostAllowFirewallPath()).toBe("/allow-firewall");
+  });
+});
+
+describe("hostShutdownPath", () => {
+  it("maps to the host shutdown control path", () => {
+    expect(hostShutdownPath()).toBe("/shutdown");
   });
 });
 

@@ -24,6 +24,7 @@ test('Caddyfile example rewrites Host for host-only API routes', () => {
     '/api/browse/folder*',
     '/api/host/voice-input*',
     '/api/host/restart*',
+    '/api/host/shutdown*',
     '/api/host/logs*',
     '/api/updates/*',
   ]) {

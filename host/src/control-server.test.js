@@ -97,6 +97,38 @@ test('matchControlRoute maps the build stop endpoint', () => {
   assert.equal(matchControlRoute('POST', '/stop/opencode'), null);
 });
 
+test('matchControlRoute maps the host shutdown endpoint', () => {
+  assert.equal(matchControlRoute('POST', '/shutdown'), 'shutdown');
+  assert.equal(matchControlRoute('post', '/shutdown/'), 'shutdown');
+  assert.equal(matchControlRoute('GET', '/shutdown'), null);
+  assert.equal(matchControlRoute('POST', '/stop/all'), null);
+});
+
+test('POST /shutdown answers 202 before quit runs', async () => {
+  let shutdown = false;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    onShutdown: () => {
+      shutdown = true;
+    },
+  });
+  const res = fakeResponse();
+  await handle({ method: 'POST', url: '/shutdown', headers: { host: '127.0.0.1:18765' } }, res);
+  assert.equal(res.statusCode, 202);
+  assert.deepEqual(res.body, { ok: true, target: 'host', accepted: true, shutdown: true });
+  assert.equal(shutdown, false, 'quit is scheduled after the response');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(shutdown, true);
+});
+
+test('POST /shutdown reports 501 when the host cannot quit', async () => {
+  const handle = createControlRequestHandler(noopHandlers);
+  const res = fakeResponse();
+  await handle({ method: 'POST', url: '/shutdown', headers: { host: '127.0.0.1:18765' } }, res);
+  assert.equal(res.statusCode, 501);
+  assert.equal(res.body.ok, false);
+});
+
 test('matchControlRoute maps the voice input endpoint', () => {
   assert.equal(matchControlRoute('POST', '/voice-input'), 'voice-input');
   assert.equal(matchControlRoute('post', '/voice-input/'), 'voice-input');

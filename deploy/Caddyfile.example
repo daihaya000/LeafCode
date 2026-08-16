@@ -55,7 +55,7 @@
 # entries and any hostname you add by hand are preserved -- add a VPN hostname
 # or public domain here and it will survive the sync. The placeholder
 # `example-hostname` from the old template is dropped automatically.
-# Host-only APIs (folder picker, voice input, restart) work through this proxy
+# Host-only APIs (folder picker, voice input, restart, shutdown) work through this proxy
 # only when the browser is on the same PC and reaches Caddy via a loopback
 # hostname (localhost / 127.0.0.1). The BFF rejects spoofable private
 # X-Forwarded-For values, so LAN/VPN clients cannot use host-only APIs even
@@ -63,7 +63,7 @@
 https://localhost:8443, https://127.0.0.1:8443, https://192.168.1.100:8443 {
 	tls internal
 
-	@hostOnlyApis path /api/browse/folder* /api/host/voice-input* /api/host/restart* /api/host/logs* /api/updates/*
+	@hostOnlyApis path /api/browse/folder* /api/host/voice-input* /api/host/restart* /api/host/shutdown* /api/host/logs* /api/updates/*
 
 	# --- Optional Basic Auth (recommended for remote) --------------------
 	# Generate a hash:  caddy hash-password
@@ -72,7 +72,7 @@ https://localhost:8443, https://127.0.0.1:8443, https://192.168.1.100:8443 {
 	#	user JDJhJDE0...hashed...
 	# }
 
-	# Host-only APIs (folder picker, voice input, restart, updates, logs) are
+	# Host-only APIs (folder picker, voice input, restart, shutdown, updates, logs) are
 	# accepted only from direct loopback requests. The BFF no longer trusts
 	# private X-Forwarded-For, so a Host rewrite alone is NOT enough for LAN
 	# clients. Open these URLs on the host PC via a loopback hostname
